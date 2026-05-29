@@ -11284,3 +11284,1142 @@ Open the `chatqec-mcp-tools` GitLab project; verify the M8 pipeline (lint + test
 **🛑 PAUSE — push both repos to GitLab and review before requesting Milestone 9.**
 
 ---
+
+## Milestone 9 — Streamlit app + public-facing concerns
+
+**Outcome:** Four-page Streamlit app (Chat, Sources, Watchlist, About) ready to deploy to Streamlit Cloud or any container host. Public-facing guards from spec §12 are in place: per-IP rate limiting (20 questions/day, 5 tool invocations/hour), daily token-budget cap with graceful degradation, hCaptcha first-question gate, off-topic refusals surfaced in the UI, transparent token/cost footer. The hosted demo at the project's GitLab Pages or Hugging Face Space can serve real users without exposing the API key or running the budget into the ground.
+
+**Files this milestone creates / touches:**
+- Create: `src/chatqec/guards/__init__.py`
+- Create: `src/chatqec/guards/rate_limit.py`
+- Create: `src/chatqec/guards/cost_budget.py`
+- Create: `src/chatqec/guards/captcha.py`
+- Create: `chatqec_app/streamlit_app.py`
+- Create: `chatqec_app/pages/1_Chat.py`
+- Create: `chatqec_app/pages/2_Sources.py`
+- Create: `chatqec_app/pages/3_Watchlist.py`
+- Create: `chatqec_app/pages/4_About.py`
+- Create: `chatqec_app/components/citation_card.py`
+- Create: `chatqec_app/components/tool_output.py`
+- Create: `chatqec_app/utils.py`
+- Create: `.streamlit/config.toml`
+- Create: `tests/test_guards_rate_limit.py`
+- Create: `tests/test_guards_cost_budget.py`
+- Create: `tests/test_guards_captcha.py`
+- Create: `tests/test_streamlit_pages.py`
+- Modify: `conf/config.yaml` (`limits:` section)
+- Modify: `pyproject.toml` (extras: `[project.optional-dependencies].app`)
+- Modify: `CHANGELOG.md`
+
+**Why split this way:** the guards are pure Python with narrow contracts (rate limiter takes an IP + action, returns bool; budget takes a cost, returns bool; captcha takes a token, returns bool). They are unit-tested in isolation. The Streamlit pages compose the guards + the public `ChatQEC` API; they're smoke-tested with `streamlit.testing.v1.AppTest` to verify they render without runtime errors.
+
+---
+
+### Task 9.1 — Per-IP rate limiter (SQLite-backed)
+
+**Files:**
+- Create: `src/chatqec/guards/__init__.py` (empty)
+- Create: `src/chatqec/guards/rate_limit.py`
+- Create: `tests/test_guards_rate_limit.py`
+
+- [ ] **Step 1: Make the package**
+
+```bash
+mkdir -p src/chatqec/guards
+touch src/chatqec/guards/__init__.py
+```
+
+- [ ] **Step 2: Write failing tests**
+
+Create `tests/test_guards_rate_limit.py`:
+
+```python
+"""Per-IP rate limiter (SQLite-backed)."""
+
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+import pytest
+
+from chatqec.guards.rate_limit import RateLimiter, LimitExceeded
+
+
+def _now() -> datetime:
+    return datetime(2026, 5, 29, 12, 0, tzinfo=timezone.utc)
+
+
+def test_rate_limiter_allows_under_cap(tmp_path: Path):
+    rl = RateLimiter(db_path=tmp_path / "rl.db",
+                     limits={"ask": (20, "day"), "tool": (5, "hour")})
+    for _ in range(5):
+        rl.check_and_record("1.2.3.4", action="ask", now=_now())
+
+
+def test_rate_limiter_raises_when_daily_cap_hit(tmp_path: Path):
+    rl = RateLimiter(db_path=tmp_path / "rl.db",
+                     limits={"ask": (3, "day")})
+    for _ in range(3):
+        rl.check_and_record("1.2.3.4", action="ask", now=_now())
+    with pytest.raises(LimitExceeded):
+        rl.check_and_record("1.2.3.4", action="ask", now=_now())
+
+
+def test_rate_limiter_resets_after_window(tmp_path: Path):
+    rl = RateLimiter(db_path=tmp_path / "rl.db",
+                     limits={"ask": (1, "hour")})
+    rl.check_and_record("1.2.3.4", action="ask", now=_now())
+    with pytest.raises(LimitExceeded):
+        rl.check_and_record("1.2.3.4", action="ask", now=_now())
+    # one hour later: should be allowed again
+    later = _now() + timedelta(hours=1, minutes=1)
+    rl.check_and_record("1.2.3.4", action="ask", now=later)
+
+
+def test_rate_limiter_independent_per_ip(tmp_path: Path):
+    rl = RateLimiter(db_path=tmp_path / "rl.db", limits={"ask": (1, "day")})
+    rl.check_and_record("1.1.1.1", action="ask", now=_now())
+    rl.check_and_record("2.2.2.2", action="ask", now=_now())
+
+
+def test_rate_limiter_independent_per_action(tmp_path: Path):
+    rl = RateLimiter(db_path=tmp_path / "rl.db",
+                     limits={"ask": (1, "day"), "tool": (1, "hour")})
+    rl.check_and_record("1.2.3.4", action="ask", now=_now())
+    rl.check_and_record("1.2.3.4", action="tool", now=_now())
+
+
+def test_remaining_returns_balance_for_each_action(tmp_path: Path):
+    rl = RateLimiter(db_path=tmp_path / "rl.db",
+                     limits={"ask": (10, "day"), "tool": (2, "hour")})
+    rl.check_and_record("1.2.3.4", action="ask", now=_now())
+    rl.check_and_record("1.2.3.4", action="ask", now=_now())
+    assert rl.remaining("1.2.3.4", action="ask", now=_now()) == 8
+    assert rl.remaining("1.2.3.4", action="tool", now=_now()) == 2
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_guards_rate_limit.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 4: Implement `src/chatqec/guards/rate_limit.py`**
+
+```python
+"""SQLite-backed per-IP per-action rate limiter.
+
+Windows: "day" (UTC midnight reset) or "hour" (rolling hour bucket).
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from typing import Literal
+
+Window = Literal["day", "hour"]
+
+
+class LimitExceeded(Exception):
+    pass
+
+
+def _bucket(now: datetime, window: Window) -> str:
+    if window == "day":
+        return now.strftime("%Y-%m-%d")
+    return now.strftime("%Y-%m-%dT%H")
+
+
+class RateLimiter:
+    def __init__(self, *, db_path: Path,
+                 limits: dict[str, tuple[int, Window]]) -> None:
+        self.db_path = Path(db_path)
+        self.limits = limits
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._ensure_schema()
+
+    def _conn(self) -> sqlite3.Connection:
+        return sqlite3.connect(str(self.db_path))
+
+    def _ensure_schema(self) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS counters (
+                    ip TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    bucket TEXT NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (ip, action, bucket)
+                )"""
+            )
+
+    def _current_count(self, ip: str, action: str, bucket: str) -> int:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT count FROM counters WHERE ip=? AND action=? AND bucket=?",
+                (ip, action, bucket),
+            ).fetchone()
+            return int(row[0]) if row else 0
+
+    def remaining(self, ip: str, *, action: str, now: datetime) -> int:
+        cap, window = self.limits[action]
+        bucket = _bucket(now, window)
+        return max(0, cap - self._current_count(ip, action, bucket))
+
+    def check_and_record(self, ip: str, *, action: str, now: datetime) -> None:
+        cap, window = self.limits[action]
+        bucket = _bucket(now, window)
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT count FROM counters WHERE ip=? AND action=? AND bucket=?",
+                (ip, action, bucket),
+            ).fetchone()
+            count = int(row[0]) if row else 0
+            if count >= cap:
+                raise LimitExceeded(
+                    f"limit {cap}/{window} exceeded for ip={ip} action={action}"
+                )
+            if row:
+                conn.execute(
+                    "UPDATE counters SET count=count+1 WHERE ip=? AND action=? AND bucket=?",
+                    (ip, action, bucket),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO counters(ip, action, bucket, count) VALUES (?, ?, ?, 1)",
+                    (ip, action, bucket),
+                )
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_guards_rate_limit.py -v
+```
+
+Expected: 6 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/guards/__init__.py src/chatqec/guards/rate_limit.py tests/test_guards_rate_limit.py
+git commit -m "feat(guards): add SQLite-backed per-IP rate limiter"
+```
+
+---
+
+### Task 9.2 — Daily cost budget guard
+
+**Files:**
+- Create: `src/chatqec/guards/cost_budget.py`
+- Create: `tests/test_guards_cost_budget.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_guards_cost_budget.py`:
+
+```python
+"""Daily token-budget guard tests."""
+
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+import pytest
+
+from chatqec.guards.cost_budget import BudgetExceeded, CostBudget
+
+
+def _now() -> datetime:
+    return datetime(2026, 5, 29, 12, 0, tzinfo=timezone.utc)
+
+
+def test_budget_records_costs_and_allows_under_cap(tmp_path: Path):
+    b = CostBudget(db_path=tmp_path / "b.db", daily_usd_cap=1.0)
+    b.charge(amount_usd=0.05, now=_now())
+    assert b.spent_today(now=_now()) == pytest.approx(0.05)
+
+
+def test_budget_raises_when_cap_hit(tmp_path: Path):
+    b = CostBudget(db_path=tmp_path / "b.db", daily_usd_cap=0.10)
+    b.charge(amount_usd=0.08, now=_now())
+    with pytest.raises(BudgetExceeded):
+        b.charge(amount_usd=0.05, now=_now())
+
+
+def test_budget_resets_at_utc_midnight(tmp_path: Path):
+    b = CostBudget(db_path=tmp_path / "b.db", daily_usd_cap=0.10)
+    b.charge(amount_usd=0.08, now=_now())
+    tomorrow = _now() + timedelta(days=1)
+    b.charge(amount_usd=0.08, now=tomorrow)
+    assert b.spent_today(now=tomorrow) == pytest.approx(0.08)
+
+
+def test_budget_remaining_returns_difference(tmp_path: Path):
+    b = CostBudget(db_path=tmp_path / "b.db", daily_usd_cap=2.00)
+    b.charge(amount_usd=0.50, now=_now())
+    assert b.remaining(now=_now()) == pytest.approx(1.50)
+
+
+def test_estimate_cost_from_tokens_matches_spec():
+    # Per spec §12.3 — rough per-query cost ≈ $0.015 (Haiku rewrite + Sonnet synthesis)
+    from chatqec.guards.cost_budget import estimate_cost_usd
+    # Rough Sonnet input ~8k @ $3/MTok cached → $0.012, output 800 @ $15/MTok → $0.012
+    cost = estimate_cost_usd(model="claude-sonnet-4-6",
+                             input_tokens=8000, output_tokens=800,
+                             cached_input_tokens=6000)
+    assert 0.005 <= cost <= 0.040  # ballpark per spec
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_guards_cost_budget.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/guards/cost_budget.py`**
+
+```python
+"""Daily USD-equivalent cost budget guard."""
+
+from __future__ import annotations
+
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+
+
+class BudgetExceeded(Exception):
+    pass
+
+
+# Approximate USD/MTok prices (Anthropic public pricing; tune as needed).
+_PRICES_USD_PER_MTOK = {
+    "claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cached_input": 0.30},
+    "claude-haiku-4-5":  {"input": 0.80, "output": 4.0,  "cached_input": 0.08},
+    "text-embedding-004": {"input": 0.025, "output": 0.0, "cached_input": 0.025},
+}
+
+
+def estimate_cost_usd(
+    *, model: str, input_tokens: int, output_tokens: int,
+    cached_input_tokens: int = 0,
+) -> float:
+    p = _PRICES_USD_PER_MTOK.get(model, {"input": 1.0, "output": 1.0, "cached_input": 1.0})
+    uncached_in = max(0, input_tokens - cached_input_tokens)
+    return (
+        uncached_in * p["input"] / 1_000_000
+        + cached_input_tokens * p["cached_input"] / 1_000_000
+        + output_tokens * p["output"] / 1_000_000
+    )
+
+
+class CostBudget:
+    def __init__(self, *, db_path: Path, daily_usd_cap: float) -> None:
+        self.db_path = Path(db_path)
+        self.daily_usd_cap = daily_usd_cap
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._ensure_schema()
+
+    def _conn(self) -> sqlite3.Connection:
+        return sqlite3.connect(str(self.db_path))
+
+    def _ensure_schema(self) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS spend (
+                    day TEXT PRIMARY KEY, usd REAL NOT NULL DEFAULT 0.0
+                )"""
+            )
+
+    def _key(self, now: datetime) -> str:
+        return now.strftime("%Y-%m-%d")
+
+    def spent_today(self, *, now: datetime) -> float:
+        with self._conn() as conn:
+            row = conn.execute("SELECT usd FROM spend WHERE day=?", (self._key(now),)).fetchone()
+            return float(row[0]) if row else 0.0
+
+    def remaining(self, *, now: datetime) -> float:
+        return max(0.0, self.daily_usd_cap - self.spent_today(now=now))
+
+    def charge(self, *, amount_usd: float, now: datetime) -> None:
+        spent = self.spent_today(now=now)
+        if spent + amount_usd > self.daily_usd_cap:
+            raise BudgetExceeded(
+                f"daily cap ${self.daily_usd_cap:.2f} would be exceeded "
+                f"(spent ${spent:.3f} + charge ${amount_usd:.3f})"
+            )
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO spend(day, usd) VALUES (?, ?)
+                   ON CONFLICT(day) DO UPDATE SET usd = usd + excluded.usd""",
+                (self._key(now), amount_usd),
+            )
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_guards_cost_budget.py -v
+```
+
+Expected: 5 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/guards/cost_budget.py tests/test_guards_cost_budget.py
+git commit -m "feat(guards): add daily USD-budget guard with token-cost estimator"
+```
+
+---
+
+### Task 9.3 — hCaptcha verifier
+
+**Files:**
+- Create: `src/chatqec/guards/captcha.py`
+- Create: `tests/test_guards_captcha.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_guards_captcha.py`:
+
+```python
+"""hCaptcha verifier tests (HTTP call mocked)."""
+
+from unittest.mock import MagicMock
+
+from chatqec.guards.captcha import HCaptchaVerifier
+
+
+def test_captcha_verifier_returns_true_on_success(monkeypatch):
+    fake_post = MagicMock()
+    fake_post.return_value.json.return_value = {"success": True, "challenge_ts": "..."}
+    fake_post.return_value.raise_for_status.return_value = None
+    monkeypatch.setattr("chatqec.guards.captcha.requests.post", fake_post)
+
+    v = HCaptchaVerifier(secret="SECRET")
+    assert v.verify("user-token") is True
+    fake_post.assert_called_once()
+
+
+def test_captcha_verifier_returns_false_on_failure(monkeypatch):
+    fake_post = MagicMock()
+    fake_post.return_value.json.return_value = {"success": False, "error-codes": ["bad-token"]}
+    fake_post.return_value.raise_for_status.return_value = None
+    monkeypatch.setattr("chatqec.guards.captcha.requests.post", fake_post)
+
+    v = HCaptchaVerifier(secret="SECRET")
+    assert v.verify("bad-token") is False
+
+
+def test_captcha_verifier_disabled_when_secret_empty():
+    """No secret configured → captcha is disabled and always passes."""
+    v = HCaptchaVerifier(secret="")
+    assert v.enabled is False
+    assert v.verify("anything") is True
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_guards_captcha.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/guards/captcha.py`**
+
+```python
+"""hCaptcha verifier (free tier).
+
+Disabled (always passes) when secret is empty — convenient for local dev.
+"""
+
+from __future__ import annotations
+
+import requests
+
+
+class HCaptchaVerifier:
+    VERIFY_URL = "https://hcaptcha.com/siteverify"
+
+    def __init__(self, *, secret: str, timeout_seconds: int = 10) -> None:
+        self.secret = secret
+        self.timeout_seconds = timeout_seconds
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.secret)
+
+    def verify(self, token: str) -> bool:
+        if not self.enabled:
+            return True
+        try:
+            resp = requests.post(
+                self.VERIFY_URL,
+                data={"secret": self.secret, "response": token},
+                timeout=self.timeout_seconds,
+            )
+            resp.raise_for_status()
+            return bool(resp.json().get("success", False))
+        except (requests.RequestException, ValueError):
+            # Conservative: refuse on network error
+            return False
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_guards_captcha.py -v
+```
+
+Expected: 3 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/guards/captcha.py tests/test_guards_captcha.py
+git commit -m "feat(guards): add hCaptcha verifier with disabled-on-empty-secret fallback"
+```
+
+---
+
+### Task 9.4 — Streamlit app shell + Chat page
+
+**Files:**
+- Create: `chatqec_app/streamlit_app.py`
+- Create: `chatqec_app/pages/1_Chat.py`
+- Create: `chatqec_app/components/citation_card.py`
+- Create: `chatqec_app/components/tool_output.py`
+- Create: `chatqec_app/utils.py`
+- Create: `.streamlit/config.toml`
+- Modify: `pyproject.toml` (add `[project.optional-dependencies].app`)
+
+- [ ] **Step 1: Add an `app` extra to `pyproject.toml`**
+
+In `[project.optional-dependencies]`, add:
+
+```toml
+app = [
+  "streamlit>=1.40",
+]
+```
+
+(`streamlit` is already in core deps; this extra is a no-op alias clarifying that the app uses it. We keep it in core so `ChatQEC` can be used without installing extras.)
+
+- [ ] **Step 2: Create `.streamlit/config.toml`**
+
+```toml
+[server]
+maxUploadSize = 10
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#3b82f6"
+font = "monospace"
+```
+
+- [ ] **Step 3: Create the Streamlit entry point**
+
+Create `chatqec_app/streamlit_app.py`:
+
+```python
+"""Streamlit entry point. Each file under chatqec_app/pages/ becomes a sidebar page."""
+
+import streamlit as st
+
+st.set_page_config(
+    page_title="ChatQEC", page_icon="🧪", layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+st.title("ChatQEC")
+st.write(
+    "Open-source Quantum Error Correction research assistant. "
+    "Pick a page on the left to start."
+)
+
+st.markdown(
+    """
+- **Chat** — ask QEC questions with cited evidence and sandboxed Stim execution.
+- **Sources** — browse the knowledge base.
+- **Watchlist** — see which arxiv categories, GitHub repos, and channels we track.
+- **About** — what's inside, license, how to self-host.
+"""
+)
+```
+
+- [ ] **Step 4: Create shared helpers**
+
+Create `chatqec_app/utils.py`:
+
+```python
+"""Shared helpers for Streamlit pages."""
+
+from __future__ import annotations
+
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+import streamlit as st
+
+from chatqec.api import ChatQEC
+from chatqec.guards.captcha import HCaptchaVerifier
+from chatqec.guards.cost_budget import CostBudget
+from chatqec.guards.rate_limit import RateLimiter
+
+
+@st.cache_resource
+def get_chatqec() -> ChatQEC:
+    return ChatQEC.from_config()
+
+
+@st.cache_resource
+def get_rate_limiter() -> RateLimiter:
+    db = Path(os.environ.get("CHATQEC_GUARD_DB", "data/chatqec.db"))
+    return RateLimiter(db_path=db, limits={
+        "ask": (20, "day"),  # spec §12.1
+        "tool": (5, "hour"),
+    })
+
+
+@st.cache_resource
+def get_cost_budget() -> CostBudget:
+    db = Path(os.environ.get("CHATQEC_GUARD_DB", "data/chatqec.db"))
+    cap = float(os.environ.get("CHATQEC_DAILY_BUDGET_USD", "5.00"))
+    return CostBudget(db_path=db, daily_usd_cap=cap)
+
+
+@st.cache_resource
+def get_captcha() -> HCaptchaVerifier:
+    return HCaptchaVerifier(secret=os.environ.get("HCAPTCHA_SECRET", ""))
+
+
+def client_ip() -> str:
+    # Streamlit doesn't expose remote IP directly; use session id as a coarse
+    # per-user key when no IP header is present.
+    ctx = st.runtime.scriptrunner.get_script_run_ctx()  # type: ignore[attr-defined]
+    return getattr(ctx, "session_id", "local-dev")
+
+
+def utc_now() -> datetime:
+    return datetime.now(tz=timezone.utc)
+```
+
+- [ ] **Step 5: Create reusable components**
+
+Create `chatqec_app/components/citation_card.py`:
+
+```python
+"""Renders a Citation as an expandable card."""
+
+import streamlit as st
+
+from chatqec.api import Citation
+
+
+def render(citation: Citation) -> None:
+    with st.expander(f"[{citation.source_id}] {citation.title}", expanded=False):
+        if citation.url:
+            st.write(f"[link]({citation.url})")
+        st.caption(f"chunk: `{citation.chunk_id}`")
+```
+
+Create `chatqec_app/components/tool_output.py`:
+
+```python
+"""Renders a ToolCall's output: Stim diagrams as SVG, sample arrays as tables."""
+
+import streamlit as st
+
+from chatqec.api import ToolCall
+
+
+def render(call: ToolCall) -> None:
+    st.markdown(f"**Tool:** `{call.name}`")
+    st.code(str(call.input), language="json")
+    out = call.output
+    # The output is a stringified dict from ChatQEC; try to render structured pieces
+    if call.name == "stim_diagram" and "<svg" in out:
+        start = out.find("<svg")
+        end = out.rfind("</svg>") + len("</svg>")
+        st.components.v1.html(out[start:end], height=300)
+    else:
+        st.code(out[:2000], language="json")
+        if len(out) > 2000:
+            st.caption(f"(truncated; {len(out)} chars)")
+```
+
+- [ ] **Step 6: Create the Chat page**
+
+Create `chatqec_app/pages/1_Chat.py`:
+
+```python
+"""Chat page — streaming Q&A with cited evidence and tool output rendering."""
+
+import streamlit as st
+
+from chatqec.guards.cost_budget import BudgetExceeded
+from chatqec.guards.rate_limit import LimitExceeded
+
+from chatqec_app.components import citation_card, tool_output
+from chatqec_app.utils import (
+    client_ip, get_captcha, get_chatqec, get_cost_budget,
+    get_rate_limiter, utc_now,
+)
+
+st.title("Chat")
+
+# --- session state ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "captcha_verified" not in st.session_state:
+    st.session_state.captcha_verified = False
+
+# --- captcha gate (first question only) ---
+captcha = get_captcha()
+if captcha.enabled and not st.session_state.captcha_verified:
+    st.warning("Please complete the captcha to ask your first question.")
+    token = st.text_input(
+        "Captcha token", help="Paste the hCaptcha response token (the embedded "
+        "widget lives in production; in dev set HCAPTCHA_SECRET='' to disable).",
+    )
+    if token and captcha.verify(token):
+        st.session_state.captcha_verified = True
+        st.rerun()
+    st.stop()
+
+# --- render history ---
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["text"])
+        for c in msg.get("citations", []):
+            citation_card.render(c)
+        for t in msg.get("tool_calls", []):
+            tool_output.render(t)
+
+# --- accept new question ---
+question = st.chat_input("Ask a QEC question…")
+if question:
+    bot = get_chatqec()
+    rl = get_rate_limiter()
+    budget = get_cost_budget()
+    ip = client_ip()
+    now = utc_now()
+
+    try:
+        rl.check_and_record(ip, action="ask", now=now)
+    except LimitExceeded:
+        st.error("Daily question limit (20/day) reached. Try again tomorrow.")
+        st.stop()
+
+    if budget.remaining(now=now) <= 0:
+        st.error("Daily budget exhausted. Service degraded — try self-host instructions.")
+        st.stop()
+
+    st.session_state.messages.append({"role": "user", "text": question})
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+        full = ""
+        for chunk in bot.ask_stream(question):
+            full += chunk.delta
+            placeholder.markdown(full + "▌")
+        placeholder.markdown(full)
+
+    # Get final structured Answer from a non-stream call to harvest citations/tools
+    # (the streaming path doesn't return them yet; M9 stays explicit about this limit)
+    answer = bot.ask(question)
+    st.session_state.messages.append({
+        "role": "assistant", "text": answer.text,
+        "citations": answer.citations, "tool_calls": answer.tool_calls,
+    })
+    for c in answer.citations:
+        citation_card.render(c)
+    for t in answer.tool_calls:
+        tool_output.render(t)
+
+# --- footer: usage transparency ---
+ip = client_ip()
+rl = get_rate_limiter()
+budget = get_cost_budget()
+now = utc_now()
+st.caption(
+    f"asks remaining today: {rl.remaining(ip, action='ask', now=now)} · "
+    f"budget remaining: ${budget.remaining(now=now):.2f}"
+)
+```
+
+- [ ] **Step 7: Smoke-run the Streamlit app**
+
+```bash
+uv run streamlit run chatqec_app/streamlit_app.py --server.headless true &
+sleep 5
+curl -s http://localhost:8501 | head -c 200
+kill %1
+```
+
+Expected: HTML banner from the running Streamlit app.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add chatqec_app/ .streamlit/ pyproject.toml
+git commit -m "feat(app): add Streamlit entry, Chat page, components, and utils"
+```
+
+---
+
+### Task 9.5 — Sources, Watchlist, and About pages
+
+**Files:**
+- Create: `chatqec_app/pages/2_Sources.py`
+- Create: `chatqec_app/pages/3_Watchlist.py`
+- Create: `chatqec_app/pages/4_About.py`
+
+- [ ] **Step 1: Sources page**
+
+Create `chatqec_app/pages/2_Sources.py`:
+
+```python
+"""Sources page — searchable, filterable registry table."""
+
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+from chatqec.ingestion.registry import Registry, SourceStatus
+
+st.title("Sources")
+
+reg_path = Path("sources/registry.jsonl")
+if not reg_path.exists():
+    st.info("No registry yet — run `chatqec ingest` to add sources.")
+    st.stop()
+
+reg = Registry(reg_path)
+records = list(reg.all())
+if not records:
+    st.info("Registry is empty.")
+    st.stop()
+
+# Build a dataframe for filtering/sorting
+df = pd.DataFrame([{
+    "id": r.id, "type": r.type.value, "title": r.title,
+    "tier": r.authority_tier, "status": r.status.value,
+    "year": r.year, "verified": r.verified, "chunks": r.chunk_count,
+} for r in records])
+
+c1, c2, c3 = st.columns(3)
+with c1:
+    types = st.multiselect("Type", sorted(df["type"].unique()),
+                           default=sorted(df["type"].unique()))
+with c2:
+    statuses = st.multiselect("Status",
+                              [s.value for s in SourceStatus], default=["active"])
+with c3:
+    tiers = st.multiselect("Authority tier", sorted(df["tier"].unique()),
+                           default=sorted(df["tier"].unique()))
+
+filtered = df[df["type"].isin(types) & df["status"].isin(statuses) & df["tier"].isin(tiers)]
+st.caption(f"{len(filtered)} / {len(df)} records")
+st.dataframe(filtered, use_container_width=True, hide_index=True)
+
+picked = st.selectbox("Inspect a record", [""] + list(filtered["id"]))
+if picked:
+    record = reg.get(picked)
+    st.json(record.model_dump_json(indent=2))
+```
+
+- [ ] **Step 2: Watchlist page**
+
+Create `chatqec_app/pages/3_Watchlist.py`:
+
+```python
+"""Watchlist page — read-only view + 'Submit a source' link."""
+
+from pathlib import Path
+
+import streamlit as st
+import yaml
+
+st.title("Watchlist")
+
+wl_path = Path("sources/watchlist.yaml")
+if not wl_path.exists():
+    st.info("No watchlist yet.")
+    st.stop()
+
+st.code(wl_path.read_text(encoding="utf-8"), language="yaml")
+
+st.markdown("---")
+st.subheader("Submit a source")
+st.write(
+    "Open a GitLab issue with the source URL and a one-line justification. "
+    "Maintainers review and merge — the weekly refresh job picks it up after that."
+)
+gitlab_repo = "<USERNAME>/chatqec"  # replace at runtime via env var if desired
+st.link_button(
+    "Submit a source",
+    f"https://gitlab.com/{gitlab_repo}/-/issues/new?issuable_template=add_source",
+)
+```
+
+- [ ] **Step 3: About page**
+
+Create `chatqec_app/pages/4_About.py`:
+
+```python
+"""About page — what's in the corpus, license, citation."""
+
+import json
+from pathlib import Path
+
+import streamlit as st
+
+from chatqec import __version__
+
+st.title("About ChatQEC")
+
+st.markdown(
+    """
+ChatQEC is an open-source research assistant for **Quantum Error Correction**.
+
+It retrieves from a curated corpus of papers, textbooks, GitHub repos, blog posts,
+and video transcripts, then answers your question via Claude Sonnet with inline
+citations. It can also run small Stim circuits in a sandbox.
+
+**Stack:** Python, Hydra, Qdrant, Anthropic Claude, Google Gemini, Stim, MCP.
+
+**License:** Apache 2.0.
+
+**Source:** [`gitlab.com/<USERNAME>/chatqec`](https://gitlab.com/<USERNAME>/chatqec)
+and the companion [`chatqec-mcp-tools`](https://gitlab.com/<USERNAME>/chatqec-mcp-tools).
+    """
+)
+
+reg_path = Path("sources/registry.jsonl")
+if reg_path.exists():
+    records = [json.loads(line) for line in reg_path.read_text().splitlines() if line.strip()]
+    by_type = {}
+    for r in records:
+        by_type[r["type"]] = by_type.get(r["type"], 0) + 1
+    st.subheader("Corpus summary")
+    st.write(f"📚 {len(records)} sources total")
+    for t, n in sorted(by_type.items()):
+        st.write(f"- {t}: {n}")
+
+st.caption(f"chatqec v{__version__}")
+```
+
+- [ ] **Step 4: Smoke-run all pages**
+
+```bash
+uv run streamlit run chatqec_app/streamlit_app.py --server.headless true &
+sleep 5
+curl -sI http://localhost:8501 | head -1
+kill %1
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add chatqec_app/pages/2_Sources.py chatqec_app/pages/3_Watchlist.py chatqec_app/pages/4_About.py
+git commit -m "feat(app): add Sources, Watchlist, and About pages"
+```
+
+---
+
+### Task 9.6 — App-level test via `streamlit.testing.v1.AppTest`
+
+**Files:**
+- Create: `tests/test_streamlit_pages.py`
+
+`streamlit.testing.v1.AppTest` is the official testing harness. We use it to verify each page renders without runtime errors.
+
+- [ ] **Step 1: Write the test**
+
+Create `tests/test_streamlit_pages.py`:
+
+```python
+"""Smoke tests for the Streamlit pages using AppTest.
+
+We monkeypatch ChatQEC.from_config so the pages don't try to reach a live
+Anthropic/Qdrant during the test.
+"""
+
+from unittest.mock import MagicMock
+
+import pytest
+
+streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+AppTest = streamlit_testing.AppTest
+
+
+@pytest.fixture(autouse=True)
+def _stub_chatqec(monkeypatch):
+    from chatqec.api import ChatQEC
+    stub = MagicMock(spec=ChatQEC)
+    stub.ask_stream.return_value = iter([])
+    stub.ask.return_value = MagicMock(text="ok", citations=[], tool_calls=[],
+                                       confidence="low")
+    monkeypatch.setattr("chatqec.api.ChatQEC.from_config", classmethod(lambda cls: stub))
+
+
+def test_streamlit_root_renders():
+    at = AppTest.from_file("chatqec_app/streamlit_app.py", default_timeout=10)
+    at.run()
+    assert not at.exception
+    assert any("ChatQEC" in t.value for t in at.title)
+
+
+def test_about_page_renders():
+    at = AppTest.from_file("chatqec_app/pages/4_About.py", default_timeout=10)
+    at.run()
+    assert not at.exception
+
+
+def test_watchlist_page_renders_when_yaml_present(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sources").mkdir()
+    (tmp_path / "sources" / "watchlist.yaml").write_text(
+        "arxiv:\n  categories: [quant-ph]\n", encoding="utf-8",
+    )
+    at = AppTest.from_file(
+        # the page file path is resolved from the test cwd
+        str(__import__("pathlib").Path(__file__).resolve().parent.parent /
+            "chatqec_app/pages/3_Watchlist.py"),
+        default_timeout=10,
+    )
+    at.run()
+    assert not at.exception
+
+
+def test_sources_page_renders_when_empty_registry(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sources").mkdir()
+    (tmp_path / "sources" / "registry.jsonl").touch()
+    at = AppTest.from_file(
+        str(__import__("pathlib").Path(__file__).resolve().parent.parent /
+            "chatqec_app/pages/2_Sources.py"),
+        default_timeout=10,
+    )
+    at.run()
+    assert not at.exception
+```
+
+- [ ] **Step 2: Run tests**
+
+```bash
+uv run pytest tests/test_streamlit_pages.py -v
+```
+
+Expected: 4 passed.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add tests/test_streamlit_pages.py
+git commit -m "test(app): smoke-test Streamlit pages via AppTest"
+```
+
+---
+
+### Task 9.7 — Add `limits:` config section + `CHANGELOG.md` + push
+
+**Files:**
+- Modify: `conf/config.yaml`
+- Modify: `CHANGELOG.md`
+
+- [ ] **Step 1: Append `limits:` to `conf/config.yaml`**
+
+```yaml
+limits:
+  ask_per_day: 20
+  tool_per_hour: 5
+  daily_budget_usd: 5.00
+  per_query_wall_seconds: 30
+  per_query_tool_iterations: 5
+  per_query_chunks: 12
+  per_query_output_tokens: 4000
+
+captcha:
+  enabled: false
+  hcaptcha_sitekey: ""
+  # hcaptcha_secret is read from HCAPTCHA_SECRET env var
+```
+
+- [ ] **Step 2: Append M9 to `CHANGELOG.md`**
+
+```markdown
+- Guards (spec §12):
+  - `RateLimiter` (SQLite-backed) for per-IP per-action caps (20 asks/day, 5 tools/hour)
+  - `CostBudget` (SQLite-backed) for daily USD-equivalent cap with graceful "service degraded" fallback
+  - `HCaptchaVerifier` (free tier) with disabled-on-empty-secret pass-through for dev
+  - Token-cost estimator (`estimate_cost_usd`) per spec §12.3 pricing table
+- Streamlit app:
+  - 4 pages (Chat, Sources, Watchlist, About) at `chatqec_app/`
+  - Streaming Chat with citation cards and tool-output rendering (Stim SVG inline, samples as JSON)
+  - Sources page with type/status/tier filtering
+  - Watchlist page with "Submit a source" GitLab-issue link
+  - About page with corpus summary
+- App testing via `streamlit.testing.v1.AppTest` (4 page smoke tests)
+- Config: `limits:` and `captcha:` sections in `conf/config.yaml`
+```
+
+- [ ] **Step 3: Run full suite + lint + canonical validate**
+
+```bash
+uv run pytest -v
+uv run ruff check src tests chatqec_app
+uv run mypy src
+uv run chatqec canonical validate
+```
+
+Expected: all green. Total tests after M9: ≥186 (prior: 164 + M9: 22).
+
+- [ ] **Step 4: Commit and push**
+
+```bash
+git add conf/config.yaml CHANGELOG.md
+git commit -m "docs(M9): update CHANGELOG and add limits/captcha config"
+git push origin main
+```
+
+Expected: GitLab pipeline runs lint, validate-canonical, test — all green.
+
+---
+
+## Milestone 9 — exit checklist
+
+- [ ] `RateLimiter` caps per-IP per-action; resets per window; remaining() exposes balance
+- [ ] `CostBudget` enforces daily USD cap; resets at UTC midnight
+- [ ] `HCaptchaVerifier` works against mocked POST; disabled when secret empty
+- [ ] `estimate_cost_usd` produces ballpark spec §12.3 figures
+- [ ] Streamlit Chat page streams answers, renders citation cards and tool outputs
+- [ ] Sources page filters by type/status/tier and inspects records
+- [ ] Watchlist page shows YAML and a GitLab-issue submit button
+- [ ] About page shows corpus summary
+- [ ] Footer shows asks-remaining and budget-remaining (transparency)
+- [ ] `streamlit.testing.v1.AppTest` smoke tests pass for all 4 pages
+- [ ] ≥22 new tests; full suite ≥186 passing
+- [ ] CHANGELOG updated
+- [ ] GitLab CI green on `main`
+
+**🛑 PAUSE — push to GitLab and review before requesting Milestone 10.**
+
+---
