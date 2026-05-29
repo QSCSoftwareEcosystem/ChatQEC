@@ -3481,3 +3481,2226 @@ Expected: GitLab pipeline shows lint, validate-canonical, and test all green.
 **🛑 PAUSE — push to GitLab and review before requesting Milestone 4.**
 
 ---
+
+## Milestone 4 — Ingestion pipeline (fetchers, parsers, math-aware chunker)
+
+**Outcome:** Every source type the spec supports has a working fetcher → parser → chunker → on-disk JSONL chunks. The CLI gains `chatqec ingest --pdf / --arxiv / --github / --youtube / --url / --resolve-by-title`. The math-aware chunker protects LaTeX environments. The arXiv resolver (spec §7.4) refuses to trust LLM-supplied IDs and searches by title+author instead. Watchlist YAML parses and a `chatqec watch refresh --dry-run` lists candidate sources without pushing to the registry.
+
+**Embedding and Qdrant are deferred to M5.** M4's ingest commands produce chunks on disk (`data/chunks/<source_id>.jsonl`) and append a `pending_review` record to `sources/registry.jsonl`. M5 will sweep those chunks into Qdrant and flip the registry status to `active`.
+
+**Files this milestone creates / touches:**
+- Create: `src/chatqec/ingestion/chunk.py`
+- Create: `src/chatqec/ingestion/chunkers/__init__.py`
+- Create: `src/chatqec/ingestion/chunkers/math_aware.py`
+- Create: `src/chatqec/ingestion/fetchers/__init__.py`
+- Create: `src/chatqec/ingestion/fetchers/{arxiv,github,youtube,url,pdf}.py`
+- Create: `src/chatqec/ingestion/resolver.py`
+- Create: `src/chatqec/ingestion/watchlist.py`
+- Create: `sources/watchlist.yaml`
+- Create: `tests/test_chunk_model.py`
+- Create: `tests/test_chunker_math_aware.py`
+- Create: `tests/test_fetcher_arxiv.py`
+- Create: `tests/test_resolver_arxiv.py`
+- Create: `tests/test_fetcher_github.py`
+- Create: `tests/test_fetcher_youtube.py`
+- Create: `tests/test_fetcher_url.py`
+- Create: `tests/test_fetcher_pdf.py`
+- Create: `tests/test_watchlist.py`
+- Create: `tests/test_cli_ingest.py`
+- Create: `tests/fixtures/arxiv_atom_2408.13687.xml`
+- Create: `tests/fixtures/github_repo_metadata.json`
+- Create: `tests/fixtures/youtube_transcript.txt`
+- Create: `tests/fixtures/blog_post.html`
+- Create: `tests/fixtures/sample_paper.pdf` (small placeholder PDF)
+- Modify: `src/chatqec/cli.py` (add `ingest` and `watch` command groups)
+- Modify: `pyproject.toml` (add `[tool.pytest.ini_options] markers`)
+- Modify: `CHANGELOG.md`
+
+**Test strategy:** every fetcher has unit tests that run **against fixtures only** (no network). A `@pytest.mark.network` marker tags tests that hit real services; CI skips them by default and runs them in a separate on-demand `network-tests` job.
+
+---
+
+### Task 4.1 — `Chunk` model + on-disk JSONL writer
+
+**Files:**
+- Create: `src/chatqec/ingestion/chunk.py`
+- Create: `tests/test_chunk_model.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_chunk_model.py`:
+
+```python
+"""Chunk = the unit the embedder consumes. M4 writes chunks to disk; M5 embeds them."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+from chatqec.ingestion.chunk import Chunk, ChunkSink
+
+
+def test_chunk_required_fields():
+    c = Chunk(
+        chunk_id="arxiv:2408.13687v1#0",
+        source_id="arxiv:2408.13687v1",
+        chunk_index=0,
+        text="The surface code is a topological code.",
+        title="Quantum error correction below the surface code threshold",
+        source_type="arxiv",
+        authority_tier="peer_reviewed",
+        anchor="#section-1",
+    )
+    assert c.chunk_id == "arxiv:2408.13687v1#0"
+    assert c.metadata == {}
+
+
+def test_chunk_round_trips_through_json():
+    c = Chunk(
+        chunk_id="x#0",
+        source_id="x",
+        chunk_index=0,
+        text="hi",
+        title="T",
+        source_type="blog",
+        authority_tier="blog",
+        anchor="",
+        metadata={"author": "alice"},
+    )
+    blob = c.model_dump_json()
+    decoded = Chunk.model_validate_json(blob)
+    assert decoded == c
+
+
+def test_chunk_sink_writes_jsonl(tmp_path: Path):
+    sink = ChunkSink(tmp_path)
+    c1 = Chunk(chunk_id="x#0", source_id="x", chunk_index=0, text="a",
+               title="T", source_type="blog", authority_tier="blog", anchor="")
+    c2 = Chunk(chunk_id="x#1", source_id="x", chunk_index=1, text="b",
+               title="T", source_type="blog", authority_tier="blog", anchor="")
+    sink.write_many("x", [c1, c2])
+
+    expected = tmp_path / "x.jsonl"
+    assert expected.exists()
+    lines = expected.read_text().strip().splitlines()
+    assert len(lines) == 2
+    parsed = [json.loads(line) for line in lines]
+    assert parsed[0]["text"] == "a"
+    assert parsed[1]["chunk_index"] == 1
+
+
+def test_chunk_sink_replaces_existing_file(tmp_path: Path):
+    sink = ChunkSink(tmp_path)
+    sink.write_many("x", [
+        Chunk(chunk_id="x#0", source_id="x", chunk_index=0, text="old",
+              title="T", source_type="blog", authority_tier="blog", anchor=""),
+    ])
+    sink.write_many("x", [
+        Chunk(chunk_id="x#0", source_id="x", chunk_index=0, text="new",
+              title="T", source_type="blog", authority_tier="blog", anchor=""),
+    ])
+    lines = (tmp_path / "x.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 1
+    assert "new" in lines[0]
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_chunk_model.py -v
+```
+
+Expected: ImportError on `chatqec.ingestion.chunk`.
+
+- [ ] **Step 3: Implement `src/chatqec/ingestion/chunk.py`**
+
+```python
+"""Chunk model + on-disk JSONL sink.
+
+Chunks are the unit the embedder consumes. M4 produces them; M5 embeds them
+and writes them to Qdrant.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class Chunk(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chunk_id: str
+    source_id: str
+    chunk_index: int
+    text: str
+    title: str
+    source_type: str  # mirrors SourceType.value for embedding-time provenance
+    authority_tier: str
+    anchor: str = ""  # e.g. "#section-3", "?t=185s", "L42-L88"
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ChunkSink:
+    """Writes chunks for one source to data/chunks/<source_id>.jsonl atomically."""
+
+    def __init__(self, root_dir: Path) -> None:
+        self.root_dir = Path(root_dir)
+        self.root_dir.mkdir(parents=True, exist_ok=True)
+
+    def _safe_filename(self, source_id: str) -> str:
+        # Make source-id safe for filesystem (replace : / @ with _)
+        return source_id.replace(":", "_").replace("/", "_").replace("@", "_") + ".jsonl"
+
+    def write_many(self, source_id: str, chunks: list[Chunk]) -> Path:
+        out = self.root_dir / self._safe_filename(source_id)
+        tmp = out.with_suffix(out.suffix + ".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            for c in chunks:
+                f.write(c.model_dump_json())
+                f.write("\n")
+        tmp.replace(out)
+        return out
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_chunk_model.py -v
+```
+
+Expected: 4 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/ingestion/chunk.py tests/test_chunk_model.py
+git commit -m "feat(ingestion): add Chunk model and JSONL ChunkSink"
+```
+
+---
+
+### Task 4.2 — Math-aware chunker
+
+**Files:**
+- Create: `src/chatqec/ingestion/chunkers/__init__.py` (empty)
+- Create: `src/chatqec/ingestion/chunkers/math_aware.py`
+- Create: `tests/test_chunker_math_aware.py`
+
+- [ ] **Step 1: Make `chunkers` a package**
+
+```bash
+touch src/chatqec/ingestion/chunkers/__init__.py
+```
+
+- [ ] **Step 2: Write failing golden tests**
+
+Create `tests/test_chunker_math_aware.py`:
+
+```python
+"""Math-aware chunker — never splits inside LaTeX math environments.
+
+The single biggest accuracy lever for QEC content. Tests use golden strings
+that contain $...$, $$...$$, \begin{equation}...\end{equation}, and
+\begin{align}...\end{align}.
+"""
+
+from chatqec.ingestion.chunkers.math_aware import chunk_text
+
+
+def test_chunker_yields_chunks_within_target_size():
+    text = "qec " * 1000  # ~4000 chars
+    chunks = chunk_text(text, target_tokens=200, overlap_tokens=20)
+    assert len(chunks) > 1
+    # crude proxy for token count (~4 chars/token)
+    assert all(len(c) <= 200 * 6 for c in chunks)
+
+
+def test_chunker_never_splits_inline_math():
+    text = (
+        "Definition. The stabilizer of a surface code satisfies $S_i S_j = S_j S_i$ "
+        + "for all i, j, as proved in earlier work. "
+    ) * 200  # long enough to force multiple chunks
+    chunks = chunk_text(text, target_tokens=80, overlap_tokens=10)
+    for c in chunks:
+        # No chunk may end in the middle of an inline $...$ math span
+        dollar_count = c.count("$")
+        # Even count means math spans are paired (closed)
+        assert dollar_count % 2 == 0, (
+            f"chunk has unbalanced $ count {dollar_count}:\n{c!r}"
+        )
+
+
+def test_chunker_keeps_equation_environment_intact():
+    text = (
+        "The stabilizer code definition.\n\n"
+        + r"\begin{equation}" + "\n"
+        + r"S = \langle g_1, \ldots, g_{n-k} \rangle \subset P_n"
+        + "\n" + r"\end{equation}" + "\n\n"
+        + "and the code space is " + ("Hello world. " * 200)
+    )
+    chunks = chunk_text(text, target_tokens=80, overlap_tokens=10)
+    # Find the chunk containing \begin{equation}; it must also contain \end{equation}
+    found = False
+    for c in chunks:
+        if r"\begin{equation}" in c:
+            assert r"\end{equation}" in c, "equation env split across chunks"
+            found = True
+    assert found, "test fixture not large enough"
+
+
+def test_chunker_keeps_align_environment_intact():
+    text = (
+        "Lead-in. "
+        + r"\begin{align}" + "\n"
+        + "a &= b \\\\\n"
+        + "c &= d"
+        + "\n" + r"\end{align}" + "\n"
+        + "tail-in. " * 400
+    )
+    chunks = chunk_text(text, target_tokens=80, overlap_tokens=10)
+    for c in chunks:
+        if r"\begin{align}" in c:
+            assert r"\end{align}" in c
+
+
+def test_chunker_keeps_display_math_intact():
+    text = (
+        "Lead-in. " * 50
+        + "$$\\sum_i a_i = 1$$"
+        + " mid. " * 50
+        + "$$\\prod_j b_j = 0$$"
+        + " tail. " * 50
+    )
+    chunks = chunk_text(text, target_tokens=40, overlap_tokens=5)
+    for c in chunks:
+        assert c.count("$$") % 2 == 0
+
+
+def test_chunker_returns_single_chunk_for_short_text():
+    text = "Short body."
+    chunks = chunk_text(text, target_tokens=200, overlap_tokens=20)
+    assert chunks == [text]
+
+
+def test_chunker_handles_empty_text():
+    assert chunk_text("", target_tokens=200, overlap_tokens=20) == []
+
+
+def test_chunker_overlap_is_within_target():
+    text = ("A sentence about QEC. " * 500)
+    chunks = chunk_text(text, target_tokens=100, overlap_tokens=20)
+    if len(chunks) >= 2:
+        # Overlap implies consecutive chunks share some prefix/suffix words
+        assert any(w in chunks[0] for w in chunks[1].split()[:10])
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_chunker_math_aware.py -v
+```
+
+Expected: ImportError on `chatqec.ingestion.chunkers.math_aware`.
+
+- [ ] **Step 4: Implement `src/chatqec/ingestion/chunkers/math_aware.py`**
+
+```python
+r"""Math-aware text chunker.
+
+Splits text into ~target_tokens-sized chunks at sentence boundaries while
+never splitting inside a protected LaTeX region:
+
+    $...$        inline math
+    $$...$$      display math
+    \begin{X}...\end{X}   any environment
+
+Protection is done by first masking protected spans, then chunking the masked
+text by sentence, then unmasking before yielding.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterable
+
+# Approximate token count from character count (4 chars/token rule of thumb).
+_CHARS_PER_TOKEN = 4
+
+
+_MASK_TOKEN = "☃PROT{}☃"  # snowman as unlikely-in-source delimiter
+
+
+def _find_protected_spans(text: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    # Sort patterns from greediest to least greedy to avoid nested mis-matches.
+    patterns = [
+        (re.compile(r"\\begin\{(\w+)\}.*?\\end\{\1\}", re.DOTALL), 0),
+        (re.compile(r"\$\$.*?\$\$", re.DOTALL), 0),
+        (re.compile(r"\$[^$\n]+\$"), 0),  # inline math doesn't cross newlines
+    ]
+    occupied = []  # already-claimed [start,end) intervals
+    for pat, _ in patterns:
+        for m in pat.finditer(text):
+            s, e = m.span()
+            # skip if overlaps an earlier (broader) span
+            if any(not (e <= os or s >= oe) for (os, oe) in occupied):
+                continue
+            occupied.append((s, e))
+            spans.append((s, e))
+    return sorted(spans)
+
+
+def _mask_protected(text: str) -> tuple[str, list[str]]:
+    """Replace protected spans with sentinel tokens; return (masked_text, originals)."""
+    spans = _find_protected_spans(text)
+    originals: list[str] = []
+    pieces: list[str] = []
+    cursor = 0
+    for s, e in spans:
+        pieces.append(text[cursor:s])
+        sentinel = _MASK_TOKEN.format(len(originals))
+        originals.append(text[s:e])
+        pieces.append(sentinel)
+        cursor = e
+    pieces.append(text[cursor:])
+    return "".join(pieces), originals
+
+
+def _unmask(text: str, originals: list[str]) -> str:
+    for i, orig in enumerate(originals):
+        text = text.replace(_MASK_TOKEN.format(i), orig)
+    return text
+
+
+_SENT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\\\(])")
+
+
+def _split_sentences(text: str) -> Iterable[str]:
+    parts = _SENT_RE.split(text)
+    for p in parts:
+        if p:
+            yield p
+
+
+def chunk_text(text: str, *, target_tokens: int, overlap_tokens: int) -> list[str]:
+    """Split text into math-protected chunks of ~target_tokens characters of size."""
+    if not text:
+        return []
+    target_chars = target_tokens * _CHARS_PER_TOKEN
+    overlap_chars = overlap_tokens * _CHARS_PER_TOKEN
+
+    masked, originals = _mask_protected(text)
+    if len(masked) <= target_chars:
+        return [_unmask(masked, originals)]
+
+    sentences = list(_split_sentences(masked))
+    chunks: list[str] = []
+    buf: list[str] = []
+    buf_len = 0
+    for sent in sentences:
+        if buf_len + len(sent) + 1 > target_chars and buf:
+            chunks.append(" ".join(buf))
+            # build overlap tail
+            tail: list[str] = []
+            tlen = 0
+            for s in reversed(buf):
+                if tlen + len(s) > overlap_chars:
+                    break
+                tail.insert(0, s)
+                tlen += len(s)
+            buf = list(tail)
+            buf_len = sum(len(s) for s in buf)
+        buf.append(sent)
+        buf_len += len(sent) + 1
+    if buf:
+        chunks.append(" ".join(buf))
+
+    return [_unmask(c, originals) for c in chunks]
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_chunker_math_aware.py -v
+```
+
+Expected: 8 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/ingestion/chunkers/ tests/test_chunker_math_aware.py
+git commit -m "feat(chunker): add math-aware chunker that protects LaTeX environments"
+```
+
+---
+
+### Task 4.3 — arXiv title-and-author resolver (the §7.4 mandatory pattern)
+
+**Files:**
+- Create: `src/chatqec/ingestion/resolver.py`
+- Create: `tests/test_resolver_arxiv.py`
+
+- [ ] **Step 1: Write failing tests with mocked arxiv search**
+
+Create `tests/test_resolver_arxiv.py`:
+
+```python
+"""arXiv resolver — the §7.4 mandatory pattern.
+
+Never trust an LLM-claimed arXiv ID. Always resolve by title + author via the
+arXiv search API. The verification finding in spec A.10 showed 71% of LLM IDs
+point to wrong papers; this resolver is the architectural fix.
+"""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from chatqec.ingestion.resolver import (
+    AmbiguousResolutionError,
+    NoMatchError,
+    ResolverHit,
+    resolve_arxiv_paper,
+)
+
+
+class _FakeResult:
+    def __init__(self, entry_id: str, title: str, authors: list[str], year: int) -> None:
+        self.entry_id = entry_id  # e.g. "http://arxiv.org/abs/2408.13687v1"
+        self.title = title
+        self.authors = [MagicMock(name=a) for a in authors]
+        for a, name in zip(self.authors, authors, strict=True):
+            a.name = name
+        self.published = MagicMock(year=year)
+
+
+def _patch_search(monkeypatch, results: list[_FakeResult]) -> None:
+    mock_search = MagicMock()
+    mock_search.return_value.results.return_value = iter(results)
+    monkeypatch.setattr("chatqec.ingestion.resolver._arxiv_search", mock_search)
+
+
+def test_resolver_returns_unique_match(monkeypatch):
+    _patch_search(monkeypatch, [
+        _FakeResult(
+            "http://arxiv.org/abs/2408.13687v1",
+            "Quantum error correction below the surface code threshold",
+            ["Rajeev Acharya", "Et al"],
+            2024,
+        )
+    ])
+    hit = resolve_arxiv_paper(
+        title_keywords="below the surface code threshold",
+        authors=["Acharya"],
+    )
+    assert isinstance(hit, ResolverHit)
+    assert hit.arxiv_id == "2408.13687v1"
+    assert "Acharya" in hit.first_author
+
+
+def test_resolver_strips_version_suffix_when_asked(monkeypatch):
+    _patch_search(monkeypatch, [
+        _FakeResult(
+            "http://arxiv.org/abs/2408.13687v3",
+            "Quantum error correction below the surface code threshold",
+            ["Rajeev Acharya"],
+            2024,
+        )
+    ])
+    hit = resolve_arxiv_paper(
+        title_keywords="surface code threshold",
+        authors=["Acharya"],
+        strip_version=True,
+    )
+    assert hit.arxiv_id == "2408.13687"
+
+
+def test_resolver_raises_no_match(monkeypatch):
+    _patch_search(monkeypatch, [])
+    with pytest.raises(NoMatchError):
+        resolve_arxiv_paper(title_keywords="nonsense paper", authors=["Nobody"])
+
+
+def test_resolver_raises_ambiguous_when_multiple_strong_matches(monkeypatch):
+    _patch_search(monkeypatch, [
+        _FakeResult(
+            "http://arxiv.org/abs/2207.06431v1",
+            "Suppressing quantum errors by scaling a surface code logical qubit",
+            ["Google Quantum AI"], 2022,
+        ),
+        _FakeResult(
+            "http://arxiv.org/abs/2408.13687v1",
+            "Quantum error correction below the surface code threshold",
+            ["Rajeev Acharya"], 2024,
+        ),
+    ])
+    with pytest.raises(AmbiguousResolutionError):
+        # Both contain "surface code" and "Google" partially matches both; no
+        # clear winner without disambiguating by year.
+        resolve_arxiv_paper(title_keywords="surface code", authors=["Google"])
+
+
+def test_resolver_disambiguates_by_year(monkeypatch):
+    _patch_search(monkeypatch, [
+        _FakeResult(
+            "http://arxiv.org/abs/2207.06431v1",
+            "Suppressing quantum errors by scaling a surface code logical qubit",
+            ["Google Quantum AI"], 2022,
+        ),
+        _FakeResult(
+            "http://arxiv.org/abs/2408.13687v1",
+            "Quantum error correction below the surface code threshold",
+            ["Rajeev Acharya"], 2024,
+        ),
+    ])
+    hit = resolve_arxiv_paper(
+        title_keywords="surface code threshold",
+        authors=["Acharya"],
+        expected_year=2024,
+    )
+    assert hit.arxiv_id == "2408.13687v1"
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_resolver_arxiv.py -v
+```
+
+Expected: ImportError on `chatqec.ingestion.resolver`.
+
+- [ ] **Step 3: Implement `src/chatqec/ingestion/resolver.py`**
+
+```python
+"""arXiv title-and-author resolver. See spec §7.4 and A.10.
+
+LLM-generated arXiv IDs are unreliable (~14% accurate per the verification
+pass during brainstorming). The correct ingestion pattern is to search by
+title + author and pick the unique best match.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+import arxiv
+
+
+class ResolverError(Exception):
+    pass
+
+
+class NoMatchError(ResolverError):
+    pass
+
+
+class AmbiguousResolutionError(ResolverError):
+    pass
+
+
+@dataclass(frozen=True)
+class ResolverHit:
+    arxiv_id: str
+    title: str
+    first_author: str
+    year: int
+
+
+# Reusable client; arxiv lib internally rate-limits to 3 req/s.
+_CLIENT = arxiv.Client(page_size=10, delay_seconds=3.0, num_retries=3)
+
+
+def _arxiv_search(query: str, max_results: int = 10) -> arxiv.Search:
+    return arxiv.Search(query=query, max_results=max_results)
+
+
+def _id_from_entry(entry_id: str, strip_version: bool) -> str:
+    m = re.search(r"abs/([^v\s]+)(v\d+)?", entry_id)
+    if not m:
+        raise ResolverError(f"could not parse arxiv id from {entry_id!r}")
+    base = m.group(1)
+    version = m.group(2) or ""
+    return base if strip_version else (base + version)
+
+
+def _score(result_title: str, result_authors_lower: list[str], result_year: int,
+           title_keywords: str, authors: list[str], expected_year: int | None) -> float:
+    """Higher = better match."""
+    score = 0.0
+    title_l = result_title.lower()
+    kw_l = title_keywords.lower()
+    # title keyword full substring match is the strongest signal
+    if kw_l in title_l:
+        score += 5.0
+    # per-word overlap
+    kw_words = [w for w in kw_l.split() if len(w) > 3]
+    title_words = set(title_l.split())
+    score += sum(1.0 for w in kw_words if w in title_words)
+    # author match — last name substring
+    for a in authors:
+        last = a.split()[-1].lower()
+        if any(last in ra for ra in result_authors_lower):
+            score += 2.0
+    # year match
+    if expected_year is not None:
+        if result_year == expected_year:
+            score += 2.0
+        elif abs(result_year - expected_year) == 1:
+            score += 0.5  # publish year drift
+    return score
+
+
+def resolve_arxiv_paper(
+    *,
+    title_keywords: str,
+    authors: list[str],
+    expected_year: int | None = None,
+    strip_version: bool = False,
+) -> ResolverHit:
+    """Return the unique best-matching arXiv paper for the given title+authors.
+
+    Raises:
+        NoMatchError: no result above the minimum quality threshold.
+        AmbiguousResolutionError: top two candidates are within 1.0 score points.
+    """
+    query = f'ti:"{title_keywords}" AND au:"{authors[0]}"' if authors else f'ti:"{title_keywords}"'
+    search = _arxiv_search(query, max_results=10)
+    results = list(_CLIENT.results(search))
+
+    scored: list[tuple[float, arxiv.Result]] = []
+    for r in results:
+        author_names = [a.name.lower() for a in r.authors]
+        s = _score(r.title, author_names, r.published.year,
+                   title_keywords, authors, expected_year)
+        scored.append((s, r))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    if not scored or scored[0][0] < 4.0:
+        raise NoMatchError(
+            f"no arXiv result above quality threshold for title={title_keywords!r}, authors={authors!r}"
+        )
+    if len(scored) >= 2 and scored[0][0] - scored[1][0] < 1.0:
+        raise AmbiguousResolutionError(
+            f"two candidates tied: {scored[0][1].title!r} vs {scored[1][1].title!r}"
+        )
+
+    top = scored[0][1]
+    return ResolverHit(
+        arxiv_id=_id_from_entry(top.entry_id, strip_version=strip_version),
+        title=top.title,
+        first_author=top.authors[0].name if top.authors else "",
+        year=top.published.year,
+    )
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_resolver_arxiv.py -v
+```
+
+Expected: 5 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/ingestion/resolver.py tests/test_resolver_arxiv.py
+git commit -m "feat(ingestion): add arXiv title-and-author resolver (spec §7.4)"
+```
+
+---
+
+### Task 4.4 — arXiv fetcher (fetch + parse + chunk)
+
+**Files:**
+- Create: `src/chatqec/ingestion/fetchers/__init__.py` (empty)
+- Create: `src/chatqec/ingestion/fetchers/arxiv.py`
+- Create: `tests/fixtures/arxiv_atom_2408.13687.xml`
+- Create: `tests/test_fetcher_arxiv.py`
+
+- [ ] **Step 1: Make `fetchers` a package**
+
+```bash
+mkdir -p src/chatqec/ingestion/fetchers
+touch src/chatqec/ingestion/fetchers/__init__.py
+mkdir -p tests/fixtures
+```
+
+- [ ] **Step 2: Save the fixture Atom response**
+
+Create `tests/fixtures/arxiv_atom_2408.13687.xml` with a minimal Atom payload:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2408.13687v1</id>
+    <updated>2024-08-26T00:00:00Z</updated>
+    <published>2024-08-26T00:00:00Z</published>
+    <title>Quantum error correction below the surface code threshold</title>
+    <summary>Abstract: The surface code is a leading candidate for fault-tolerant quantum computation. We demonstrate that increasing the code distance from 3 to 7 decreases the logical error rate exponentially, marking the first below-threshold experiment on a real quantum processor.</summary>
+    <author><name>Rajeev Acharya</name></author>
+    <author><name>Google Quantum AI</name></author>
+    <link href="http://arxiv.org/pdf/2408.13687v1" rel="alternate" type="application/pdf"/>
+  </entry>
+</feed>
+```
+
+- [ ] **Step 3: Write failing tests**
+
+Create `tests/test_fetcher_arxiv.py`:
+
+```python
+"""arXiv fetcher tests — parse-only, no network."""
+
+from pathlib import Path
+
+from chatqec.ingestion.chunk import Chunk
+from chatqec.ingestion.fetchers.arxiv import (
+    ArxivMetadata,
+    parse_arxiv_atom,
+    paper_to_chunks,
+)
+
+FIXTURE = Path(__file__).parent / "fixtures" / "arxiv_atom_2408.13687.xml"
+
+
+def test_parse_arxiv_atom_extracts_metadata():
+    text = FIXTURE.read_text(encoding="utf-8")
+    md = parse_arxiv_atom(text)
+    assert isinstance(md, ArxivMetadata)
+    assert md.arxiv_id == "2408.13687v1"
+    assert md.title.startswith("Quantum error correction")
+    assert md.authors[0] == "Rajeev Acharya"
+    assert md.year == 2024
+    assert "fault-tolerant" in md.abstract.lower()
+
+
+def test_paper_to_chunks_produces_chunks_with_correct_ids():
+    md = ArxivMetadata(
+        arxiv_id="2408.13687v1",
+        title="Quantum error correction below the surface code threshold",
+        authors=["Rajeev Acharya"],
+        year=2024,
+        abstract="A long abstract about QEC. " * 100,
+        pdf_url="http://arxiv.org/pdf/2408.13687v1",
+    )
+    chunks = paper_to_chunks(md, body_text=md.abstract,
+                             target_tokens=80, overlap_tokens=10)
+    assert all(isinstance(c, Chunk) for c in chunks)
+    assert chunks[0].source_id == "arxiv:2408.13687v1"
+    assert chunks[0].chunk_id == "arxiv:2408.13687v1#0"
+    assert chunks[0].title.startswith("Quantum error")
+    assert chunks[0].source_type == "arxiv"
+    assert chunks[0].authority_tier == "preprint"
+
+
+def test_paper_to_chunks_uses_math_aware_chunker():
+    md = ArxivMetadata(
+        arxiv_id="abc.1234v1", title="t", authors=["X"], year=2024,
+        abstract="", pdf_url="",
+    )
+    body = r"Lead. \begin{equation} S = \langle g_1, g_2 \rangle \end{equation}" + " tail. " * 200
+    chunks = paper_to_chunks(md, body_text=body, target_tokens=50, overlap_tokens=5)
+    for c in chunks:
+        if r"\begin{equation}" in c.text:
+            assert r"\end{equation}" in c.text
+```
+
+- [ ] **Step 4: Run failing tests**
+
+```bash
+uv run pytest tests/test_fetcher_arxiv.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 5: Implement `src/chatqec/ingestion/fetchers/arxiv.py`**
+
+```python
+"""arXiv fetcher — parses Atom responses and produces chunks.
+
+Network fetching uses the `arxiv` library (already used by the resolver).
+This module's parser is decoupled so we can unit-test on fixtures.
+"""
+
+from __future__ import annotations
+
+import re
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass
+
+from chatqec.ingestion.chunk import Chunk
+from chatqec.ingestion.chunkers.math_aware import chunk_text
+
+_ATOM = "{http://www.w3.org/2005/Atom}"
+
+
+@dataclass(frozen=True)
+class ArxivMetadata:
+    arxiv_id: str
+    title: str
+    authors: list[str]
+    year: int
+    abstract: str
+    pdf_url: str
+
+
+def parse_arxiv_atom(xml_text: str) -> ArxivMetadata:
+    root = ET.fromstring(xml_text)
+    entry = root.find(f"{_ATOM}entry")
+    if entry is None:
+        raise ValueError("arxiv atom: no <entry> element")
+
+    id_text = (entry.find(f"{_ATOM}id").text or "").strip()
+    m = re.search(r"abs/([^\s]+)", id_text)
+    arxiv_id = m.group(1) if m else id_text
+
+    title = (entry.find(f"{_ATOM}title").text or "").strip().replace("\n", " ")
+    summary = (entry.find(f"{_ATOM}summary").text or "").strip()
+    published = (entry.find(f"{_ATOM}published").text or "")[:4]
+    year = int(published) if published.isdigit() else 0
+    authors = [a.find(f"{_ATOM}name").text for a in entry.findall(f"{_ATOM}author")]
+    pdf_url = ""
+    for link in entry.findall(f"{_ATOM}link"):
+        if link.get("type") == "application/pdf":
+            pdf_url = link.get("href") or ""
+            break
+
+    return ArxivMetadata(
+        arxiv_id=arxiv_id,
+        title=title,
+        authors=[a or "" for a in authors],
+        year=year,
+        abstract=summary,
+        pdf_url=pdf_url,
+    )
+
+
+def paper_to_chunks(
+    md: ArxivMetadata,
+    *,
+    body_text: str,
+    target_tokens: int = 512,
+    overlap_tokens: int = 64,
+) -> list[Chunk]:
+    source_id = f"arxiv:{md.arxiv_id}"
+    pieces = chunk_text(body_text, target_tokens=target_tokens, overlap_tokens=overlap_tokens)
+    chunks: list[Chunk] = []
+    for i, p in enumerate(pieces):
+        chunks.append(Chunk(
+            chunk_id=f"{source_id}#{i}",
+            source_id=source_id,
+            chunk_index=i,
+            text=p,
+            title=md.title,
+            source_type="arxiv",
+            authority_tier="preprint",
+            anchor=f"#chunk-{i}",
+            metadata={"authors": md.authors, "year": md.year, "pdf_url": md.pdf_url},
+        ))
+    return chunks
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_fetcher_arxiv.py -v
+```
+
+Expected: 3 passed.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/chatqec/ingestion/fetchers/__init__.py src/chatqec/ingestion/fetchers/arxiv.py
+git add tests/fixtures/arxiv_atom_2408.13687.xml tests/test_fetcher_arxiv.py
+git commit -m "feat(fetcher): add arXiv Atom parser and paper→chunk pipeline"
+```
+
+---
+
+### Task 4.5 — GitHub fetcher (LlamaIndex reader, README + docs/)
+
+**Files:**
+- Create: `src/chatqec/ingestion/fetchers/github.py`
+- Create: `tests/fixtures/github_readme.md`
+- Create: `tests/test_fetcher_github.py`
+
+- [ ] **Step 1: Save fixture README**
+
+Create `tests/fixtures/github_readme.md`:
+
+```markdown
+# Stim
+
+A fast quantum stabilizer circuit simulator.
+
+## Installation
+
+Install via pip:
+
+```bash
+pip install stim
+```
+
+## Usage
+
+Stim simulates Clifford circuits with detector error model export. See [doc/getting_started.ipynb](doc/getting_started.ipynb).
+
+## License
+
+Apache 2.0.
+```
+
+- [ ] **Step 2: Write failing tests**
+
+Create `tests/test_fetcher_github.py`:
+
+```python
+"""GitHub fetcher tests — parse-only, no network."""
+
+from pathlib import Path
+
+from chatqec.ingestion.fetchers.github import (
+    GitHubMetadata,
+    files_to_chunks,
+)
+
+FIXTURE = Path(__file__).parent / "fixtures" / "github_readme.md"
+
+
+def test_files_to_chunks_emits_chunks_per_file():
+    readme_text = FIXTURE.read_text(encoding="utf-8")
+    md = GitHubMetadata(
+        org="quantumlib", repo="Stim", commit_sha="deadbeefcafef00d",
+        license="Apache-2.0",
+    )
+    chunks = files_to_chunks(
+        md,
+        files={"README.md": readme_text, "doc/intro.md": "# Intro\n\nShort intro."},
+        target_tokens=100, overlap_tokens=10,
+    )
+    sources = {c.source_id for c in chunks}
+    assert sources == {"github:quantumlib/Stim@deadbeef"}
+    titles = {c.metadata.get("path") for c in chunks}
+    assert "README.md" in titles
+    assert "doc/intro.md" in titles
+
+
+def test_files_to_chunks_skips_empty_files():
+    md = GitHubMetadata(org="o", repo="r", commit_sha="abc12345", license="MIT")
+    chunks = files_to_chunks(
+        md,
+        files={"empty.md": "", "real.md": "content"},
+        target_tokens=100, overlap_tokens=10,
+    )
+    assert all(c.metadata.get("path") != "empty.md" for c in chunks)
+    assert any(c.metadata.get("path") == "real.md" for c in chunks)
+
+
+def test_files_to_chunks_assigns_blog_authority_tier_by_default():
+    md = GitHubMetadata(org="o", repo="r", commit_sha="abc12345", license="MIT")
+    chunks = files_to_chunks(md, files={"r.md": "x"}, target_tokens=100, overlap_tokens=10)
+    assert chunks[0].source_type == "github"
+    assert chunks[0].authority_tier == "blog"  # neither canonical nor peer-reviewed
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_fetcher_github.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 4: Implement `src/chatqec/ingestion/fetchers/github.py`**
+
+```python
+"""GitHub fetcher — operates on a dict of {path: text} after a LlamaIndex pull.
+
+The actual repo download uses LlamaIndex's `GithubRepositoryReader`; this
+module's parser is pure so it can be unit-tested.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from chatqec.ingestion.chunk import Chunk
+from chatqec.ingestion.chunkers.math_aware import chunk_text
+from chatqec.ingestion.ids import github_id
+
+
+@dataclass(frozen=True)
+class GitHubMetadata:
+    org: str
+    repo: str
+    commit_sha: str
+    license: str
+
+
+def files_to_chunks(
+    md: GitHubMetadata,
+    *,
+    files: dict[str, str],
+    target_tokens: int = 512,
+    overlap_tokens: int = 64,
+) -> list[Chunk]:
+    source_id = github_id(md.org, md.repo, md.commit_sha)
+    out: list[Chunk] = []
+    idx = 0
+    for path, text in files.items():
+        if not text.strip():
+            continue
+        for piece in chunk_text(text, target_tokens=target_tokens, overlap_tokens=overlap_tokens):
+            out.append(Chunk(
+                chunk_id=f"{source_id}#{idx}",
+                source_id=source_id,
+                chunk_index=idx,
+                text=piece,
+                title=f"{md.org}/{md.repo}",
+                source_type="github",
+                authority_tier="blog",
+                anchor=f"path={path}",
+                metadata={"path": path, "license": md.license},
+            ))
+            idx += 1
+    return out
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_fetcher_github.py -v
+```
+
+Expected: 3 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/ingestion/fetchers/github.py tests/fixtures/github_readme.md tests/test_fetcher_github.py
+git commit -m "feat(fetcher): add GitHub files→chunks parser"
+```
+
+---
+
+### Task 4.6 — YouTube transcript fetcher
+
+**Files:**
+- Create: `src/chatqec/ingestion/fetchers/youtube.py`
+- Create: `tests/fixtures/youtube_transcript.json`
+- Create: `tests/test_fetcher_youtube.py`
+
+- [ ] **Step 1: Save fixture transcript (yt-dlp JSON3 format trimmed)**
+
+Create `tests/fixtures/youtube_transcript.json`:
+
+```json
+{
+  "events": [
+    {"tStartMs": 0, "segs": [{"utf8": "Welcome to surface code 101."}]},
+    {"tStartMs": 5000, "segs": [{"utf8": "The surface code is topological."}]},
+    {"tStartMs": 12000, "segs": [{"utf8": "Stabilizers are local operators."}]},
+    {"tStartMs": 65000, "segs": [{"utf8": "We use MWPM for decoding."}]},
+    {"tStartMs": 130000, "segs": [{"utf8": "Thanks for watching."}]}
+  ]
+}
+```
+
+- [ ] **Step 2: Write failing tests**
+
+Create `tests/test_fetcher_youtube.py`:
+
+```python
+"""YouTube transcript chunker — 60-second window aggregation."""
+
+import json
+from pathlib import Path
+
+from chatqec.ingestion.fetchers.youtube import (
+    YouTubeMetadata,
+    transcript_to_chunks,
+)
+
+FIXTURE = Path(__file__).parent / "fixtures" / "youtube_transcript.json"
+
+
+def test_transcript_to_chunks_groups_by_60s_window():
+    transcript = json.loads(FIXTURE.read_text())
+    md = YouTubeMetadata(
+        video_id="abc123", title="Surface code 101", channel="QECChannel",
+    )
+    chunks = transcript_to_chunks(md, transcript_events=transcript["events"],
+                                   window_seconds=60)
+    # 0s, 5s, 12s → window 0; 65s → window 1; 130s → window 2
+    assert len(chunks) == 3
+    # First chunk contains everything from 0–60s
+    assert "Welcome" in chunks[0].text
+    assert "MWPM" not in chunks[0].text
+    # Second window has the MWPM line
+    assert "MWPM" in chunks[1].text
+
+
+def test_transcript_chunk_anchor_is_timestamp():
+    transcript = json.loads(FIXTURE.read_text())
+    md = YouTubeMetadata(video_id="abc123", title="t", channel="c")
+    chunks = transcript_to_chunks(md, transcript_events=transcript["events"],
+                                   window_seconds=60)
+    assert chunks[0].anchor == "?t=0s"
+    assert chunks[1].anchor == "?t=60s"
+
+
+def test_transcript_chunk_source_id_uses_video_id():
+    transcript = json.loads(FIXTURE.read_text())
+    md = YouTubeMetadata(video_id="abc123XYZ", title="t", channel="c")
+    chunks = transcript_to_chunks(md, transcript_events=transcript["events"],
+                                   window_seconds=60)
+    assert chunks[0].source_id == "youtube:abc123XYZ"
+
+
+def test_empty_transcript_yields_no_chunks():
+    md = YouTubeMetadata(video_id="x", title="t", channel="c")
+    assert transcript_to_chunks(md, transcript_events=[], window_seconds=60) == []
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_fetcher_youtube.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 4: Implement `src/chatqec/ingestion/fetchers/youtube.py`**
+
+```python
+"""YouTube transcript chunker.
+
+The actual download uses `yt-dlp --write-auto-subs --skip-download` from a
+higher-level orchestrator. This module operates on already-parsed events.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+
+from chatqec.ingestion.chunk import Chunk
+
+
+@dataclass(frozen=True)
+class YouTubeMetadata:
+    video_id: str
+    title: str
+    channel: str
+
+
+def transcript_to_chunks(
+    md: YouTubeMetadata,
+    *,
+    transcript_events: Iterable[dict],
+    window_seconds: int = 60,
+) -> list[Chunk]:
+    events = list(transcript_events)
+    if not events:
+        return []
+
+    source_id = f"youtube:{md.video_id}"
+    buckets: dict[int, list[str]] = {}
+    for ev in events:
+        t_ms = int(ev.get("tStartMs", 0))
+        bucket = (t_ms // 1000) // window_seconds
+        text_pieces = [s.get("utf8", "") for s in ev.get("segs", [])]
+        text = "".join(text_pieces).strip()
+        if not text:
+            continue
+        buckets.setdefault(bucket, []).append(text)
+
+    chunks: list[Chunk] = []
+    for i, bucket in enumerate(sorted(buckets)):
+        start_seconds = bucket * window_seconds
+        text = " ".join(buckets[bucket])
+        chunks.append(Chunk(
+            chunk_id=f"{source_id}#{i}",
+            source_id=source_id,
+            chunk_index=i,
+            text=text,
+            title=md.title,
+            source_type="youtube",
+            authority_tier="video",
+            anchor=f"?t={start_seconds}s",
+            metadata={"channel": md.channel, "start_seconds": start_seconds},
+        ))
+    return chunks
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_fetcher_youtube.py -v
+```
+
+Expected: 4 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/ingestion/fetchers/youtube.py tests/fixtures/youtube_transcript.json tests/test_fetcher_youtube.py
+git commit -m "feat(fetcher): add YouTube transcript chunker (60s windows)"
+```
+
+---
+
+### Task 4.7 — Blog/URL fetcher (defuddle → markdown → chunks)
+
+**Files:**
+- Create: `src/chatqec/ingestion/fetchers/url.py`
+- Create: `tests/fixtures/blog_post.md`
+- Create: `tests/test_fetcher_url.py`
+
+- [ ] **Step 1: Save fixture (already-defuddled markdown)**
+
+Create `tests/fixtures/blog_post.md`:
+
+```markdown
+# Surface codes hit a milestone
+
+Posted by alice on 2026-01-15.
+
+## What changed?
+
+Google's Willow chip showed the surface code below threshold for the first time.
+
+## Why it matters
+
+This is the demonstration the field has been waiting for since the 1990s.
+
+## Caveats
+
+Single-qubit logic, not yet a full computer. Still a huge step.
+```
+
+- [ ] **Step 2: Write failing tests**
+
+Create `tests/test_fetcher_url.py`:
+
+```python
+"""URL fetcher tests — parse-only, no network."""
+
+from pathlib import Path
+
+from chatqec.ingestion.fetchers.url import (
+    URLMetadata,
+    markdown_to_chunks,
+)
+
+FIXTURE = Path(__file__).parent / "fixtures" / "blog_post.md"
+
+
+def test_markdown_to_chunks_uses_section_boundaries():
+    md_text = FIXTURE.read_text(encoding="utf-8")
+    md = URLMetadata(
+        url="https://research.example.com/surface-code-milestone",
+        title="Surface codes hit a milestone",
+        publish_date="2026-01-15",
+    )
+    chunks = markdown_to_chunks(md, markdown_text=md_text,
+                                target_tokens=120, overlap_tokens=10)
+    assert len(chunks) >= 2
+    assert any("Willow" in c.text for c in chunks)
+    assert chunks[0].source_type == "blog"
+    assert chunks[0].authority_tier == "blog"
+
+
+def test_url_source_id_is_hash_prefixed():
+    md = URLMetadata(url="https://a.test/x", title="t", publish_date="")
+    chunks = markdown_to_chunks(md, markdown_text="body", target_tokens=100, overlap_tokens=5)
+    assert chunks[0].source_id.startswith("url:")
+    assert len(chunks[0].source_id) == len("url:") + 16
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_fetcher_url.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 4: Implement `src/chatqec/ingestion/fetchers/url.py`**
+
+```python
+"""URL/blog fetcher.
+
+A higher-level orchestrator uses `defuddle` to convert raw HTML → markdown,
+then passes the markdown text to `markdown_to_chunks`.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from chatqec.ingestion.chunk import Chunk
+from chatqec.ingestion.chunkers.math_aware import chunk_text
+from chatqec.ingestion.ids import url_id
+
+
+@dataclass(frozen=True)
+class URLMetadata:
+    url: str
+    title: str
+    publish_date: str  # "YYYY-MM-DD" or ""
+
+
+def markdown_to_chunks(
+    md: URLMetadata,
+    *,
+    markdown_text: str,
+    target_tokens: int = 512,
+    overlap_tokens: int = 64,
+) -> list[Chunk]:
+    source_id = url_id(md.url)
+    pieces = chunk_text(markdown_text, target_tokens=target_tokens, overlap_tokens=overlap_tokens)
+    return [
+        Chunk(
+            chunk_id=f"{source_id}#{i}",
+            source_id=source_id,
+            chunk_index=i,
+            text=p,
+            title=md.title,
+            source_type="blog",
+            authority_tier="blog",
+            anchor=f"#chunk-{i}",
+            metadata={"url": md.url, "publish_date": md.publish_date},
+        )
+        for i, p in enumerate(pieces)
+    ]
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_fetcher_url.py -v
+```
+
+Expected: 2 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/ingestion/fetchers/url.py tests/fixtures/blog_post.md tests/test_fetcher_url.py
+git commit -m "feat(fetcher): add URL/blog markdown→chunks pipeline"
+```
+
+---
+
+### Task 4.8 — Manual PDF fetcher (text extraction + chunking)
+
+**Files:**
+- Create: `src/chatqec/ingestion/fetchers/pdf.py`
+- Create: `tests/test_fetcher_pdf.py`
+
+PDF parsing in tests is awkward without a real PDF. We test the *post-parse* chunking pipeline (the parser stage is just a thin wrapper around `unstructured.partition.pdf.partition_pdf` and will be smoke-tested via `@pytest.mark.network` in CI).
+
+- [ ] **Step 1: Write failing tests for the chunking pipeline**
+
+Create `tests/test_fetcher_pdf.py`:
+
+```python
+"""PDF fetcher tests — operates on pre-extracted text."""
+
+from chatqec.ingestion.fetchers.pdf import (
+    PDFMetadata,
+    text_to_chunks,
+)
+
+
+def test_text_to_chunks_uses_pdf_source_id():
+    md = PDFMetadata(
+        content_sha256="ab12cd34" + "0" * 56,
+        title="A QEC paper",
+        author="Alice",
+        year=2024,
+        source_path="/tmp/paper.pdf",
+    )
+    chunks = text_to_chunks(md, body_text="Body. " * 200,
+                            target_tokens=80, overlap_tokens=8)
+    assert chunks[0].source_id == "pdf:ab12cd34"
+    assert chunks[0].source_type == "pdf"
+    assert chunks[0].title == "A QEC paper"
+
+
+def test_text_to_chunks_protects_math():
+    md = PDFMetadata(
+        content_sha256="a" * 64, title="t", author="a", year=2024,
+        source_path="/x.pdf",
+    )
+    body = r"Lead. \begin{align} S &= \langle g_1, g_2 \rangle \end{align}" + " tail. " * 200
+    chunks = text_to_chunks(md, body_text=body, target_tokens=50, overlap_tokens=5)
+    for c in chunks:
+        if r"\begin{align}" in c.text:
+            assert r"\end{align}" in c.text
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_fetcher_pdf.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/ingestion/fetchers/pdf.py`**
+
+```python
+"""Manual-upload PDF fetcher.
+
+Extraction uses `unstructured.partition.pdf.partition_pdf`. The public function
+`extract_pdf_text` returns a single string; the parser/chunker is decoupled so
+it can be tested without an actual PDF.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from chatqec.ingestion.chunk import Chunk
+from chatqec.ingestion.chunkers.math_aware import chunk_text
+from chatqec.ingestion.hashing import sha256_file
+from chatqec.ingestion.ids import pdf_id
+
+
+@dataclass(frozen=True)
+class PDFMetadata:
+    content_sha256: str
+    title: str
+    author: str
+    year: int
+    source_path: str
+
+
+def extract_pdf_text(path: Path) -> str:
+    """Thin wrapper around `unstructured`. Not unit-tested — see network tests."""
+    from unstructured.partition.pdf import partition_pdf  # local import to keep cold-start fast
+
+    elements = partition_pdf(filename=str(path))
+    return "\n".join(str(el) for el in elements)
+
+
+def build_pdf_metadata(
+    path: Path,
+    *,
+    title: str,
+    author: str,
+    year: int,
+) -> PDFMetadata:
+    return PDFMetadata(
+        content_sha256=sha256_file(path),
+        title=title,
+        author=author,
+        year=year,
+        source_path=str(path),
+    )
+
+
+def text_to_chunks(
+    md: PDFMetadata,
+    *,
+    body_text: str,
+    target_tokens: int = 512,
+    overlap_tokens: int = 64,
+) -> list[Chunk]:
+    source_id = pdf_id(md.content_sha256)
+    pieces = chunk_text(body_text, target_tokens=target_tokens, overlap_tokens=overlap_tokens)
+    return [
+        Chunk(
+            chunk_id=f"{source_id}#{i}",
+            source_id=source_id,
+            chunk_index=i,
+            text=p,
+            title=md.title,
+            source_type="pdf",
+            authority_tier="preprint",
+            anchor=f"#chunk-{i}",
+            metadata={"author": md.author, "year": md.year, "source_path": md.source_path},
+        )
+        for i, p in enumerate(pieces)
+    ]
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_fetcher_pdf.py -v
+```
+
+Expected: 2 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/ingestion/fetchers/pdf.py tests/test_fetcher_pdf.py
+git commit -m "feat(fetcher): add manual PDF text→chunks pipeline"
+```
+
+---
+
+### Task 4.9 — Watchlist YAML schema + parser
+
+**Files:**
+- Create: `src/chatqec/ingestion/watchlist.py`
+- Create: `sources/watchlist.yaml`
+- Create: `tests/test_watchlist.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_watchlist.py`:
+
+```python
+"""Watchlist YAML parsing tests."""
+
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from chatqec.ingestion.watchlist import Watchlist, load_watchlist
+
+
+SAMPLE = """
+arxiv:
+  categories: [quant-ph]
+  keywords: [surface code, qLDPC]
+  authors: [Preskill, Gottesman]
+github:
+  - repo: quantumlib/Stim
+  - repo: oscarhiggott/PyMatching
+youtube:
+  channels: ["@GoogleQuantumAI", "@qiskit"]
+rss:
+  - https://quantum-journal.org/feed/
+"""
+
+
+def test_load_watchlist_parses_all_sections(tmp_path: Path):
+    p = tmp_path / "watchlist.yaml"
+    p.write_text(SAMPLE)
+    wl = load_watchlist(p)
+    assert isinstance(wl, Watchlist)
+    assert wl.arxiv.categories == ["quant-ph"]
+    assert "surface code" in wl.arxiv.keywords
+    assert wl.github[0].repo == "quantumlib/Stim"
+    assert "@GoogleQuantumAI" in wl.youtube.channels
+    assert str(wl.rss[0]).startswith("https://quantum-journal.org")
+
+
+def test_load_watchlist_rejects_invalid_github_repo(tmp_path: Path):
+    bad = "github:\n  - repo: just-one-segment\n"
+    p = tmp_path / "watchlist.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValidationError):
+        load_watchlist(p)
+
+
+def test_load_watchlist_allows_missing_sections(tmp_path: Path):
+    p = tmp_path / "watchlist.yaml"
+    p.write_text("arxiv:\n  categories: []\n")
+    wl = load_watchlist(p)
+    assert wl.github == []
+    assert wl.youtube.channels == []
+    assert wl.rss == []
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_watchlist.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/ingestion/watchlist.py`**
+
+```python
+"""Watchlist YAML schema (sources/watchlist.yaml)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+
+
+class ArxivWatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    categories: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    authors: list[str] = Field(default_factory=list)
+
+
+class GitHubWatchEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    repo: str
+
+    @field_validator("repo")
+    @classmethod
+    def _two_segments(cls, v: str) -> str:
+        if v.count("/") != 1 or v.startswith("/") or v.endswith("/"):
+            raise ValueError(f"github repo must be 'org/name': {v!r}")
+        return v
+
+
+class YouTubeWatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    channels: list[str] = Field(default_factory=list)
+
+
+class Watchlist(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    arxiv: ArxivWatch = Field(default_factory=ArxivWatch)
+    github: list[GitHubWatchEntry] = Field(default_factory=list)
+    youtube: YouTubeWatch = Field(default_factory=YouTubeWatch)
+    rss: list[HttpUrl] = Field(default_factory=list)
+
+
+def load_watchlist(path: Path) -> Watchlist:
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return Watchlist(**data)
+```
+
+- [ ] **Step 4: Write the live watchlist with the seed entries (spec A.4–A.9)**
+
+Create `sources/watchlist.yaml`:
+
+```yaml
+# ChatQEC watchlist — drives the weekly refresh job.
+# Contributors: add entries via PR. The refresh job opens a PR with new candidates
+# in status=pending_review; maintainers approve via merge.
+# Authoritative seeds: docs/superpowers/specs/2026-05-29-chatqec-design.md §A.4–A.9
+
+arxiv:
+  categories: [quant-ph]
+  keywords:
+    - "surface code"
+    - "stabilizer code"
+    - "magic state"
+    - "fault-tolerant"
+    - "qLDPC"
+    - "threshold"
+    - "decoder"
+    - "Floquet code"
+    - "lattice surgery"
+  authors:
+    - Preskill
+    - Gottesman
+    - Kitaev
+    - Terhal
+    - Bombin
+    - Litinski
+    - Fowler
+    - Yoder
+    - Gidney
+    - Bravyi
+    - Roffe
+
+github:
+  - repo: quantumlib/Stim
+  - repo: oscarhiggott/PyMatching
+  - repo: qiskit-community/qiskit-qec
+  - repo: quantumgizmos/ldpc
+  - repo: panqec/panqec
+  - repo: errorcorrectionzoo/eczoo_data
+  - repo: microsoft/QuantumKatas
+  - repo: qiskit-community/qiskit-textbook
+
+youtube:
+  channels:
+    - "@GoogleQuantumAI"
+    - "@qiskit"
+    - "@Quantinuum"
+    - "@SimonsInstituteTOC"
+    - "@PerimeterInstitute"
+    - "@Riverlane"
+
+rss:
+  - https://quantum-journal.org/feed/
+  - https://scottaaronson.blog/?feed=rss2
+```
+
+- [ ] **Step 5: Run tests + validate the real file parses**
+
+```bash
+uv run pytest tests/test_watchlist.py -v
+uv run python -c "from pathlib import Path; from chatqec.ingestion.watchlist import load_watchlist; print(load_watchlist(Path('sources/watchlist.yaml')))"
+```
+
+Expected: 3 tests passed, then a populated `Watchlist(...)` repr printed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/ingestion/watchlist.py sources/watchlist.yaml tests/test_watchlist.py
+git commit -m "feat(watchlist): add YAML schema, parser, and seed watchlist"
+```
+
+---
+
+### Task 4.10 — CLI: `chatqec ingest --arxiv / --github / --youtube / --url / --pdf`
+
+**Files:**
+- Modify: `src/chatqec/cli.py`
+- Create: `tests/test_cli_ingest.py`
+
+- [ ] **Step 1: Write failing CLI tests (using fixtures)**
+
+Create `tests/test_cli_ingest.py`:
+
+```python
+"""CLI tests for `chatqec ingest` subcommands.
+
+Heavy network calls are not exercised here; we monkeypatch the fetcher's
+internal `arxiv.Search` so the tests stay hermetic.
+"""
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+from click.testing import CliRunner
+
+from chatqec.cli import main
+
+
+@pytest.fixture
+def chunk_dir(tmp_path: Path) -> Path:
+    out = tmp_path / "chunks"
+    out.mkdir()
+    return out
+
+
+@pytest.fixture
+def registry_path(tmp_path: Path) -> Path:
+    return tmp_path / "registry.jsonl"
+
+
+def test_ingest_url_writes_chunks(tmp_path: Path, chunk_dir: Path, registry_path: Path,
+                                  monkeypatch):
+    # Stub the HTTP+defuddle pipeline to return canned markdown
+    monkeypatch.setattr(
+        "chatqec.cli._fetch_url_as_markdown",
+        lambda url: ("Surface codes hit a milestone", "Body. " * 500, "2026-01-15"),
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        "ingest", "--chunks-dir", str(chunk_dir), "--registry", str(registry_path),
+        "--url", "https://example.com/post",
+    ])
+    assert result.exit_code == 0, result.output
+
+    # A chunk file landed
+    files = list(chunk_dir.glob("*.jsonl"))
+    assert len(files) == 1
+    text = files[0].read_text()
+    assert "Surface codes" in text
+
+    # Registry got a pending_review record
+    reg_text = registry_path.read_text()
+    assert "pending_review" in reg_text
+
+
+def test_ingest_arxiv_with_resolve_by_title(monkeypatch, tmp_path: Path,
+                                            chunk_dir: Path, registry_path: Path):
+    from chatqec.ingestion.resolver import ResolverHit
+    monkeypatch.setattr(
+        "chatqec.cli._resolve_and_fetch_arxiv",
+        lambda title, authors, year: (
+            ResolverHit(arxiv_id="2408.13687v1",
+                        title="Quantum error correction below the surface code threshold",
+                        first_author="Rajeev Acharya", year=2024),
+            "Long abstract body. " * 100,
+        ),
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        "ingest", "--chunks-dir", str(chunk_dir), "--registry", str(registry_path),
+        "--resolve-by-title", "below the surface code threshold",
+        "--author", "Acharya", "--year", "2024",
+    ])
+    assert result.exit_code == 0, result.output
+    files = list(chunk_dir.glob("arxiv_2408.13687v1*"))
+    assert len(files) == 1
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_cli_ingest.py -v
+```
+
+Expected: `ingest` group does not exist.
+
+- [ ] **Step 3: Add the `ingest` group to `src/chatqec/cli.py`**
+
+Add the following imports at the top (with the other ingestion imports):
+
+```python
+from datetime import datetime, timezone
+
+from chatqec.ingestion.chunk import ChunkSink
+from chatqec.ingestion.fetchers.arxiv import (
+    ArxivMetadata,
+    paper_to_chunks as arxiv_paper_to_chunks,
+)
+from chatqec.ingestion.fetchers.url import URLMetadata, markdown_to_chunks
+from chatqec.ingestion.registry import SourceRecord, SourceStatus, SourceType
+from chatqec.ingestion.resolver import (
+    AmbiguousResolutionError,
+    NoMatchError,
+    ResolverHit,
+    resolve_arxiv_paper,
+)
+```
+
+Then add helpers and the command group:
+
+```python
+def _fetch_url_as_markdown(url: str) -> tuple[str, str, str]:
+    """Default URL fetcher: HTTP GET + defuddle → markdown. Overridable in tests."""
+    import defuddle
+    import requests
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+    article = defuddle.parse(resp.text, url=url)
+    title = article.get("title", url) if isinstance(article, dict) else url
+    md_text = article.get("content_markdown", "") if isinstance(article, dict) else str(article)
+    publish_date = article.get("date", "") if isinstance(article, dict) else ""
+    return title, md_text, publish_date
+
+
+def _resolve_and_fetch_arxiv(
+    title_keywords: str, authors: list[str], year: int | None,
+) -> tuple[ResolverHit, str]:
+    """Resolve title+author to an arxiv id, then fetch the abstract+full text."""
+    import arxiv
+    hit = resolve_arxiv_paper(title_keywords=title_keywords, authors=authors,
+                              expected_year=year)
+    search = arxiv.Search(id_list=[hit.arxiv_id])
+    [result] = list(arxiv.Client().results(search))
+    # For M4 we ingest the abstract only; full-text PDF parsing lands here
+    # behind a flag in M5 once `unstructured` is wired into the pipeline.
+    return hit, result.summary
+
+
+@main.command("ingest")
+@click.option("--chunks-dir", type=click.Path(path_type=Path),
+              default=Path("data/chunks"), show_default=True,
+              help="Directory to write JSONL chunk files.")
+@click.option("--registry", "registry_path", type=click.Path(path_type=Path),
+              default=Path("sources/registry.jsonl"), show_default=True,
+              help="Path to the source registry.")
+@click.option("--url", "url_value", default=None, help="Ingest a single URL (blog/HTML).")
+@click.option("--arxiv", "arxiv_id_value", default=None,
+              help="Ingest by arxiv id. WARNING: §7.4 — prefer --resolve-by-title.")
+@click.option("--resolve-by-title", "title_keywords", default=None,
+              help="Resolve a paper by title keywords and ingest it.")
+@click.option("--author", "authors_opt", multiple=True,
+              help="Author last names (use with --resolve-by-title).")
+@click.option("--year", type=int, default=None,
+              help="Expected publication year (helps disambiguate).")
+def ingest(
+    chunks_dir: Path, registry_path: Path,
+    url_value: str | None,
+    arxiv_id_value: str | None,
+    title_keywords: str | None,
+    authors_opt: tuple[str, ...],
+    year: int | None,
+) -> None:
+    """Ingest one source. Writes chunks to disk and a pending_review record."""
+    sink = ChunkSink(chunks_dir)
+    reg = Registry(registry_path)
+    now = datetime.now(tz=timezone.utc)
+
+    if url_value:
+        title, md_text, publish_date = _fetch_url_as_markdown(url_value)
+        md = URLMetadata(url=url_value, title=title, publish_date=publish_date)
+        chunks = markdown_to_chunks(md, markdown_text=md_text,
+                                    target_tokens=512, overlap_tokens=64)
+        source_id = chunks[0].source_id
+        sink.write_many(source_id, chunks)
+        reg.append(SourceRecord(
+            id=source_id, type=SourceType.BLOG, url=url_value, title=title,
+            authority_tier="blog", ingested_at=now, last_checked_at=now,
+            status=SourceStatus.PENDING_REVIEW,
+            chunk_count=len(chunks),
+            chunk_ids=[c.chunk_id for c in chunks],
+        ))
+        click.echo(f"ingested {source_id}: {len(chunks)} chunks → {chunks_dir}")
+        return
+
+    if title_keywords:
+        try:
+            hit, body = _resolve_and_fetch_arxiv(title_keywords, list(authors_opt), year)
+        except (NoMatchError, AmbiguousResolutionError) as e:
+            click.echo(f"resolver failed: {e}", err=True)
+            raise SystemExit(2) from None
+        md = ArxivMetadata(
+            arxiv_id=hit.arxiv_id, title=hit.title,
+            authors=[hit.first_author], year=hit.year,
+            abstract=body, pdf_url="",
+        )
+        chunks = arxiv_paper_to_chunks(md, body_text=body,
+                                       target_tokens=512, overlap_tokens=64)
+        source_id = chunks[0].source_id
+        sink.write_many(source_id, chunks)
+        reg.append(SourceRecord(
+            id=source_id, type=SourceType.ARXIV,
+            url=f"https://arxiv.org/abs/{hit.arxiv_id}",
+            title=hit.title, authors=[hit.first_author], year=hit.year,
+            authority_tier="preprint", ingested_at=now, last_checked_at=now,
+            status=SourceStatus.PENDING_REVIEW,
+            chunk_count=len(chunks),
+            chunk_ids=[c.chunk_id for c in chunks],
+            verified=True,
+        ))
+        click.echo(f"ingested {source_id}: {len(chunks)} chunks (resolved from title)")
+        return
+
+    if arxiv_id_value:
+        click.echo(
+            "WARNING: --arxiv <id> trusts the supplied id. "
+            "Per spec §7.4 prefer --resolve-by-title for LLM-suggested papers.",
+            err=True,
+        )
+        # M4 implements only the resolve-by-title path live; the --arxiv path
+        # delegates to the same fetcher with id_list=[arxiv_id_value].
+        # Full implementation lands in M5 when we wire up _fetch_arxiv_by_id.
+        click.echo("--arxiv <id> ingestion is not yet supported (lands in M5)", err=True)
+        raise SystemExit(3)
+
+    click.echo("nothing to ingest — pass --url, --resolve-by-title, or --arxiv", err=True)
+    raise SystemExit(1)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_cli_ingest.py -v
+```
+
+Expected: 2 passed.
+
+- [ ] **Step 5: Smoke test with a real URL (skip if offline)**
+
+```bash
+uv run chatqec ingest --chunks-dir /tmp/chunks --registry /tmp/reg.jsonl \
+    --url "https://errorcorrectionzoo.org/c/surface"
+ls /tmp/chunks/
+cat /tmp/reg.jsonl
+```
+
+Expected: chunks file + a `pending_review` record.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/cli.py tests/test_cli_ingest.py
+git commit -m "feat(cli): add 'ingest --url/--resolve-by-title' commands"
+```
+
+---
+
+### Task 4.11 — CLI: `chatqec watch refresh --dry-run`
+
+**Files:**
+- Modify: `src/chatqec/cli.py`
+- Modify: `tests/test_cli_ingest.py` (append watch tests)
+
+The `watch refresh` command pulls fresh candidates from the watchlist. In M4 it operates **only in dry-run mode** and prints candidates without writing to the registry. The full PR-opening pipeline lands in M10 as a GitHub Action.
+
+- [ ] **Step 1: Append failing test**
+
+Append to `tests/test_cli_ingest.py`:
+
+```python
+def test_watch_refresh_dry_run_prints_candidates(monkeypatch, tmp_path: Path):
+    # Stub the watchlist refresh to return a fixed candidate list
+    def fake_collect(_wl):
+        return [
+            ("arxiv:2408.13687v1", "Below threshold", ["Acharya"], 2024),
+            ("github:quantumlib/Stim@abc12345", "Stim README", ["Gidney"], 2024),
+        ]
+    monkeypatch.setattr("chatqec.cli._collect_watchlist_candidates", fake_collect)
+
+    wl_path = tmp_path / "watchlist.yaml"
+    wl_path.write_text("arxiv:\n  categories: [quant-ph]\n")
+
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        "watch", "--watchlist", str(wl_path), "refresh", "--dry-run",
+    ])
+    assert result.exit_code == 0
+    assert "arxiv:2408.13687v1" in result.output
+    assert "Stim README" in result.output
+```
+
+- [ ] **Step 2: Add the `watch` group to `src/chatqec/cli.py`**
+
+```python
+from chatqec.ingestion.watchlist import Watchlist, load_watchlist
+
+
+def _collect_watchlist_candidates(wl: Watchlist) -> list[tuple[str, str, list[str], int | None]]:
+    """Return a list of (candidate_id, title, authors, year).
+
+    In M4 this stub returns an empty list; M10 will wire up the real
+    arxiv/github/youtube/rss polling logic behind a GitHub Action.
+    """
+    return []
+
+
+@main.group()
+@click.option("--watchlist", "watchlist_path", type=click.Path(path_type=Path),
+              default=Path("sources/watchlist.yaml"), show_default=True)
+@click.pass_context
+def watch(ctx: click.Context, watchlist_path: Path) -> None:
+    """Inspect and refresh the source watchlist."""
+    ctx.obj = load_watchlist(watchlist_path)
+
+
+@watch.command("refresh")
+@click.option("--dry-run/--apply", default=True,
+              help="Dry run lists candidates; --apply not yet supported (lands in M10).")
+@click.pass_obj
+def watch_refresh(wl: Watchlist, dry_run: bool) -> None:
+    """Pull fresh candidates from each watchlist entry."""
+    candidates = _collect_watchlist_candidates(wl)
+    if not dry_run:
+        click.echo("--apply not yet supported (lands in M10 with GitHub Action)", err=True)
+        raise SystemExit(4)
+    for cid, title, authors, year in candidates:
+        click.echo(f"{cid}\t{title}\t{', '.join(authors)}\t{year}")
+    click.echo(f"\n{len(candidates)} candidates")
+```
+
+- [ ] **Step 3: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_cli_ingest.py -v
+```
+
+Expected: 3 passed (2 from 4.10 + 1 new).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/chatqec/cli.py tests/test_cli_ingest.py
+git commit -m "feat(cli): add 'watch refresh --dry-run' command"
+```
+
+---
+
+### Task 4.12 — Configure pytest network markers, CHANGELOG, push
+
+**Files:**
+- Modify: `pyproject.toml` (add `[tool.pytest.ini_options] markers`)
+- Modify: `.gitlab-ci.yml` (add optional `network-tests` job)
+- Modify: `CHANGELOG.md`
+
+- [ ] **Step 1: Add markers to `pyproject.toml`**
+
+Find the `[tool.pytest.ini_options]` block and update it to:
+
+```toml
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --cov=chatqec --cov-report=term-missing -m 'not network'"
+filterwarnings = ["error"]
+markers = [
+  "network: tests that require live network (arxiv, github, youtube, blog HTTP)",
+]
+```
+
+- [ ] **Step 2: Append the optional `network-tests` job to `.gitlab-ci.yml`**
+
+```yaml
+network-tests:
+  extends: .uv-base
+  stage: test
+  rules:
+    - if: '$RUN_NETWORK_TESTS == "true"'
+      when: always
+    - when: manual
+  script:
+    - uv run pytest -v -m network
+```
+
+(Run via the GitLab UI → "Run Pipeline" → set `RUN_NETWORK_TESTS=true`.)
+
+- [ ] **Step 3: Append M4 to `CHANGELOG.md`** (under `## [Unreleased] → ### Added`):
+
+```markdown
+- Ingestion pipeline:
+  - `Chunk` model + on-disk `ChunkSink` writing `data/chunks/<source_id>.jsonl`
+  - Math-aware chunker that protects `$...$`, `$$...$$`, and `\begin{X}...\end{X}` environments
+  - arXiv title-and-author **resolver** (spec §7.4) — the architectural fix to the verification finding
+  - Fetchers: arXiv (Atom + chunk), GitHub (files+repo metadata → chunks), YouTube (60s-window transcripts), URL/blog (defuddle → markdown), manual PDF (unstructured)
+  - Watchlist (`sources/watchlist.yaml`) schema + parser with seed entries for arxiv categories, GitHub repos, YouTube channels, and RSS feeds
+- CLI:
+  - `chatqec ingest --url / --resolve-by-title / --arxiv` (the `--arxiv <id>` path warns per spec §7.4)
+  - `chatqec watch refresh --dry-run`
+- Test infrastructure: `pytest -m network` marker; optional `network-tests` GitLab CI job (manual trigger)
+```
+
+- [ ] **Step 4: Run full suite + lint + canonical validate**
+
+```bash
+uv run pytest -v
+uv run ruff check src tests
+uv run mypy src
+uv run chatqec canonical validate
+```
+
+Expected: all green. Total tests after M4: ≥81 (M1: 6 + M2: 21 + M3: 19 + M4: 35).
+
+- [ ] **Step 5: Commit and push**
+
+```bash
+git add pyproject.toml .gitlab-ci.yml CHANGELOG.md
+git commit -m "docs(M4): update CHANGELOG and add network test marker + CI job"
+git push origin main
+```
+
+Expected: GitLab pipeline runs `lint`, `validate-canonical`, `test` — all green. `network-tests` is manual.
+
+---
+
+## Milestone 4 — exit checklist
+
+- [ ] `Chunk` + `ChunkSink` round-trip chunks through JSONL
+- [ ] Math-aware chunker never splits inside `$…$`, `$$…$$`, `\begin{equation}…`, `\begin{align}…`
+- [ ] arXiv title-and-author resolver returns unique hits, raises on ambiguity, disambiguates by year
+- [ ] All 5 fetchers (arxiv, github, youtube, url, pdf) emit `Chunk`s with correct `source_id` per the ID scheme
+- [ ] Watchlist YAML parses and validates the seed entries
+- [ ] `chatqec ingest --url <url>` writes chunks to disk and a `pending_review` record
+- [ ] `chatqec ingest --resolve-by-title "..." --author "..." --year ...` works end-to-end (with a mocked resolver in CI, real in manual smoke)
+- [ ] `chatqec ingest --arxiv <id>` *warns* per §7.4 and exits 3 ("supported in M5") — no silent failure
+- [ ] `chatqec watch refresh --dry-run` runs without error and lists candidates
+- [ ] `pytest -m network` runs separately; default suite skips network
+- [ ] ≥35 new tests; full suite ≥81 passing
+- [ ] CHANGELOG updated
+- [ ] GitLab CI green on `main`
+
+**🛑 PAUSE — push to GitLab and review before requesting Milestone 5.**
+
+---
