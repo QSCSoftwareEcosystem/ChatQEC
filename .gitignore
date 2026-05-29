@@ -1,0 +1,232 @@
+# =============================================================================
+# ChatQEC .gitignore
+# =============================================================================
+# Keep tracked: source code, configs, knowledge/, sources/registry.jsonl,
+# sources/watchlist.yaml, /plan/, /docs/, tests/, fixtures, pyproject.toml,
+# uv.lock, README, LICENSE, CHANGELOG, .github/workflows.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Claude Code / agent footprint
+# -----------------------------------------------------------------------------
+.claude/
+.claude-code-router/
+CLAUDE.local.md
+GEMINI.local.md
+AGENTS.local.md
+.codex/
+.aider*
+.continue/
+.cursor/
+.windsurfrules
+
+# Transcripts and tool output paths Claude may write into the repo
+.claude_transcripts/
+.claude_sessions/
+*.claude.log
+
+# -----------------------------------------------------------------------------
+# Project temp / scratch (per CLAUDE.md convention)
+# -----------------------------------------------------------------------------
+temp/
+tmp/
+scratch/
+.tmp/
+
+# -----------------------------------------------------------------------------
+# Secrets and environment files
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+settings.json
+secrets.toml
+.streamlit/secrets.toml
+*_secret*
+*_token*
+*.apikey
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.installed.cfg
+*.manifest
+*.spec
+
+# Packaging / distribution
+build/
+dist/
+wheels/
+sdist/
+pip-wheel-metadata/
+share/python-wheels/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env-*/
+
+# uv (uv.lock IS committed; only cache excluded)
+.uv-cache/
+
+# Testing / coverage / lint caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pytype/
+.pyre/
+pytestdebug.log
+nosetests.xml
+
+# Type checking / build
+.python-version
+
+# -----------------------------------------------------------------------------
+# Hydra / OmegaConf outputs
+# -----------------------------------------------------------------------------
+outputs/
+multirun/
+.hydra/
+# Keep conf/ tracked
+
+# -----------------------------------------------------------------------------
+# Jupyter / IPython
+# -----------------------------------------------------------------------------
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# -----------------------------------------------------------------------------
+# Streamlit
+# -----------------------------------------------------------------------------
+.streamlit/secrets.toml
+# Keep .streamlit/config.toml tracked
+
+# -----------------------------------------------------------------------------
+# ChatQEC runtime data
+# -----------------------------------------------------------------------------
+# Qdrant local storage (set in dev configs; never commit DB files)
+qdrant_storage/
+qdrant_data/
+.qdrant/
+
+# SQLite (rate-limit DB, session DB)
+*.sqlite
+*.sqlite3
+*.db
+chatqec.db
+chatqec.db-*
+
+# Embedding caches
+embeddings_cache/
+.cache/embeddings/
+*.embeddings.npy
+*.embeddings.npz
+
+# Ingestion downloads / raw content (large, regeneratable)
+data/raw/
+data/cache/
+data/downloads/
+sources/raw/
+sources/cache/
+sources/downloads/
+
+# Generated wiki PDF mirrors etc.
+*.pdf.cache
+*.transcript.cache
+
+# MCP sandbox build artifacts
+chatqec-mcp-tools/docker_build/
+chatqec-mcp-tools/.sandbox_cache/
+
+# Eval run artifacts (keep the dataset, ignore per-run outputs)
+eval_runs/
+eval_outputs/
+
+# -----------------------------------------------------------------------------
+# Logs
+# -----------------------------------------------------------------------------
+*.log
+logs/
+log/
+*.log.*
+
+# -----------------------------------------------------------------------------
+# OS junk
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# -----------------------------------------------------------------------------
+# IDE / editor
+# -----------------------------------------------------------------------------
+.idea/
+.vscode/
+!.vscode/settings.json.example
+!.vscode/extensions.json
+*.swp
+*.swo
+*.swn
+*~
+.*.kate-swp
+.netrwhist
+.project
+.pydevproject
+.spyderproject
+.spyproject
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+.docker/
+docker-compose.override.yml
+
+# -----------------------------------------------------------------------------
+# Node (if a future docs site uses node tooling)
+# -----------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# -----------------------------------------------------------------------------
+# Miscellaneous
+# -----------------------------------------------------------------------------
+.history/
+*.bak
+*.orig
+*.rej
+.directory
+.fuse_hidden*
