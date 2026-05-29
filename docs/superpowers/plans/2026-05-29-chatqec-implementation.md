@@ -8254,3 +8254,1505 @@ Expected: GitLab pipeline runs lint, validate-canonical, test — all green.
 **🛑 PAUSE — push to GitLab and review before requesting Milestone 7.**
 
 ---
+
+## Milestone 7 — Conversation & synthesis (no tools yet)
+
+**Outcome:** A working `ChatQEC.ask(question)` end-to-end pipeline. Off-topic queries get refused cheaply. QEC queries go through Haiku rewriting → hybrid retrieval → Sonnet synthesis with cited evidence. Multi-turn sessions maintain message history; pronouns and references in follow-ups get resolved by the rewriter. Streaming is exposed via `ChatQEC.ask_stream()`. The CLI gains `chatqec chat` (interactive REPL) and `chatqec ask` is fully wired. **No tool use yet — Stim execution lands in M8.**
+
+**Files this milestone creates / touches:**
+- Create: `src/chatqec/conversation/__init__.py`
+- Create: `src/chatqec/conversation/memory.py`
+- Create: `src/chatqec/conversation/classifier.py`
+- Create: `src/chatqec/conversation/rewriter.py`
+- Create: `src/chatqec/conversation/prompts.py` (system prompt templates)
+- Create: `src/chatqec/conversation/synthesizer.py`
+- Create: `src/chatqec/conversation/citations.py`
+- Create: `tests/test_conversation_memory.py`
+- Create: `tests/test_conversation_classifier.py`
+- Create: `tests/test_conversation_rewriter.py`
+- Create: `tests/test_conversation_citations.py`
+- Create: `tests/test_conversation_synthesizer.py`
+- Create: `tests/test_api_chatqec.py`
+- Create: `tests/test_cli_chat.py`
+- Modify: `src/chatqec/api.py` (replace stub with wired-up ChatQEC)
+- Modify: `src/chatqec/cli.py` (wire `ask` into real pipeline; add `chat`)
+- Modify: `CHANGELOG.md`
+
+**Why split this way:** every module here has a narrow LLM contract. Classifier returns yes/no. Rewriter returns a string + variants. Citations is pure parsing. Synthesizer is the only place that constructs the final prompt and streams tokens. Each can be unit-tested by mocking the Anthropic SDK; the integration test wires them together.
+
+---
+
+### Task 7.1 — Conversation memory
+
+**Files:**
+- Create: `src/chatqec/conversation/__init__.py` (empty)
+- Create: `src/chatqec/conversation/memory.py`
+- Create: `tests/test_conversation_memory.py`
+
+- [ ] **Step 1: Make `conversation` a package**
+
+```bash
+mkdir -p src/chatqec/conversation
+touch src/chatqec/conversation/__init__.py
+```
+
+- [ ] **Step 2: Write failing tests**
+
+Create `tests/test_conversation_memory.py`:
+
+```python
+"""In-memory conversation log used to feed the rewriter and synthesizer."""
+
+import pytest
+
+from chatqec.conversation.memory import ConversationMemory, Turn
+
+
+def test_memory_records_turns_in_order():
+    m = ConversationMemory()
+    m.add_user("What is the surface code?")
+    m.add_assistant("It's a topological CSS code.")
+    m.add_user("And the threshold?")
+    log = list(m.turns())
+    assert [t.role for t in log] == ["user", "assistant", "user"]
+    assert log[0].content == "What is the surface code?"
+
+
+def test_memory_recent_returns_last_n_turns_capped():
+    m = ConversationMemory()
+    for i in range(10):
+        m.add_user(f"q{i}")
+        m.add_assistant(f"a{i}")
+    last4 = m.recent(n=4)
+    assert len(last4) == 4
+    assert last4[-1].content == "a9"
+
+
+def test_memory_empty_returns_empty_recent():
+    m = ConversationMemory()
+    assert m.recent(n=5) == []
+
+
+def test_turn_is_immutable():
+    t = Turn(role="user", content="x")
+    import dataclasses
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        t.content = "y"  # type: ignore[misc]
+
+
+def test_memory_clear_empties_history():
+    m = ConversationMemory()
+    m.add_user("x"); m.add_assistant("y")
+    m.clear()
+    assert list(m.turns()) == []
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_conversation_memory.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 4: Implement `src/chatqec/conversation/memory.py`**
+
+```python
+"""In-session message history.
+
+Per spec §9.1: anonymous sessions, in-memory only, no per-user accounts in v1.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Literal
+
+
+@dataclass(frozen=True)
+class Turn:
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ConversationMemory:
+    def __init__(self) -> None:
+        self._turns: list[Turn] = []
+
+    def add_user(self, content: str) -> None:
+        self._turns.append(Turn(role="user", content=content))
+
+    def add_assistant(self, content: str) -> None:
+        self._turns.append(Turn(role="assistant", content=content))
+
+    def turns(self) -> Iterable[Turn]:
+        return list(self._turns)
+
+    def recent(self, *, n: int) -> list[Turn]:
+        return self._turns[-n:]
+
+    def clear(self) -> None:
+        self._turns = []
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_conversation_memory.py -v
+```
+
+Expected: 5 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/conversation/__init__.py src/chatqec/conversation/memory.py tests/test_conversation_memory.py
+git commit -m "feat(conversation): add ConversationMemory + Turn record"
+```
+
+---
+
+### Task 7.2 — Off-topic classifier (Haiku, mocked)
+
+**Files:**
+- Create: `src/chatqec/conversation/classifier.py`
+- Create: `tests/test_conversation_classifier.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_conversation_classifier.py`:
+
+```python
+"""Off-topic classifier — cheap Haiku-based pre-filter for cost protection."""
+
+from unittest.mock import MagicMock
+
+from chatqec.conversation.classifier import OffTopicClassifier, TopicVerdict
+
+
+def _make_anthropic_with_response(text: str):
+    client = MagicMock()
+    msg = MagicMock()
+    msg.content = [MagicMock(text=text)]
+    client.messages.create.return_value = msg
+    return client
+
+
+def test_classifier_returns_on_topic_for_qec_query():
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    verdict = clf.classify("What is the surface code threshold?")
+    assert isinstance(verdict, TopicVerdict)
+    assert verdict.on_topic is True
+
+
+def test_classifier_returns_off_topic_for_unrelated_query():
+    client = _make_anthropic_with_response("off_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    verdict = clf.classify("What's the capital of France?")
+    assert verdict.on_topic is False
+    assert verdict.refusal_message  # non-empty user-facing message
+
+
+def test_classifier_treats_malformed_response_as_off_topic_to_be_safe():
+    client = _make_anthropic_with_response("not a clean label")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    verdict = clf.classify("ambiguous")
+    # Conservative: refuse rather than spend Sonnet tokens on ambiguity
+    assert verdict.on_topic is False
+
+
+def test_classifier_includes_model_name_in_api_call():
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    clf.classify("q")
+    call_kwargs = client.messages.create.call_args.kwargs
+    assert call_kwargs["model"] == "claude-haiku-4-5"
+    assert call_kwargs["max_tokens"] <= 20  # cheap call
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_conversation_classifier.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/conversation/classifier.py`**
+
+```python
+"""Off-topic classifier (Haiku).
+
+Cheap pre-filter that refuses non-QEC queries before reaching Sonnet.
+Saves cost and adds an abuse guard (spec §12.1).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
+_SYS = (
+    "You are a strict classifier. Decide if the user's question is about "
+    "Quantum Error Correction (QEC), fault-tolerant quantum computation, "
+    "quantum codes, decoders, or directly related topics (stabilizer formalism, "
+    "magic state distillation, surface code, etc.). "
+    "Respond with EXACTLY one word: 'on_topic' or 'off_topic'. "
+    "Borderline / general quantum computing questions that don't involve QEC: off_topic."
+)
+
+_DEFAULT_REFUSAL = (
+    "ChatQEC only answers Quantum Error Correction questions. "
+    "Please rephrase your question to focus on QEC, fault tolerance, "
+    "stabilizer codes, decoders, or related topics."
+)
+
+
+class AnthropicClient(Protocol):
+    def messages(self): ...  # only `create` is used; Protocol is structural
+
+
+@dataclass(frozen=True)
+class TopicVerdict:
+    on_topic: bool
+    refusal_message: str = ""
+
+
+class OffTopicClassifier:
+    def __init__(self, *, client: object, model: str) -> None:
+        self.client = client
+        self.model = model
+
+    def classify(self, query: str) -> TopicVerdict:
+        msg = self.client.messages.create(
+            model=self.model,
+            max_tokens=10,
+            system=_SYS,
+            messages=[{"role": "user", "content": query}],
+        )
+        text = msg.content[0].text.strip().lower()
+        if text == "on_topic":
+            return TopicVerdict(on_topic=True)
+        return TopicVerdict(on_topic=False, refusal_message=_DEFAULT_REFUSAL)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_conversation_classifier.py -v
+```
+
+Expected: 4 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/conversation/classifier.py tests/test_conversation_classifier.py
+git commit -m "feat(conversation): add OffTopicClassifier (Haiku) with conservative fallback"
+```
+
+---
+
+### Task 7.3 — Query rewriter (Haiku, multi-turn aware)
+
+**Files:**
+- Create: `src/chatqec/conversation/rewriter.py`
+- Create: `tests/test_conversation_rewriter.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_conversation_rewriter.py`:
+
+```python
+"""Query rewriter — resolves pronouns, generates retrieval variants."""
+
+import json
+from unittest.mock import MagicMock
+
+from chatqec.conversation.memory import ConversationMemory
+from chatqec.conversation.rewriter import QueryRewriter, RewriteResult
+
+
+def _client_returning(json_text: str):
+    client = MagicMock()
+    msg = MagicMock(); msg.content = [MagicMock(text=json_text)]
+    client.messages.create.return_value = msg
+    return client
+
+
+def test_rewriter_returns_self_contained_query_and_variants():
+    client = _client_returning(json.dumps({
+        "rewritten": "What is the threshold for the surface code?",
+        "variants": [
+            "What is the surface code threshold under depolarizing noise?",
+            "What is the fault-tolerant threshold for the surface code?",
+        ],
+        "is_followup": False,
+    }))
+    rw = QueryRewriter(client=client, model="claude-haiku-4-5")
+    memory = ConversationMemory()
+    result = rw.rewrite("What's the threshold?", memory=memory)
+    assert isinstance(result, RewriteResult)
+    assert "surface code" in result.rewritten.lower()
+    assert len(result.variants) == 2
+
+
+def test_rewriter_resolves_pronoun_from_recent_turn():
+    # In real use, Haiku reads history; here we just verify the call includes it.
+    client = _client_returning(json.dumps({
+        "rewritten": "What is the surface code threshold?",
+        "variants": [],
+        "is_followup": True,
+    }))
+    rw = QueryRewriter(client=client, model="claude-haiku-4-5")
+    memory = ConversationMemory()
+    memory.add_user("Tell me about the surface code.")
+    memory.add_assistant("It's a topological CSS code with high threshold.")
+    result = rw.rewrite("What's its threshold?", memory=memory)
+    assert result.is_followup is True
+    call_kwargs = client.messages.create.call_args.kwargs
+    sent_messages = call_kwargs["messages"]
+    # The Haiku call should have received the user's recent context
+    user_msg = next(m for m in sent_messages if m["role"] == "user")
+    assert "surface code" in user_msg["content"].lower()
+
+
+def test_rewriter_treats_malformed_json_as_passthrough():
+    client = _client_returning("not json")
+    rw = QueryRewriter(client=client, model="claude-haiku-4-5")
+    memory = ConversationMemory()
+    result = rw.rewrite("raw query", memory=memory)
+    assert result.rewritten == "raw query"
+    assert result.variants == []
+    assert result.is_followup is False
+
+
+def test_rewriter_first_turn_query_passes_through_unchanged():
+    client = _client_returning(json.dumps({
+        "rewritten": "What is the surface code?",
+        "variants": [],
+        "is_followup": False,
+    }))
+    rw = QueryRewriter(client=client, model="claude-haiku-4-5")
+    memory = ConversationMemory()
+    result = rw.rewrite("What is the surface code?", memory=memory)
+    assert result.is_followup is False
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_conversation_rewriter.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/conversation/rewriter.py`**
+
+```python
+"""Query rewriter (Haiku).
+
+Reads recent conversation history and produces:
+  - rewritten: a self-contained query (pronouns/refs resolved)
+  - variants: 0-3 alternative phrasings to widen retrieval recall
+  - is_followup: signals the synthesizer to reuse previous turn context
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+
+from chatqec.conversation.memory import ConversationMemory
+
+_SYS = """You are a query rewriter for a Quantum Error Correction Q&A assistant.
+
+Given the user's most recent question and (optionally) the recent conversation,
+rewrite the question to be:
+1. Self-contained (resolve pronouns like "it", "this", "that")
+2. Specific (expand QEC abbreviations: MWPM, BP-OSD, GKP, MSD, etc.)
+3. Searchable (use canonical terminology)
+
+Also produce up to 2 alternative phrasings ("variants") to widen retrieval recall.
+
+Set is_followup=true if the question depends on prior turns.
+
+Respond with ONLY a JSON object of the form:
+{"rewritten": "...", "variants": ["...", "..."], "is_followup": true|false}
+"""
+
+
+@dataclass(frozen=True)
+class RewriteResult:
+    rewritten: str
+    variants: list[str] = field(default_factory=list)
+    is_followup: bool = False
+
+
+class QueryRewriter:
+    def __init__(self, *, client: object, model: str, history_turns: int = 6) -> None:
+        self.client = client
+        self.model = model
+        self.history_turns = history_turns
+
+    def rewrite(self, query: str, *, memory: ConversationMemory) -> RewriteResult:
+        recent = memory.recent(n=self.history_turns)
+        history_block = "\n".join(f"{t.role}: {t.content}" for t in recent)
+        user_payload = (
+            f"Recent conversation:\n{history_block or '(none)'}\n\n"
+            f"Most recent question: {query}\n\nReturn the JSON."
+        )
+        msg = self.client.messages.create(
+            model=self.model,
+            max_tokens=400,
+            system=_SYS,
+            messages=[{"role": "user", "content": user_payload}],
+        )
+        raw = msg.content[0].text.strip()
+        try:
+            parsed = json.loads(raw)
+            return RewriteResult(
+                rewritten=str(parsed.get("rewritten", query)),
+                variants=[str(v) for v in parsed.get("variants", [])][:3],
+                is_followup=bool(parsed.get("is_followup", False)),
+            )
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return RewriteResult(rewritten=query)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_conversation_rewriter.py -v
+```
+
+Expected: 4 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/conversation/rewriter.py tests/test_conversation_rewriter.py
+git commit -m "feat(conversation): add QueryRewriter (Haiku) with multi-turn pronoun resolution"
+```
+
+---
+
+### Task 7.4 — System prompt + context assembly
+
+**Files:**
+- Create: `src/chatqec/conversation/prompts.py`
+- Create: `tests/test_conversation_prompts.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_conversation_prompts.py`:
+
+```python
+"""System prompt + context-assembler tests."""
+
+from chatqec.conversation.prompts import (
+    SYNTHESIZER_SYSTEM_PROMPT,
+    assemble_context_block,
+)
+from chatqec.retrieval.hybrid import RetrievedChunk
+
+
+def _chunk(i: int, text: str = "body", tier: str = "preprint") -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=f"x#{i}", source_id="x", text=text, title="T",
+        authority_tier=tier, score=0.5, payload={},
+    )
+
+
+def test_system_prompt_mentions_citation_format():
+    assert "[^" in SYNTHESIZER_SYSTEM_PROMPT
+    assert "quantum error correction" in SYNTHESIZER_SYSTEM_PROMPT.lower()
+
+
+def test_assemble_context_block_numbers_chunks_from_1():
+    chunks = [_chunk(0, "chunk A"), _chunk(1, "chunk B")]
+    block = assemble_context_block(chunks, canonical_chunks=[])
+    assert "[^1]" in block
+    assert "[^2]" in block
+    assert "chunk A" in block
+    assert "chunk B" in block
+
+
+def test_canonical_chunks_appear_first_marked_as_canonical():
+    retrieved = [_chunk(0, "regular chunk")]
+    canonical = [_chunk(99, "canonical surface code intro", tier="canonical")]
+    block = assemble_context_block(retrieved, canonical_chunks=canonical)
+    # Canonical should appear before retrieved
+    assert block.index("canonical surface code intro") < block.index("regular chunk")
+    assert "canonical" in block.lower()
+
+
+def test_assemble_with_no_chunks_returns_explicit_empty_marker():
+    block = assemble_context_block([], canonical_chunks=[])
+    assert "no relevant" in block.lower() or "(none)" in block.lower()
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_conversation_prompts.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/conversation/prompts.py`**
+
+```python
+"""System prompt + retrieved-context assembly."""
+
+from __future__ import annotations
+
+from chatqec.retrieval.hybrid import RetrievedChunk
+
+
+SYNTHESIZER_SYSTEM_PROMPT = """You are ChatQEC, a research assistant for Quantum Error Correction.
+
+You answer based ONLY on the retrieved context below. If the context does not
+contain enough evidence, say so explicitly — never invent facts.
+
+Citation rules:
+- Cite every non-trivial claim using inline footnote markers like [^1], [^2].
+- Footnote numbers refer to the numbered context entries below.
+- At the end of your answer, include a "Sources:" line listing the cited footnote numbers.
+
+Style:
+- Be precise and technical; the user is a researcher.
+- Use LaTeX for math: $..$, $$..$$, \\begin{equation}..\\end{equation}.
+- Prefer canonical wiki entries (marked CANONICAL) for terminology and definitions.
+- For questions beyond the retrieved context, refuse politely: "I don't have evidence in the knowledge base for this."
+
+QEC focus only — refuse off-topic queries politely.
+"""
+
+
+def assemble_context_block(
+    retrieved: list[RetrievedChunk],
+    *,
+    canonical_chunks: list[RetrievedChunk],
+) -> str:
+    if not retrieved and not canonical_chunks:
+        return "Retrieved context: (none — no chunks matched the query)\n"
+
+    lines = ["Retrieved context:"]
+    n = 1
+    for c in canonical_chunks:
+        lines.append(f"[^{n}] [CANONICAL · {c.title} · {c.source_id}] {c.text}")
+        n += 1
+    for c in retrieved:
+        lines.append(f"[^{n}] [{c.authority_tier} · {c.title} · {c.source_id}] {c.text}")
+        n += 1
+    return "\n\n".join(lines)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_conversation_prompts.py -v
+```
+
+Expected: 4 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/conversation/prompts.py tests/test_conversation_prompts.py
+git commit -m "feat(conversation): add system prompt and context assembler"
+```
+
+---
+
+### Task 7.5 — Citation extraction from Sonnet's output
+
+**Files:**
+- Create: `src/chatqec/conversation/citations.py`
+- Create: `tests/test_conversation_citations.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_conversation_citations.py`:
+
+```python
+"""Citation extraction: parse [^N] markers and map back to retrieved chunks."""
+
+from chatqec.api import Citation
+from chatqec.conversation.citations import extract_citations
+from chatqec.retrieval.hybrid import RetrievedChunk
+
+
+def _chunk(i: int, source_id: str = "arxiv:test") -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=f"{source_id}#{i}", source_id=source_id,
+        text="t", title=f"Title {i}", authority_tier="preprint",
+        score=0.5, payload={"url": f"https://arxiv.org/abs/{source_id}#{i}"},
+    )
+
+
+def test_extract_resolves_footnote_markers_to_chunks():
+    answer = "The surface code has high threshold[^1]. The toric code is its torus variant[^2]."
+    context_chunks = [_chunk(0), _chunk(1)]
+    citations = extract_citations(answer, context_chunks)
+    assert [c.source_id for c in citations] == ["arxiv:test", "arxiv:test"]
+    assert all(isinstance(c, Citation) for c in citations)
+
+
+def test_extract_deduplicates_repeated_footnote_numbers():
+    answer = "Claim A [^1]. Claim B [^1]. Claim C [^2]."
+    citations = extract_citations(answer, [_chunk(0), _chunk(1)])
+    assert len(citations) == 2  # 1, 2 — not 3
+
+
+def test_extract_ignores_out_of_range_footnotes():
+    answer = "Claim with bogus citation [^99]."
+    citations = extract_citations(answer, [_chunk(0)])
+    assert citations == []
+
+
+def test_extract_empty_for_answer_with_no_markers():
+    citations = extract_citations("Plain answer no marker.", [_chunk(0)])
+    assert citations == []
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_conversation_citations.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/conversation/citations.py`**
+
+```python
+"""Parse footnote markers [^N] out of Sonnet's text and resolve to Citation objects."""
+
+from __future__ import annotations
+
+import re
+
+from chatqec.api import Citation
+from chatqec.retrieval.hybrid import RetrievedChunk
+
+_FOOTNOTE_RE = re.compile(r"\[\^(\d+)\]")
+
+
+def extract_citations(
+    answer_text: str, context_chunks: list[RetrievedChunk],
+) -> list[Citation]:
+    seen: set[int] = set()
+    ordered: list[int] = []
+    for m in _FOOTNOTE_RE.finditer(answer_text):
+        n = int(m.group(1))
+        if 1 <= n <= len(context_chunks) and n not in seen:
+            seen.add(n)
+            ordered.append(n)
+    out: list[Citation] = []
+    for n in ordered:
+        c = context_chunks[n - 1]
+        out.append(Citation(
+            source_id=c.source_id,
+            chunk_id=c.chunk_id,
+            title=c.title,
+            url=str(c.payload.get("url", "")),
+        ))
+    return out
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_conversation_citations.py -v
+```
+
+Expected: 4 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/conversation/citations.py tests/test_conversation_citations.py
+git commit -m "feat(conversation): add footnote-marker citation extraction"
+```
+
+---
+
+### Task 7.6 — Synthesizer (Sonnet, no tools yet)
+
+**Files:**
+- Create: `src/chatqec/conversation/synthesizer.py`
+- Create: `tests/test_conversation_synthesizer.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_conversation_synthesizer.py`:
+
+```python
+"""Synthesizer — wraps Anthropic SDK, supports non-streaming and streaming."""
+
+from unittest.mock import MagicMock
+
+from chatqec.conversation.synthesizer import Synthesizer, SynthesisResult
+from chatqec.retrieval.hybrid import RetrievedChunk
+
+
+def _ctx(i: int) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=f"x#{i}", source_id="x", text=f"chunk {i}",
+        title=f"T{i}", authority_tier="preprint",
+        score=0.5, payload={"url": "https://example.com"},
+    )
+
+
+def _client_with_text(text: str):
+    client = MagicMock()
+    msg = MagicMock()
+    msg.content = [MagicMock(text=text)]
+    msg.usage = MagicMock(input_tokens=100, output_tokens=50)
+    client.messages.create.return_value = msg
+    return client
+
+
+def test_synthesize_returns_answer_text_and_citations():
+    client = _client_with_text("The surface code is great [^1]. Period.")
+    synth = Synthesizer(client=client, model="claude-sonnet-4-6")
+    result = synth.synthesize(
+        question="What is the surface code?",
+        retrieved=[_ctx(0)],
+        canonical_chunks=[],
+        history=[],
+    )
+    assert isinstance(result, SynthesisResult)
+    assert "surface code" in result.text.lower()
+    assert len(result.citations) == 1
+
+
+def test_synthesize_passes_system_prompt_and_context_to_anthropic():
+    client = _client_with_text("answer [^1]")
+    synth = Synthesizer(client=client, model="claude-sonnet-4-6")
+    synth.synthesize(question="q", retrieved=[_ctx(0)], canonical_chunks=[], history=[])
+    kwargs = client.messages.create.call_args.kwargs
+    assert "ChatQEC" in kwargs["system"]
+    user_msg = kwargs["messages"][-1]
+    assert user_msg["role"] == "user"
+    assert "Retrieved context" in user_msg["content"]
+
+
+def test_synthesize_includes_recent_history():
+    client = _client_with_text("Follow-up answer")
+    synth = Synthesizer(client=client, model="claude-sonnet-4-6")
+    from chatqec.conversation.memory import Turn
+    history = [Turn(role="user", content="prev q"), Turn(role="assistant", content="prev a")]
+    synth.synthesize(question="follow up", retrieved=[_ctx(0)],
+                     canonical_chunks=[], history=history)
+    msgs = client.messages.create.call_args.kwargs["messages"]
+    assert msgs[0]["content"] == "prev q"
+    assert msgs[1]["content"] == "prev a"
+
+
+def test_synthesize_confidence_based_on_citation_count():
+    client_high = _client_with_text("A [^1]. B [^2]. C [^3].")
+    s_high = Synthesizer(client=client_high, model="claude-sonnet-4-6")
+    res = s_high.synthesize(question="q",
+                            retrieved=[_ctx(0), _ctx(1), _ctx(2)],
+                            canonical_chunks=[], history=[])
+    assert res.confidence == "high"
+
+    client_low = _client_with_text("no citations here")
+    s_low = Synthesizer(client=client_low, model="claude-sonnet-4-6")
+    res = s_low.synthesize(question="q", retrieved=[_ctx(0)],
+                           canonical_chunks=[], history=[])
+    assert res.confidence == "low"
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_conversation_synthesizer.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/conversation/synthesizer.py`**
+
+```python
+"""Synthesizer — wraps Anthropic Sonnet for non-streaming and streaming answers.
+
+M7 has no tool use; M8 adds the Stim tool-use loop.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+
+from chatqec.api import Citation
+from chatqec.conversation.citations import extract_citations
+from chatqec.conversation.memory import Turn
+from chatqec.conversation.prompts import (
+    SYNTHESIZER_SYSTEM_PROMPT,
+    assemble_context_block,
+)
+from chatqec.retrieval.hybrid import RetrievedChunk
+
+
+@dataclass(frozen=True)
+class SynthesisResult:
+    text: str
+    citations: list[Citation]
+    confidence: str  # "low" | "medium" | "high"
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+def _confidence_from_citations(n_citations: int, has_context: bool) -> str:
+    if not has_context:
+        return "low"
+    if n_citations >= 3:
+        return "high"
+    if n_citations >= 1:
+        return "medium"
+    return "low"
+
+
+class Synthesizer:
+    def __init__(self, *, client: object, model: str, max_tokens: int = 4000) -> None:
+        self.client = client
+        self.model = model
+        self.max_tokens = max_tokens
+
+    def _build_messages(
+        self, *, question: str, retrieved: list[RetrievedChunk],
+        canonical_chunks: list[RetrievedChunk], history: list[Turn],
+    ) -> list[dict]:
+        messages = [{"role": t.role, "content": t.content} for t in history]
+        context = assemble_context_block(retrieved, canonical_chunks=canonical_chunks)
+        messages.append({
+            "role": "user",
+            "content": f"{context}\n\nQuestion: {question}",
+        })
+        return messages
+
+    def synthesize(
+        self, *, question: str, retrieved: list[RetrievedChunk],
+        canonical_chunks: list[RetrievedChunk], history: list[Turn],
+    ) -> SynthesisResult:
+        messages = self._build_messages(
+            question=question, retrieved=retrieved,
+            canonical_chunks=canonical_chunks, history=history,
+        )
+        msg = self.client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            system=SYNTHESIZER_SYSTEM_PROMPT,
+            messages=messages,
+        )
+        text = msg.content[0].text
+        all_context = canonical_chunks + retrieved
+        citations = extract_citations(text, all_context)
+        usage = getattr(msg, "usage", None)
+        return SynthesisResult(
+            text=text,
+            citations=citations,
+            confidence=_confidence_from_citations(
+                len(citations), has_context=bool(all_context),
+            ),
+            input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
+            output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
+        )
+
+    def synthesize_stream(
+        self, *, question: str, retrieved: list[RetrievedChunk],
+        canonical_chunks: list[RetrievedChunk], history: list[Turn],
+    ) -> Iterator[str]:
+        """Yield text deltas as they arrive. Final result available via the SDK's accumulated message after stream completes."""
+        messages = self._build_messages(
+            question=question, retrieved=retrieved,
+            canonical_chunks=canonical_chunks, history=history,
+        )
+        with self.client.messages.stream(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            system=SYNTHESIZER_SYSTEM_PROMPT,
+            messages=messages,
+        ) as stream:
+            for text_chunk in stream.text_stream:
+                yield text_chunk
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_conversation_synthesizer.py -v
+```
+
+Expected: 4 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/conversation/synthesizer.py tests/test_conversation_synthesizer.py
+git commit -m "feat(conversation): add Synthesizer (Sonnet) with confidence + streaming"
+```
+
+---
+
+### Task 7.7 — Wire `ChatQEC` class to the full pipeline
+
+**Files:**
+- Modify: `src/chatqec/api.py` (replace stub from M1)
+- Create: `tests/test_api_chatqec.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_api_chatqec.py`:
+
+```python
+"""Public ChatQEC class — end-to-end pipeline tests with all components stubbed."""
+
+from unittest.mock import MagicMock
+
+from chatqec.api import Answer, ChatQEC
+from chatqec.conversation.memory import ConversationMemory
+from chatqec.conversation.rewriter import RewriteResult
+from chatqec.conversation.classifier import TopicVerdict
+from chatqec.conversation.synthesizer import SynthesisResult
+from chatqec.retrieval.hybrid import RetrievalResult, RetrievedChunk
+
+
+def _retrieved_chunk(i: int) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=f"x#{i}", source_id="x", text=f"c{i}", title=f"T{i}",
+        authority_tier="preprint", score=0.5,
+        payload={"url": "https://example.com", "text": f"c{i}"},
+    )
+
+
+def _build_chatqec(on_topic: bool = True, syn_text: str = "Answer [^1]."):
+    classifier = MagicMock()
+    classifier.classify.return_value = TopicVerdict(
+        on_topic=on_topic,
+        refusal_message="off topic" if not on_topic else "",
+    )
+    rewriter = MagicMock()
+    rewriter.rewrite.return_value = RewriteResult(rewritten="q", variants=[])
+
+    retriever = MagicMock()
+    retriever.retrieve.return_value = RetrievalResult(
+        chunks=[_retrieved_chunk(0)], matched_topics=[],
+    )
+    canonical_index = MagicMock()
+    canonical_index.pages = []
+
+    synthesizer = MagicMock()
+    synthesizer.synthesize.return_value = SynthesisResult(
+        text=syn_text,
+        citations=[],
+        confidence="medium",
+    )
+    return ChatQEC(
+        classifier=classifier, rewriter=rewriter, retriever=retriever,
+        synthesizer=synthesizer, canonical_index=canonical_index,
+        memory=ConversationMemory(),
+    ), retriever, synthesizer
+
+
+def test_ask_returns_answer_object_for_on_topic_question():
+    bot, _, _ = _build_chatqec()
+    answer = bot.ask("What is the surface code?")
+    assert isinstance(answer, Answer)
+    assert "Answer" in answer.text
+    assert answer.confidence == "medium"
+
+
+def test_ask_refuses_off_topic_question_without_calling_retriever():
+    bot, retriever, synthesizer = _build_chatqec(on_topic=False)
+    answer = bot.ask("Capital of France?")
+    assert "off topic" in answer.text.lower() or "off_topic" in answer.text.lower()
+    retriever.retrieve.assert_not_called()
+    synthesizer.synthesize.assert_not_called()
+    assert answer.confidence == "low"
+
+
+def test_ask_records_turn_in_memory_for_followups():
+    bot, _, _ = _build_chatqec()
+    bot.ask("q1")
+    bot.ask("q2")
+    assert len(list(bot.memory.turns())) == 4  # 2 user + 2 assistant
+
+
+def test_ask_stream_yields_text_chunks():
+    classifier = MagicMock()
+    classifier.classify.return_value = TopicVerdict(on_topic=True)
+    rewriter = MagicMock()
+    rewriter.rewrite.return_value = RewriteResult(rewritten="q")
+    retriever = MagicMock()
+    retriever.retrieve.return_value = RetrievalResult(
+        chunks=[_retrieved_chunk(0)], matched_topics=[],
+    )
+    canonical_index = MagicMock(); canonical_index.pages = []
+    synthesizer = MagicMock()
+    synthesizer.synthesize_stream.return_value = iter(["The ", "surface ", "code."])
+    # synth.synthesize is also called for final SynthesisResult bookkeeping
+    synthesizer.synthesize.return_value = SynthesisResult(
+        text="The surface code.", citations=[], confidence="low",
+    )
+
+    bot = ChatQEC(
+        classifier=classifier, rewriter=rewriter, retriever=retriever,
+        synthesizer=synthesizer, canonical_index=canonical_index,
+        memory=ConversationMemory(),
+    )
+    chunks = list(bot.ask_stream("What is the surface code?"))
+    assert "surface" in "".join(c.delta for c in chunks)
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_api_chatqec.py -v
+```
+
+Expected: import errors or stub returning placeholder.
+
+- [ ] **Step 3: Replace `src/chatqec/api.py`**
+
+```python
+"""ChatQEC public API (replaces the M1 stub).
+
+End-to-end: classifier → rewriter → retriever → synthesizer.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+
+from chatqec.canonical.loader import load_canonical_directory
+from chatqec.conversation.classifier import OffTopicClassifier
+from chatqec.conversation.memory import ConversationMemory
+from chatqec.conversation.rewriter import QueryRewriter
+from chatqec.conversation.synthesizer import Synthesizer
+from chatqec.retrieval.canonical_injector import CanonicalIndex
+from chatqec.retrieval.hybrid import HybridRetriever
+
+
+@dataclass(frozen=True)
+class Citation:
+    source_id: str
+    chunk_id: str
+    title: str
+    url: str
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    name: str
+    input: dict[str, object]
+    output: str
+
+
+@dataclass(frozen=True)
+class Answer:
+    text: str
+    citations: list[Citation] = field(default_factory=list)
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    confidence: str = "low"
+
+
+@dataclass(frozen=True)
+class StreamChunk:
+    delta: str
+
+
+class ChatQEC:
+    """End-to-end QEC research assistant."""
+
+    def __init__(
+        self, *,
+        classifier: OffTopicClassifier,
+        rewriter: QueryRewriter,
+        retriever: HybridRetriever,
+        synthesizer: Synthesizer,
+        canonical_index: CanonicalIndex,
+        memory: ConversationMemory | None = None,
+        top_k: int = 8,
+        candidate_k: int = 50,
+    ) -> None:
+        self.classifier = classifier
+        self.rewriter = rewriter
+        self.retriever = retriever
+        self.synthesizer = synthesizer
+        self.canonical_index = canonical_index
+        self.memory = memory or ConversationMemory()
+        self.top_k = top_k
+        self.candidate_k = candidate_k
+
+    @classmethod
+    def from_config(cls, config_path: str | None = None) -> "ChatQEC":  # pragma: no cover
+        """Convenience factory for CLI/Streamlit. Wires Hydra config → components."""
+        from hydra import compose, initialize_config_dir
+        from pathlib import Path
+        import anthropic
+        from chatqec.embedding.base import EmbedderConfig
+        from chatqec.embedding.gemini import GeminiEmbedder
+        from chatqec.embedding.sparse import BM25Encoder
+        from chatqec.retrieval.reranker import CrossEncoderReranker
+        from chatqec.store.qdrant import ChatQecStore, StoreConfig
+
+        conf_dir = str(Path(config_path or "conf").resolve())
+        with initialize_config_dir(version_base=None, config_dir=conf_dir):
+            cfg = compose(config_name="config")
+
+        client = anthropic.Anthropic()  # picks up ANTHROPIC_API_KEY
+        emb_cfg = EmbedderConfig(
+            provider=cfg.embedding.provider, model=cfg.embedding.model,
+            batch_size=cfg.embedding.batch_size, local_model=cfg.embedding.local_model,
+        )
+        store = ChatQecStore(StoreConfig(
+            qdrant_url=cfg.store.qdrant_url, collection=cfg.store.collection,
+            vector_dim=cfg.store.vector_dim, on_disk_payload=cfg.store.on_disk_payload,
+        ))
+        canonical_pages = load_canonical_directory(Path(cfg.paths.canonical_dir))
+        canonical_index = CanonicalIndex(pages=canonical_pages)
+        retriever = HybridRetriever(
+            store=store, embedder=GeminiEmbedder(emb_cfg),
+            sparse_encoder=BM25Encoder(),
+            reranker=CrossEncoderReranker(model_name=cfg.models.reranker),
+            canonical_index=canonical_index,
+        )
+        return cls(
+            classifier=OffTopicClassifier(client=client, model=cfg.models.classifier),
+            rewriter=QueryRewriter(client=client, model=cfg.models.rewriter),
+            retriever=retriever,
+            synthesizer=Synthesizer(client=client, model=cfg.models.synthesizer),
+            canonical_index=canonical_index,
+        )
+
+    def ask(self, question: str) -> Answer:
+        verdict = self.classifier.classify(question)
+        if not verdict.on_topic:
+            self.memory.add_user(question)
+            self.memory.add_assistant(verdict.refusal_message)
+            return Answer(text=verdict.refusal_message, confidence="low")
+
+        rewrite = self.rewriter.rewrite(question, memory=self.memory)
+        queries = [rewrite.rewritten] + rewrite.variants
+
+        retrieval = self.retriever.retrieve(
+            queries=queries, top_k=self.top_k, candidate_k=self.candidate_k,
+        )
+        result = self.synthesizer.synthesize(
+            question=question,
+            retrieved=retrieval.chunks,
+            canonical_chunks=[],  # canonical force-inject lands once M5 ingestion populates them
+            history=self.memory.recent(n=6),
+        )
+
+        self.memory.add_user(question)
+        self.memory.add_assistant(result.text)
+
+        return Answer(
+            text=result.text, citations=result.citations,
+            tool_calls=[], confidence=result.confidence,
+        )
+
+    def ask_stream(self, question: str) -> Iterator[StreamChunk]:
+        verdict = self.classifier.classify(question)
+        if not verdict.on_topic:
+            self.memory.add_user(question)
+            self.memory.add_assistant(verdict.refusal_message)
+            yield StreamChunk(delta=verdict.refusal_message)
+            return
+
+        rewrite = self.rewriter.rewrite(question, memory=self.memory)
+        queries = [rewrite.rewritten] + rewrite.variants
+        retrieval = self.retriever.retrieve(
+            queries=queries, top_k=self.top_k, candidate_k=self.candidate_k,
+        )
+        full_text = ""
+        for delta in self.synthesizer.synthesize_stream(
+            question=question, retrieved=retrieval.chunks,
+            canonical_chunks=[], history=self.memory.recent(n=6),
+        ):
+            full_text += delta
+            yield StreamChunk(delta=delta)
+
+        self.memory.add_user(question)
+        self.memory.add_assistant(full_text)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_api_chatqec.py tests/test_api.py -v
+```
+
+Expected: 4 new tests + the M1 stub tests need updating. **The M1 `test_api.py` will fail** because the stub answer no longer says "stub" — update it now.
+
+- [ ] **Step 5: Update `tests/test_api.py` to match the wired-up class**
+
+Replace `tests/test_api.py` with:
+
+```python
+"""Smoke tests for the public ChatQEC class via `from_config`.
+
+Heavy components (Anthropic, Qdrant) are not exercised here — see test_api_chatqec.py
+for end-to-end pipeline tests with mocks.
+"""
+
+import pytest
+
+from chatqec.api import Answer, Citation
+
+
+def test_answer_is_immutable():
+    a = Answer(text="hello")
+    import dataclasses
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        a.text = "x"  # type: ignore[misc]
+
+
+def test_answer_defaults():
+    a = Answer(text="hello")
+    assert a.citations == []
+    assert a.tool_calls == []
+    assert a.confidence == "low"
+
+
+def test_citation_is_immutable():
+    c = Citation(source_id="s", chunk_id="c", title="t", url="u")
+    import dataclasses
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        c.title = "x"  # type: ignore[misc]
+```
+
+- [ ] **Step 6: Run all api tests**
+
+```bash
+uv run pytest tests/test_api.py tests/test_api_chatqec.py -v
+```
+
+Expected: 7 passed.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/chatqec/api.py tests/test_api.py tests/test_api_chatqec.py
+git commit -m "feat(api): wire ChatQEC class end-to-end (classifier→rewriter→retriever→synthesizer)"
+```
+
+---
+
+### Task 7.8 — CLI: wire `ask`, add `chat` interactive REPL
+
+**Files:**
+- Modify: `src/chatqec/cli.py`
+- Create: `tests/test_cli_chat.py`
+
+- [ ] **Step 1: Write failing CLI tests**
+
+Create `tests/test_cli_chat.py`:
+
+```python
+"""CLI tests for `chatqec ask` (wired) and `chatqec chat` (REPL)."""
+
+from unittest.mock import MagicMock
+
+from click.testing import CliRunner
+
+from chatqec.api import Answer
+from chatqec.cli import main
+
+
+def test_ask_uses_real_pipeline(monkeypatch):
+    bot = MagicMock()
+    bot.ask.return_value = Answer(text="Surface code intro.",
+                                  confidence="medium")
+    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda: bot)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["ask", "What is the surface code?"])
+    assert result.exit_code == 0
+    assert "Surface code intro." in result.output
+    bot.ask.assert_called_once_with("What is the surface code?")
+
+
+def test_chat_repl_handles_single_turn(monkeypatch):
+    bot = MagicMock()
+    bot.ask.return_value = Answer(text="Reply.", confidence="medium")
+    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda: bot)
+
+    runner = CliRunner()
+    # Provide "hello\n/quit\n" as input
+    result = runner.invoke(main, ["chat"], input="hello\n/quit\n")
+    assert result.exit_code == 0
+    assert "Reply." in result.output
+
+
+def test_chat_repl_quit_command_exits_cleanly(monkeypatch):
+    bot = MagicMock()
+    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda: bot)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["chat"], input="/quit\n")
+    assert result.exit_code == 0
+    bot.ask.assert_not_called()
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_cli_chat.py -v
+```
+
+Expected: `chat` command not found or `ask` still returns stub.
+
+- [ ] **Step 3: Add `_build_chatqec` helper + wire `ask` + add `chat` to `src/chatqec/cli.py`**
+
+Replace the existing `ask` command and add a `chat` command:
+
+```python
+def _build_chatqec() -> ChatQEC:
+    """Build a ChatQEC instance from on-disk config. Overridable in tests."""
+    return ChatQEC.from_config()
+
+
+@main.command()
+@click.argument("question", nargs=-1, required=True)
+def ask(question: tuple[str, ...]) -> None:
+    """Answer a single QEC question (one-shot)."""
+    bot = _build_chatqec()
+    answer = bot.ask(" ".join(question))
+    click.echo(answer.text)
+    if answer.citations:
+        click.echo("\nSources:")
+        for c in answer.citations:
+            click.echo(f"  - [{c.source_id}] {c.title}")
+    click.echo(f"\n(confidence: {answer.confidence})")
+
+
+@main.command()
+def chat() -> None:
+    """Interactive REPL chat. Type /quit to exit, /clear to wipe memory."""
+    bot = _build_chatqec()
+    click.echo("ChatQEC interactive chat. Type /quit to exit.")
+    while True:
+        try:
+            line = click.prompt("you", prompt_suffix="> ", default="", show_default=False)
+        except (click.exceptions.Abort, EOFError):
+            click.echo("\nbye.")
+            return
+        line = line.strip()
+        if not line:
+            continue
+        if line == "/quit":
+            click.echo("bye.")
+            return
+        if line == "/clear":
+            bot.memory.clear()
+            click.echo("(memory cleared)")
+            continue
+        answer = bot.ask(line)
+        click.echo(f"chatqec> {answer.text}")
+        if answer.citations:
+            click.echo(f"  sources: {', '.join(c.source_id for c in answer.citations)}")
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_cli_chat.py -v
+```
+
+Expected: 3 passed.
+
+- [ ] **Step 5: Local smoke test (real Anthropic + Qdrant — skip if no API key)**
+
+```bash
+export ANTHROPIC_API_KEY=...
+export GEMINI_API_KEY=...
+docker compose up -d
+uv run chatqec ask "What is the surface code?"
+docker compose down
+```
+
+Expected: a cited QEC answer streamed from Claude Sonnet.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/cli.py tests/test_cli_chat.py
+git commit -m "feat(cli): wire 'ask' to real pipeline; add 'chat' interactive REPL"
+```
+
+---
+
+### Task 7.9 — CHANGELOG, full suite, push
+
+**Files:**
+- Modify: `CHANGELOG.md`
+
+- [ ] **Step 1: Append M7 to `CHANGELOG.md`** (under `## [Unreleased] → ### Added`):
+
+```markdown
+- Conversation & synthesis layer (no tools yet — Stim lands in M8):
+  - `ConversationMemory` for in-session message history
+  - `OffTopicClassifier` (Haiku) pre-filter that refuses non-QEC queries cheaply
+  - `QueryRewriter` (Haiku) for pronoun resolution + 2–3 retrieval variants
+  - System prompt + context assembler (numbered `[^N]` footnote scheme)
+  - `Synthesizer` (Sonnet) with `.synthesize()` and `.synthesize_stream()`
+  - Footnote-marker citation extraction → `Citation` objects
+  - Confidence heuristic: high (≥3 citations) / medium / low (no context)
+- `ChatQEC` public class fully wired (`from_config()` factory + explicit-injection constructor)
+- CLI:
+  - `chatqec ask "..."` runs the real pipeline and prints citations
+  - `chatqec chat` interactive REPL with `/quit` and `/clear` commands
+```
+
+- [ ] **Step 2: Run full suite + lint + canonical validate**
+
+```bash
+uv run pytest -v
+uv run ruff check src tests
+uv run mypy src
+uv run chatqec canonical validate
+```
+
+Expected: all green. Total tests after M7: ≥152 (prior: 123 + M7: 29).
+
+- [ ] **Step 3: Commit and push**
+
+```bash
+git add CHANGELOG.md
+git commit -m "docs(M7): update CHANGELOG for conversation + synthesis pipeline"
+git push origin main
+```
+
+Expected: GitLab pipeline runs lint, validate-canonical, test — all green.
+
+---
+
+## Milestone 7 — exit checklist
+
+- [ ] `ConversationMemory` records turns; `recent(n)` returns last N
+- [ ] `OffTopicClassifier` refuses non-QEC queries; conservative on malformed Haiku output
+- [ ] `QueryRewriter` returns rewritten query + variants + is_followup; falls back to passthrough on bad JSON
+- [ ] System prompt requires citations; context block numbers chunks from 1; canonical chunks first
+- [ ] `extract_citations` parses `[^N]` markers, dedups, ignores out-of-range
+- [ ] `Synthesizer.synthesize()` returns `SynthesisResult` with text + citations + confidence + token usage
+- [ ] `Synthesizer.synthesize_stream()` yields text deltas
+- [ ] `ChatQEC.ask("q")` end-to-ends; refusals skip retriever + synthesizer
+- [ ] `ChatQEC.ask_stream("q")` yields `StreamChunk(delta=...)` items
+- [ ] `chatqec ask` and `chatqec chat` work via mocked tests; smoke-tested via real Claude (manual)
+- [ ] ≥29 new tests; full suite ≥152 passing
+- [ ] CHANGELOG updated
+- [ ] GitLab CI green on `main`
+
+**🛑 PAUSE — push to GitLab and review before requesting Milestone 8.**
+
+---
