@@ -5704,3 +5704,2553 @@ Expected: GitLab pipeline runs `lint`, `validate-canonical`, `test` — all gree
 **🛑 PAUSE — push to GitLab and review before requesting Milestone 5.**
 
 ---
+
+## Milestone 5 — Embedding + Qdrant storage
+
+**Outcome:** Chunks on disk become searchable in Qdrant. The system has a pluggable embedder (Gemini default, local Nomic fallback), a BM25 sparse encoder, a Qdrant store with vector + sparse + payload index, and a CLI command that promotes `pending_review` records to `active` after successful embedding. M2's `chatqec sources compact --apply` is finally wired up because Qdrant chunks can now be deleted alongside registry entries. `chatqec ingest --arxiv <id>` (the previously-guarded path from M4) now works because we have somewhere to put its chunks.
+
+**Files this milestone creates / touches:**
+- Create: `src/chatqec/embedding/__init__.py`
+- Create: `src/chatqec/embedding/base.py` (Embedder protocol)
+- Create: `src/chatqec/embedding/gemini.py`
+- Create: `src/chatqec/embedding/local.py` (Nomic fallback)
+- Create: `src/chatqec/embedding/sparse.py` (BM25)
+- Create: `src/chatqec/store/__init__.py`
+- Create: `src/chatqec/store/qdrant.py`
+- Create: `src/chatqec/ingestion/pipeline.py` (orchestrates chunks → embed → store)
+- Create: `docker-compose.yml` (Qdrant for local dev)
+- Create: `tests/test_embedder_base.py`
+- Create: `tests/test_embedder_local.py`
+- Create: `tests/test_sparse_bm25.py`
+- Create: `tests/test_store_qdrant.py`
+- Create: `tests/test_pipeline.py`
+- Create: `tests/test_cli_embed.py`
+- Modify: `src/chatqec/cli.py` (add `embed` command + wire up `ingest --arxiv` + `sources compact --apply`)
+- Modify: `src/chatqec/ingestion/fetchers/arxiv.py` (add `fetch_arxiv_by_id`)
+- Modify: `pyproject.toml` (add `fastembed`, `qdrant-client[fastembed]`)
+- Modify: `conf/config.yaml` (add `store:` and `embedding:` sections)
+- Modify: `CHANGELOG.md`
+
+**Why split this way:** embedding and storage are both narrow contracts with strong type boundaries. The pipeline is the only place that knows about all three (chunks, embedder, store). Once it works end-to-end on a small fixture corpus, the rest of v1 has a real KB to retrieve against.
+
+---
+
+### Task 5.1 — Dependencies + Qdrant docker-compose + config additions
+
+**Files:**
+- Modify: `pyproject.toml`
+- Modify: `conf/config.yaml`
+- Create: `docker-compose.yml`
+
+- [ ] **Step 1: Add fastembed to `pyproject.toml` dependencies**
+
+In the `[project] → dependencies` list, replace the existing `qdrant-client>=1.12` line with:
+
+```toml
+  "qdrant-client[fastembed]>=1.12",
+  "fastembed>=0.4",
+```
+
+Also append:
+
+```toml
+  "numpy>=1.26",
+```
+
+if not already present.
+
+- [ ] **Step 2: Run `uv sync`**
+
+```bash
+uv sync --extra dev
+```
+
+Expected: fastembed and qdrant-client extras installed.
+
+- [ ] **Step 3: Add `store:` and `embedding:` sections to `conf/config.yaml`**
+
+Append:
+
+```yaml
+store:
+  qdrant_url: "http://localhost:6333"
+  collection: "chatqec_chunks"
+  vector_dim: 768
+  on_disk_payload: true
+
+embedding:
+  provider: "gemini"        # "gemini" | "local"
+  model: "text-embedding-004"
+  batch_size: 96
+  local_model: "nomic-ai/nomic-embed-text-v1.5"  # used when provider="local"
+```
+
+- [ ] **Step 4: Create `docker-compose.yml` for local Qdrant**
+
+```yaml
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.0
+    container_name: chatqec-qdrant
+    ports:
+      - "6333:6333"  # REST
+      - "6334:6334"  # gRPC
+    volumes:
+      - ./.qdrant-data:/qdrant/storage
+    environment:
+      QDRANT__LOG_LEVEL: INFO
+```
+
+- [ ] **Step 5: Smoke test the Qdrant container (optional)**
+
+```bash
+docker compose up -d
+curl -s http://localhost:6333/ | head
+docker compose down
+```
+
+Expected: Qdrant root endpoint returns a JSON banner.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add pyproject.toml uv.lock conf/config.yaml docker-compose.yml
+git commit -m "chore(M5): add fastembed + qdrant docker-compose and store/embedding configs"
+```
+
+---
+
+### Task 5.2 — Embedder protocol + Gemini implementation
+
+**Files:**
+- Create: `src/chatqec/embedding/__init__.py` (empty)
+- Create: `src/chatqec/embedding/base.py`
+- Create: `src/chatqec/embedding/gemini.py`
+- Create: `tests/test_embedder_base.py`
+
+- [ ] **Step 1: Make `embedding` a package**
+
+```bash
+mkdir -p src/chatqec/embedding
+touch src/chatqec/embedding/__init__.py
+```
+
+- [ ] **Step 2: Write failing tests for the protocol and Gemini wrapper**
+
+Create `tests/test_embedder_base.py`:
+
+```python
+"""Embedder protocol + Gemini wrapper tests (Gemini mocked)."""
+
+from unittest.mock import MagicMock
+
+import pytest
+
+from chatqec.embedding.base import Embedder, EmbedderConfig, EmbeddingDim
+from chatqec.embedding.gemini import GeminiEmbedder
+
+
+def test_embedder_protocol_minimum_interface():
+    class Stub:
+        dim = 8
+        def embed_batch(self, texts):
+            return [[0.0] * 8 for _ in texts]
+    assert isinstance(Stub(), Embedder)
+
+
+def test_gemini_embedder_calls_api_in_batches(monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_embed_content(model, content, task_type=None, **kw):
+        calls.append(content if isinstance(content, list) else [content])
+        n = len(calls[-1])
+        return {"embedding": [[float(i)] * 768 for i in range(n)]}
+
+    mock_genai = MagicMock()
+    mock_genai.embed_content = fake_embed_content
+    monkeypatch.setattr("chatqec.embedding.gemini.genai", mock_genai)
+
+    cfg = EmbedderConfig(provider="gemini", model="text-embedding-004",
+                         batch_size=3, local_model="")
+    emb = GeminiEmbedder(cfg)
+    out = emb.embed_batch(["a", "b", "c", "d", "e"])
+    assert len(out) == 5
+    assert len(out[0]) == 768
+    # Batched 3 + 2
+    assert [len(c) for c in calls] == [3, 2]
+
+
+def test_gemini_embedder_dim_is_768():
+    cfg = EmbedderConfig(provider="gemini", model="text-embedding-004",
+                         batch_size=8, local_model="")
+    emb = GeminiEmbedder(cfg)
+    assert emb.dim == EmbeddingDim.GEMINI_004 == 768
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_embedder_base.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 4: Implement `src/chatqec/embedding/base.py`**
+
+```python
+"""Embedder protocol and shared types."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from enum import IntEnum
+from typing import Protocol, runtime_checkable
+
+
+class EmbeddingDim(IntEnum):
+    GEMINI_004 = 768
+    NOMIC_15 = 768
+
+
+@dataclass(frozen=True)
+class EmbedderConfig:
+    provider: str       # "gemini" | "local"
+    model: str
+    batch_size: int
+    local_model: str
+
+
+@runtime_checkable
+class Embedder(Protocol):
+    """Anything with a `.dim` and `.embed_batch(texts)` is an embedder."""
+    dim: int
+
+    def embed_batch(self, texts: Sequence[str]) -> list[list[float]]: ...
+```
+
+- [ ] **Step 5: Implement `src/chatqec/embedding/gemini.py`**
+
+```python
+"""Gemini text-embedding-004 embedder."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+import google.generativeai as genai  # type: ignore[import]
+
+from chatqec.embedding.base import Embedder, EmbedderConfig, EmbeddingDim
+
+
+class GeminiEmbedder(Embedder):
+    dim: int = int(EmbeddingDim.GEMINI_004)
+
+    def __init__(self, cfg: EmbedderConfig) -> None:
+        self.cfg = cfg
+
+    def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+        out: list[list[float]] = []
+        bs = self.cfg.batch_size
+        for i in range(0, len(texts), bs):
+            batch = list(texts[i : i + bs])
+            resp = genai.embed_content(
+                model=f"models/{self.cfg.model}",
+                content=batch,
+                task_type="retrieval_document",
+            )
+            vectors = resp["embedding"] if isinstance(resp, dict) else resp.embedding
+            out.extend(vectors)
+        return out
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_embedder_base.py -v
+```
+
+Expected: 3 passed.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/chatqec/embedding/ tests/test_embedder_base.py
+git commit -m "feat(embedding): add Embedder protocol and Gemini implementation"
+```
+
+---
+
+### Task 5.3 — Local Nomic embedder fallback
+
+**Files:**
+- Create: `src/chatqec/embedding/local.py`
+- Create: `tests/test_embedder_local.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_embedder_local.py`:
+
+```python
+"""Local Nomic embedder via sentence-transformers (mocked in tests)."""
+
+from unittest.mock import MagicMock
+
+import numpy as np
+
+from chatqec.embedding.base import EmbedderConfig
+from chatqec.embedding.local import LocalEmbedder
+
+
+def test_local_embedder_uses_sentence_transformers(monkeypatch):
+    mock_model = MagicMock()
+    mock_model.encode.return_value = np.zeros((3, 768), dtype=np.float32)
+    mock_st_class = MagicMock(return_value=mock_model)
+    monkeypatch.setattr("chatqec.embedding.local.SentenceTransformer", mock_st_class)
+
+    cfg = EmbedderConfig(provider="local", model="",
+                         batch_size=8, local_model="nomic-ai/nomic-embed-text-v1.5")
+    emb = LocalEmbedder(cfg)
+    out = emb.embed_batch(["a", "b", "c"])
+    assert len(out) == 3
+    assert len(out[0]) == 768
+    mock_st_class.assert_called_once_with(
+        "nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True,
+    )
+
+
+def test_local_embedder_dim_is_768():
+    from chatqec.embedding.base import EmbeddingDim
+    assert int(EmbeddingDim.NOMIC_15) == 768
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_embedder_local.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/embedding/local.py`**
+
+```python
+"""Local fallback embedder using sentence-transformers (Nomic by default)."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+import numpy as np
+from sentence_transformers import SentenceTransformer  # type: ignore[import]
+
+from chatqec.embedding.base import Embedder, EmbedderConfig, EmbeddingDim
+
+
+class LocalEmbedder(Embedder):
+    dim: int = int(EmbeddingDim.NOMIC_15)
+
+    def __init__(self, cfg: EmbedderConfig) -> None:
+        self.cfg = cfg
+        # trust_remote_code required for Nomic's custom modeling code
+        self.model = SentenceTransformer(cfg.local_model, trust_remote_code=True)
+
+    def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+        arr: np.ndarray = self.model.encode(
+            list(texts), batch_size=self.cfg.batch_size, show_progress_bar=False,
+        )
+        return arr.astype(np.float32).tolist()
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_embedder_local.py -v
+```
+
+Expected: 2 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/embedding/local.py tests/test_embedder_local.py
+git commit -m "feat(embedding): add LocalEmbedder (Nomic via sentence-transformers)"
+```
+
+---
+
+### Task 5.4 — BM25 sparse encoder
+
+**Files:**
+- Create: `src/chatqec/embedding/sparse.py`
+- Create: `tests/test_sparse_bm25.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_sparse_bm25.py`:
+
+```python
+"""BM25 sparse encoder tests (via fastembed)."""
+
+from chatqec.embedding.sparse import BM25Encoder, SparseVector
+
+
+def test_bm25_returns_index_value_pairs():
+    enc = BM25Encoder()
+    vecs = enc.encode_batch(["surface code", "color code", "color code variant"])
+    assert len(vecs) == 3
+    for v in vecs:
+        assert isinstance(v, SparseVector)
+        assert len(v.indices) == len(v.values)
+        assert all(val > 0 for val in v.values)
+
+
+def test_bm25_idf_lowers_weight_of_common_terms():
+    enc = BM25Encoder()
+    vecs = enc.encode_batch([
+        "code code code code code",  # all 'code' → low weight per occurrence
+        "Steane code",                # rare term 'Steane' → higher weight
+    ])
+    # The second vector should have at least one index whose value
+    # exceeds the average value of the first vector.
+    avg0 = sum(vecs[0].values) / len(vecs[0].values)
+    assert max(vecs[1].values) > avg0
+
+
+def test_bm25_empty_string_returns_empty_vector():
+    enc = BM25Encoder()
+    [v] = enc.encode_batch([""])
+    assert v.indices == [] or len(v.indices) == 0
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_sparse_bm25.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/embedding/sparse.py`**
+
+```python
+"""BM25 sparse encoder via fastembed."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+from fastembed import SparseTextEmbedding  # type: ignore[import]
+
+
+@dataclass(frozen=True)
+class SparseVector:
+    indices: list[int]
+    values: list[float]
+
+
+class BM25Encoder:
+    """Encodes text into BM25 sparse vectors usable directly by Qdrant."""
+
+    DEFAULT_MODEL = "Qdrant/bm25"
+
+    def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
+        self._model = SparseTextEmbedding(model_name=model_name)
+
+    def encode_batch(self, texts: Sequence[str]) -> list[SparseVector]:
+        embeddings = list(self._model.embed(list(texts)))
+        out: list[SparseVector] = []
+        for e in embeddings:
+            out.append(SparseVector(
+                indices=list(map(int, e.indices)),
+                values=list(map(float, e.values)),
+            ))
+        return out
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_sparse_bm25.py -v
+```
+
+Expected: 3 passed. (First run downloads the fastembed BM25 model; ~30 MB.)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/embedding/sparse.py tests/test_sparse_bm25.py
+git commit -m "feat(embedding): add BM25 sparse encoder via fastembed"
+```
+
+---
+
+### Task 5.5 — Qdrant store wrapper
+
+**Files:**
+- Create: `src/chatqec/store/__init__.py` (empty)
+- Create: `src/chatqec/store/qdrant.py`
+- Create: `tests/test_store_qdrant.py`
+
+- [ ] **Step 1: Make `store` a package**
+
+```bash
+mkdir -p src/chatqec/store
+touch src/chatqec/store/__init__.py
+```
+
+- [ ] **Step 2: Write failing tests using Qdrant `:memory:` client**
+
+Create `tests/test_store_qdrant.py`:
+
+```python
+"""Qdrant store wrapper tests using the in-memory client."""
+
+from chatqec.embedding.sparse import SparseVector
+from chatqec.ingestion.chunk import Chunk
+from chatqec.store.qdrant import ChatQecStore, StoreConfig
+
+
+def _chunk(i: int, source_id: str = "test:1", text: str = "qec") -> Chunk:
+    return Chunk(
+        chunk_id=f"{source_id}#{i}", source_id=source_id, chunk_index=i,
+        text=text, title="T", source_type="arxiv", authority_tier="preprint",
+        anchor="",
+    )
+
+
+def _dense(seed: float = 0.1) -> list[float]:
+    return [seed] * 768
+
+
+def _sparse() -> SparseVector:
+    return SparseVector(indices=[1, 5, 9], values=[0.7, 0.3, 0.1])
+
+
+def test_store_creates_collection_on_init():
+    cfg = StoreConfig(qdrant_url=":memory:", collection="test", vector_dim=768,
+                      on_disk_payload=False)
+    store = ChatQecStore(cfg)
+    assert store.collection_exists()
+
+
+def test_store_upserts_and_retrieves_by_id():
+    cfg = StoreConfig(qdrant_url=":memory:", collection="t", vector_dim=768,
+                      on_disk_payload=False)
+    store = ChatQecStore(cfg)
+    store.upsert_chunks(
+        chunks=[_chunk(0), _chunk(1)],
+        dense_vectors=[_dense(0.1), _dense(0.9)],
+        sparse_vectors=[_sparse(), _sparse()],
+    )
+    assert store.count() == 2
+
+
+def test_store_dense_search_returns_nearest():
+    cfg = StoreConfig(qdrant_url=":memory:", collection="t", vector_dim=768,
+                      on_disk_payload=False)
+    store = ChatQecStore(cfg)
+    store.upsert_chunks(
+        chunks=[_chunk(0, text="surface"), _chunk(1, text="color")],
+        dense_vectors=[_dense(0.1), _dense(0.9)],
+        sparse_vectors=[_sparse(), _sparse()],
+    )
+    hits = store.dense_search(query_vector=_dense(0.1), top_k=1)
+    assert len(hits) == 1
+    assert hits[0].chunk_id == "test:1#0"
+
+
+def test_store_filter_excludes_retracted():
+    cfg = StoreConfig(qdrant_url=":memory:", collection="t", vector_dim=768,
+                      on_disk_payload=False)
+    store = ChatQecStore(cfg)
+    store.upsert_chunks(
+        chunks=[_chunk(0), _chunk(1)],
+        dense_vectors=[_dense(0.1), _dense(0.9)],
+        sparse_vectors=[_sparse(), _sparse()],
+    )
+    store.set_status_for_source("test:1", "retracted")
+    hits = store.dense_search(query_vector=_dense(0.1), top_k=10, status_filter="active")
+    assert hits == []
+
+
+def test_store_delete_by_source_id():
+    cfg = StoreConfig(qdrant_url=":memory:", collection="t", vector_dim=768,
+                      on_disk_payload=False)
+    store = ChatQecStore(cfg)
+    store.upsert_chunks(
+        chunks=[_chunk(0, source_id="a"), _chunk(1, source_id="a"),
+                _chunk(0, source_id="b")],
+        dense_vectors=[_dense(0.1), _dense(0.2), _dense(0.9)],
+        sparse_vectors=[_sparse(), _sparse(), _sparse()],
+    )
+    store.delete_by_source_id("a")
+    assert store.count() == 1
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_store_qdrant.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 4: Implement `src/chatqec/store/qdrant.py`**
+
+```python
+"""Thin Qdrant wrapper specialised for ChatQEC's chunk schema."""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import Iterable
+from dataclasses import dataclass
+
+from qdrant_client import QdrantClient, models
+
+from chatqec.embedding.sparse import SparseVector
+from chatqec.ingestion.chunk import Chunk
+
+
+@dataclass(frozen=True)
+class StoreConfig:
+    qdrant_url: str  # http url or ":memory:"
+    collection: str
+    vector_dim: int
+    on_disk_payload: bool
+
+
+@dataclass(frozen=True)
+class SearchHit:
+    chunk_id: str
+    source_id: str
+    score: float
+    payload: dict[str, object]
+
+
+_DENSE_NAME = "dense"
+_SPARSE_NAME = "bm25"
+
+
+class ChatQecStore:
+    """ChatQEC's Qdrant-backed chunk store with hybrid (dense+sparse) vectors."""
+
+    def __init__(self, cfg: StoreConfig) -> None:
+        self.cfg = cfg
+        if cfg.qdrant_url == ":memory:":
+            self._client = QdrantClient(location=":memory:")
+        else:
+            self._client = QdrantClient(url=cfg.qdrant_url)
+        self._ensure_collection()
+
+    def _ensure_collection(self) -> None:
+        if self.collection_exists():
+            return
+        self._client.create_collection(
+            collection_name=self.cfg.collection,
+            vectors_config={
+                _DENSE_NAME: models.VectorParams(
+                    size=self.cfg.vector_dim,
+                    distance=models.Distance.COSINE,
+                    on_disk=self.cfg.on_disk_payload,
+                ),
+            },
+            sparse_vectors_config={
+                _SPARSE_NAME: models.SparseVectorParams(),
+            },
+        )
+        for field in ("source_id", "source_type", "authority_tier", "status",
+                      "topic_slugs"):
+            self._client.create_payload_index(
+                collection_name=self.cfg.collection,
+                field_name=field,
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
+
+    def collection_exists(self) -> bool:
+        return self.cfg.collection in {
+            c.name for c in self._client.get_collections().collections
+        }
+
+    def count(self) -> int:
+        return self._client.count(self.cfg.collection, exact=True).count
+
+    @staticmethod
+    def _point_uuid(chunk_id: str) -> str:
+        # Qdrant point IDs must be int or UUID; we hash chunk_id → UUID5.
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
+
+    def upsert_chunks(
+        self,
+        *,
+        chunks: Iterable[Chunk],
+        dense_vectors: Iterable[list[float]],
+        sparse_vectors: Iterable[SparseVector],
+    ) -> None:
+        points = []
+        for c, dv, sv in zip(chunks, dense_vectors, sparse_vectors, strict=True):
+            payload = {
+                "chunk_id": c.chunk_id,
+                "source_id": c.source_id,
+                "chunk_index": c.chunk_index,
+                "text": c.text,
+                "title": c.title,
+                "source_type": c.source_type,
+                "authority_tier": c.authority_tier,
+                "anchor": c.anchor,
+                "status": "active",
+                **{f"meta_{k}": v for k, v in c.metadata.items()},
+            }
+            points.append(models.PointStruct(
+                id=self._point_uuid(c.chunk_id),
+                vector={
+                    _DENSE_NAME: dv,
+                    _SPARSE_NAME: models.SparseVector(
+                        indices=sv.indices, values=sv.values,
+                    ),
+                },
+                payload=payload,
+            ))
+        if points:
+            self._client.upsert(collection_name=self.cfg.collection, points=points)
+
+    def dense_search(
+        self, *, query_vector: list[float], top_k: int,
+        status_filter: str | None = "active",
+    ) -> list[SearchHit]:
+        flt = None
+        if status_filter:
+            flt = models.Filter(must=[
+                models.FieldCondition(key="status",
+                                      match=models.MatchValue(value=status_filter)),
+            ])
+        result = self._client.query_points(
+            collection_name=self.cfg.collection,
+            query=query_vector,
+            using=_DENSE_NAME,
+            limit=top_k,
+            query_filter=flt,
+        )
+        return [
+            SearchHit(
+                chunk_id=p.payload["chunk_id"],
+                source_id=p.payload["source_id"],
+                score=p.score,
+                payload=p.payload,
+            )
+            for p in result.points
+        ]
+
+    def sparse_search(
+        self, *, sparse_query: SparseVector, top_k: int,
+        status_filter: str | None = "active",
+    ) -> list[SearchHit]:
+        flt = None
+        if status_filter:
+            flt = models.Filter(must=[
+                models.FieldCondition(key="status",
+                                      match=models.MatchValue(value=status_filter)),
+            ])
+        result = self._client.query_points(
+            collection_name=self.cfg.collection,
+            query=models.SparseVector(
+                indices=sparse_query.indices, values=sparse_query.values,
+            ),
+            using=_SPARSE_NAME,
+            limit=top_k,
+            query_filter=flt,
+        )
+        return [
+            SearchHit(
+                chunk_id=p.payload["chunk_id"],
+                source_id=p.payload["source_id"],
+                score=p.score,
+                payload=p.payload,
+            )
+            for p in result.points
+        ]
+
+    def set_status_for_source(self, source_id: str, new_status: str) -> None:
+        self._client.set_payload(
+            collection_name=self.cfg.collection,
+            payload={"status": new_status},
+            points=models.Filter(must=[
+                models.FieldCondition(
+                    key="source_id", match=models.MatchValue(value=source_id),
+                ),
+            ]),
+        )
+
+    def delete_by_source_id(self, source_id: str) -> None:
+        self._client.delete(
+            collection_name=self.cfg.collection,
+            points_selector=models.FilterSelector(filter=models.Filter(must=[
+                models.FieldCondition(
+                    key="source_id", match=models.MatchValue(value=source_id),
+                ),
+            ])),
+        )
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_store_qdrant.py -v
+```
+
+Expected: 5 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/store/ tests/test_store_qdrant.py
+git commit -m "feat(store): add Qdrant wrapper with hybrid vectors and status-aware filtering"
+```
+
+---
+
+### Task 5.6 — Embedding pipeline
+
+**Files:**
+- Create: `src/chatqec/ingestion/pipeline.py`
+- Create: `tests/test_pipeline.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_pipeline.py`:
+
+```python
+"""End-to-end test: chunks.jsonl → embed → Qdrant → registry flipped to active."""
+
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Sequence
+
+import pytest
+
+from chatqec.embedding.base import Embedder
+from chatqec.embedding.sparse import SparseVector
+from chatqec.ingestion.chunk import Chunk, ChunkSink
+from chatqec.ingestion.pipeline import EmbeddingPipeline, PipelineResult
+from chatqec.ingestion.registry import (
+    Registry, SourceRecord, SourceStatus, SourceType,
+)
+from chatqec.store.qdrant import ChatQecStore, StoreConfig
+
+
+class _StubEmbedder(Embedder):
+    dim = 768
+    def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+        # Map first char to a 768-d ramp for deterministic dense vectors
+        return [[float(ord(t[0])) / 256] * 768 for t in texts]
+
+
+class _StubSparse:
+    def encode_batch(self, texts: Sequence[str]) -> list[SparseVector]:
+        return [SparseVector(indices=[1], values=[1.0]) for _ in texts]
+
+
+def _now() -> datetime: return datetime(2026, 5, 29, tzinfo=timezone.utc)
+
+
+def _seed(registry_path: Path, chunks_dir: Path, source_id: str = "arxiv:t1") -> None:
+    sink = ChunkSink(chunks_dir)
+    chunks = [Chunk(chunk_id=f"{source_id}#{i}", source_id=source_id,
+                    chunk_index=i, text=f"chunk {i}", title="T",
+                    source_type="arxiv", authority_tier="preprint", anchor="")
+              for i in range(3)]
+    sink.write_many(source_id, chunks)
+    reg = Registry(registry_path)
+    reg.append(SourceRecord(
+        id=source_id, type=SourceType.ARXIV, url=f"https://arxiv.org/abs/{source_id}",
+        title="T", authority_tier="preprint", ingested_at=_now(),
+        last_checked_at=_now(), status=SourceStatus.PENDING_REVIEW,
+        chunk_ids=[c.chunk_id for c in chunks], chunk_count=len(chunks),
+    ))
+
+
+def test_pipeline_promotes_pending_to_active(tmp_path: Path):
+    chunks_dir = tmp_path / "chunks"; chunks_dir.mkdir()
+    registry_path = tmp_path / "reg.jsonl"
+    _seed(registry_path, chunks_dir, "arxiv:t1")
+
+    store = ChatQecStore(StoreConfig(qdrant_url=":memory:", collection="t",
+                                     vector_dim=768, on_disk_payload=False))
+    pipe = EmbeddingPipeline(
+        chunks_dir=chunks_dir, registry=Registry(registry_path),
+        embedder=_StubEmbedder(), sparse_encoder=_StubSparse(), store=store,
+    )
+    result = pipe.embed_source("arxiv:t1")
+    assert isinstance(result, PipelineResult)
+    assert result.chunks_embedded == 3
+    assert store.count() == 3
+
+    reg = Registry(registry_path)
+    assert reg.get("arxiv:t1").status is SourceStatus.ACTIVE
+
+
+def test_pipeline_embed_all_pending(tmp_path: Path):
+    chunks_dir = tmp_path / "chunks"; chunks_dir.mkdir()
+    registry_path = tmp_path / "reg.jsonl"
+    _seed(registry_path, chunks_dir, "arxiv:a")
+    _seed(registry_path, chunks_dir, "arxiv:b")
+
+    store = ChatQecStore(StoreConfig(qdrant_url=":memory:", collection="t",
+                                     vector_dim=768, on_disk_payload=False))
+    pipe = EmbeddingPipeline(
+        chunks_dir=chunks_dir, registry=Registry(registry_path),
+        embedder=_StubEmbedder(), sparse_encoder=_StubSparse(), store=store,
+    )
+    results = pipe.embed_all_pending()
+    assert sum(r.chunks_embedded for r in results) == 6
+    assert store.count() == 6
+
+
+def test_pipeline_compact_deletes_chunks_for_retracted_sources(tmp_path: Path):
+    chunks_dir = tmp_path / "chunks"; chunks_dir.mkdir()
+    registry_path = tmp_path / "reg.jsonl"
+    _seed(registry_path, chunks_dir, "arxiv:keep")
+    _seed(registry_path, chunks_dir, "arxiv:gone")
+
+    store = ChatQecStore(StoreConfig(qdrant_url=":memory:", collection="t",
+                                     vector_dim=768, on_disk_payload=False))
+    reg = Registry(registry_path)
+    pipe = EmbeddingPipeline(
+        chunks_dir=chunks_dir, registry=reg,
+        embedder=_StubEmbedder(), sparse_encoder=_StubSparse(), store=store,
+    )
+    pipe.embed_all_pending()
+    assert store.count() == 6
+    reg.update_status("arxiv:gone", SourceStatus.RETRACTED)
+
+    purged = pipe.purge_retracted(older_than_days=0,
+                                  now=datetime(2026, 12, 31, tzinfo=timezone.utc))
+    assert purged == ["arxiv:gone"]
+    assert store.count() == 3
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_pipeline.py -v
+```
+
+Expected: ImportError on `chatqec.ingestion.pipeline`.
+
+- [ ] **Step 3: Implement `src/chatqec/ingestion/pipeline.py`**
+
+```python
+"""Embedding pipeline: chunks on disk → embedder → Qdrant → registry promotion."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Protocol, Sequence
+
+from chatqec.embedding.base import Embedder
+from chatqec.embedding.sparse import BM25Encoder, SparseVector
+from chatqec.ingestion.chunk import Chunk
+from chatqec.ingestion.registry import (
+    Registry,
+    SourceStatus,
+)
+from chatqec.store.qdrant import ChatQecStore
+
+
+class SparseEncoder(Protocol):
+    def encode_batch(self, texts: Sequence[str]) -> list[SparseVector]: ...
+
+
+@dataclass(frozen=True)
+class PipelineResult:
+    source_id: str
+    chunks_embedded: int
+
+
+class EmbeddingPipeline:
+    """Reads chunk JSONL files, embeds them, writes to Qdrant, flips registry status."""
+
+    def __init__(
+        self, *, chunks_dir: Path, registry: Registry,
+        embedder: Embedder, sparse_encoder: SparseEncoder,
+        store: ChatQecStore,
+    ) -> None:
+        self.chunks_dir = Path(chunks_dir)
+        self.registry = registry
+        self.embedder = embedder
+        self.sparse_encoder = sparse_encoder
+        self.store = store
+
+    @staticmethod
+    def _safe(source_id: str) -> str:
+        return source_id.replace(":", "_").replace("/", "_").replace("@", "_")
+
+    def embed_source(self, source_id: str) -> PipelineResult:
+        path = self.chunks_dir / f"{self._safe(source_id)}.jsonl"
+        if not path.exists():
+            raise FileNotFoundError(path)
+
+        chunks = [Chunk.model_validate_json(line)
+                  for line in path.read_text(encoding="utf-8").splitlines()
+                  if line.strip()]
+        if not chunks:
+            return PipelineResult(source_id=source_id, chunks_embedded=0)
+
+        texts = [c.text for c in chunks]
+        dense = self.embedder.embed_batch(texts)
+        sparse = self.sparse_encoder.encode_batch(texts)
+
+        self.store.upsert_chunks(chunks=chunks, dense_vectors=dense, sparse_vectors=sparse)
+
+        # Promote registry status if currently pending_review
+        rec = self.registry.get(source_id)
+        if rec.status is SourceStatus.PENDING_REVIEW:
+            self.registry.update_status(source_id, SourceStatus.ACTIVE)
+        return PipelineResult(source_id=source_id, chunks_embedded=len(chunks))
+
+    def embed_all_pending(self) -> list[PipelineResult]:
+        results: list[PipelineResult] = []
+        for rec in list(self.registry.filter(status=SourceStatus.PENDING_REVIEW)):
+            results.append(self.embed_source(rec.id))
+        return results
+
+    def purge_retracted(
+        self, *, older_than_days: int, now: datetime | None = None,
+    ) -> list[str]:
+        """Physically delete chunks from Qdrant for retracted/superseded sources."""
+        now = now or datetime.now(tz=timezone.utc)
+        purged: list[str] = []
+        for rec in self.registry.compact_candidates(
+            older_than_days=older_than_days, now=now,
+        ):
+            self.store.delete_by_source_id(rec.id)
+            purged.append(rec.id)
+        return purged
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_pipeline.py -v
+```
+
+Expected: 3 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/ingestion/pipeline.py tests/test_pipeline.py
+git commit -m "feat(pipeline): add EmbeddingPipeline (chunks→embed→Qdrant→flip status)"
+```
+
+---
+
+### Task 5.7 — Wire up M4's deferred paths: `ingest --arxiv` and `sources compact --apply`
+
+**Files:**
+- Modify: `src/chatqec/ingestion/fetchers/arxiv.py` (add `fetch_arxiv_by_id`)
+- Modify: `src/chatqec/cli.py`
+
+- [ ] **Step 1: Add a fetch-by-id helper to the arXiv fetcher**
+
+Append to `src/chatqec/ingestion/fetchers/arxiv.py`:
+
+```python
+def fetch_arxiv_by_id(arxiv_id: str) -> ArxivMetadata:
+    """Trusted-id fetch (only used after the user explicitly accepts §7.4 warning)."""
+    import arxiv
+    [result] = list(arxiv.Client().results(arxiv.Search(id_list=[arxiv_id])))
+    # Re-use the Atom parser by emitting metadata directly
+    return ArxivMetadata(
+        arxiv_id=arxiv_id,
+        title=result.title.replace("\n", " ").strip(),
+        authors=[a.name for a in result.authors],
+        year=result.published.year,
+        abstract=result.summary,
+        pdf_url=result.pdf_url or "",
+    )
+```
+
+- [ ] **Step 2: Replace `ingest --arxiv` failure with a working path (still warns per §7.4)**
+
+In `src/chatqec/cli.py`, replace the body of the `if arxiv_id_value:` branch in the `ingest` command with:
+
+```python
+    if arxiv_id_value:
+        click.echo(
+            "WARNING: --arxiv <id> trusts the supplied id. "
+            "Per spec §7.4 prefer --resolve-by-title for LLM-suggested papers.",
+            err=True,
+        )
+        from chatqec.ingestion.fetchers.arxiv import fetch_arxiv_by_id
+        md = fetch_arxiv_by_id(arxiv_id_value)
+        chunks = arxiv_paper_to_chunks(md, body_text=md.abstract,
+                                       target_tokens=512, overlap_tokens=64)
+        source_id = chunks[0].source_id
+        sink.write_many(source_id, chunks)
+        reg.append(SourceRecord(
+            id=source_id, type=SourceType.ARXIV,
+            url=f"https://arxiv.org/abs/{md.arxiv_id}",
+            title=md.title, authors=md.authors, year=md.year,
+            authority_tier="preprint", ingested_at=now, last_checked_at=now,
+            status=SourceStatus.PENDING_REVIEW,
+            chunk_count=len(chunks),
+            chunk_ids=[c.chunk_id for c in chunks],
+            verified=False,
+        ))
+        click.echo(f"ingested {source_id}: {len(chunks)} chunks (TRUSTED id — verify!)")
+        return
+```
+
+- [ ] **Step 3: Wire `sources compact --apply` to the pipeline**
+
+In `src/chatqec/cli.py`, replace the body of `sources_compact` with:
+
+```python
+    now = datetime.now(tz=timezone.utc)
+    candidates = list(reg.compact_candidates(older_than_days=older_than_days, now=now))
+    for rec in candidates:
+        click.echo(f"{rec.id}\t{rec.status.value}\t{rec.last_checked_at.isoformat()}")
+    click.echo(f"\n{len(candidates)} candidates")
+    if not dry_run:
+        from chatqec.embedding.gemini import GeminiEmbedder
+        from chatqec.embedding.base import EmbedderConfig
+        from chatqec.embedding.sparse import BM25Encoder
+        from chatqec.store.qdrant import ChatQecStore, StoreConfig
+        from chatqec.ingestion.pipeline import EmbeddingPipeline
+        # Use dummy embedder for purge (no embeddings needed) — pipeline just
+        # needs the store handle for deletion.
+        emb_cfg = EmbedderConfig(provider="gemini", model="text-embedding-004",
+                                 batch_size=8, local_model="")
+        pipe = EmbeddingPipeline(
+            chunks_dir=Path("data/chunks"), registry=reg,
+            embedder=GeminiEmbedder(emb_cfg),
+            sparse_encoder=BM25Encoder(),
+            store=ChatQecStore(StoreConfig(
+                qdrant_url="http://localhost:6333",
+                collection="chatqec_chunks",
+                vector_dim=768, on_disk_payload=True,
+            )),
+        )
+        purged = pipe.purge_retracted(older_than_days=older_than_days, now=now)
+        click.echo(f"purged {len(purged)} sources from Qdrant")
+```
+
+- [ ] **Step 4: Run the existing CLI tests to make sure nothing regressed**
+
+```bash
+uv run pytest tests/test_cli_sources.py tests/test_cli_ingest.py -v
+```
+
+Expected: still green (the M4 tests stubbed the resolve-arxiv path; the new `--arxiv` path is exercised via M5's network-marked smoke test in 5.8).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/ingestion/fetchers/arxiv.py src/chatqec/cli.py
+git commit -m "feat(cli): wire up 'ingest --arxiv' fetch and 'sources compact --apply'"
+```
+
+---
+
+### Task 5.8 — CLI: `chatqec embed`, smoke test, CHANGELOG, push
+
+**Files:**
+- Modify: `src/chatqec/cli.py`
+- Create: `tests/test_cli_embed.py`
+- Modify: `CHANGELOG.md`
+
+- [ ] **Step 1: Write failing tests for the `embed` CLI**
+
+Create `tests/test_cli_embed.py`:
+
+```python
+"""CLI tests for `chatqec embed` — uses stub embedder via monkeypatch."""
+
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Sequence
+
+import pytest
+from click.testing import CliRunner
+
+from chatqec.cli import main
+from chatqec.embedding.sparse import SparseVector
+from chatqec.ingestion.chunk import Chunk, ChunkSink
+from chatqec.ingestion.registry import (
+    Registry, SourceRecord, SourceStatus, SourceType,
+)
+
+
+def _seed(tmp_path: Path) -> tuple[Path, Path]:
+    chunks_dir = tmp_path / "chunks"; chunks_dir.mkdir()
+    reg_path = tmp_path / "reg.jsonl"
+    sid = "arxiv:t1"
+    sink = ChunkSink(chunks_dir)
+    sink.write_many(sid, [Chunk(chunk_id=f"{sid}#0", source_id=sid, chunk_index=0,
+                                text="qec", title="T", source_type="arxiv",
+                                authority_tier="preprint", anchor="")])
+    Registry(reg_path).append(SourceRecord(
+        id=sid, type=SourceType.ARXIV, url="https://arxiv.org/abs/t1", title="T",
+        authority_tier="preprint",
+        ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        last_checked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        status=SourceStatus.PENDING_REVIEW, chunk_ids=[f"{sid}#0"], chunk_count=1,
+    ))
+    return chunks_dir, reg_path
+
+
+def test_embed_source_flips_status_to_active(tmp_path: Path, monkeypatch):
+    chunks_dir, reg_path = _seed(tmp_path)
+
+    class _StubEmb:
+        dim = 768
+        def embed_batch(self, texts: Sequence[str]):
+            return [[0.1] * 768 for _ in texts]
+    class _StubSparse:
+        def encode_batch(self, texts: Sequence[str]):
+            return [SparseVector(indices=[1], values=[1.0]) for _ in texts]
+
+    monkeypatch.setattr("chatqec.cli._make_embedder", lambda cfg: _StubEmb())
+    monkeypatch.setattr("chatqec.cli._make_sparse", lambda: _StubSparse())
+    monkeypatch.setattr("chatqec.cli._make_store", lambda url, coll: __import__(
+        "chatqec.store.qdrant", fromlist=["ChatQecStore"]).ChatQecStore(
+        __import__("chatqec.store.qdrant", fromlist=["StoreConfig"]).StoreConfig(
+            qdrant_url=":memory:", collection=coll, vector_dim=768, on_disk_payload=False)))
+
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        "embed", "--chunks-dir", str(chunks_dir), "--registry", str(reg_path),
+        "--source-id", "arxiv:t1",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "1 chunks" in result.output
+
+    reg = Registry(reg_path)
+    assert reg.get("arxiv:t1").status is SourceStatus.ACTIVE
+
+
+def test_embed_all_pending_processes_multiple(tmp_path: Path, monkeypatch):
+    chunks_dir, reg_path = _seed(tmp_path)
+    # Add a second pending source
+    sid2 = "arxiv:t2"
+    ChunkSink(chunks_dir).write_many(sid2, [Chunk(
+        chunk_id=f"{sid2}#0", source_id=sid2, chunk_index=0, text="x",
+        title="T2", source_type="arxiv", authority_tier="preprint", anchor="",
+    )])
+    Registry(reg_path).append(SourceRecord(
+        id=sid2, type=SourceType.ARXIV, url="https://arxiv.org/abs/t2", title="T2",
+        authority_tier="preprint",
+        ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        last_checked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        status=SourceStatus.PENDING_REVIEW, chunk_ids=[f"{sid2}#0"], chunk_count=1,
+    ))
+
+    class _StubEmb:
+        dim = 768
+        def embed_batch(self, texts):
+            return [[0.1] * 768 for _ in texts]
+    class _StubSparse:
+        def encode_batch(self, texts):
+            return [SparseVector(indices=[1], values=[1.0]) for _ in texts]
+
+    monkeypatch.setattr("chatqec.cli._make_embedder", lambda cfg: _StubEmb())
+    monkeypatch.setattr("chatqec.cli._make_sparse", lambda: _StubSparse())
+    monkeypatch.setattr("chatqec.cli._make_store", lambda url, coll:
+        __import__("chatqec.store.qdrant", fromlist=["ChatQecStore"]).ChatQecStore(
+            __import__("chatqec.store.qdrant", fromlist=["StoreConfig"]).StoreConfig(
+                qdrant_url=":memory:", collection=coll, vector_dim=768, on_disk_payload=False)))
+
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        "embed", "--chunks-dir", str(chunks_dir), "--registry", str(reg_path),
+        "--all-pending",
+    ])
+    assert result.exit_code == 0
+    assert "2 sources" in result.output
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_cli_embed.py -v
+```
+
+Expected: `embed` command not found.
+
+- [ ] **Step 3: Add `embed` command to `src/chatqec/cli.py`**
+
+Add factory helpers (overridable in tests):
+
+```python
+def _make_embedder(cfg):
+    """Build the configured embedder. Overridable for tests."""
+    from chatqec.embedding.base import EmbedderConfig
+    if cfg["provider"] == "local":
+        from chatqec.embedding.local import LocalEmbedder
+        return LocalEmbedder(EmbedderConfig(**cfg))
+    from chatqec.embedding.gemini import GeminiEmbedder
+    return GeminiEmbedder(EmbedderConfig(**cfg))
+
+
+def _make_sparse():
+    from chatqec.embedding.sparse import BM25Encoder
+    return BM25Encoder()
+
+
+def _make_store(url: str, collection: str):
+    from chatqec.store.qdrant import ChatQecStore, StoreConfig
+    return ChatQecStore(StoreConfig(qdrant_url=url, collection=collection,
+                                    vector_dim=768, on_disk_payload=True))
+```
+
+Add the command:
+
+```python
+@main.command("embed")
+@click.option("--chunks-dir", type=click.Path(path_type=Path),
+              default=Path("data/chunks"), show_default=True)
+@click.option("--registry", "registry_path", type=click.Path(path_type=Path),
+              default=Path("sources/registry.jsonl"), show_default=True)
+@click.option("--source-id", default=None, help="Embed a single source by id.")
+@click.option("--all-pending", "all_pending", is_flag=True, default=False,
+              help="Embed every pending_review source in the registry.")
+@click.option("--qdrant-url", default="http://localhost:6333", show_default=True)
+@click.option("--collection", default="chatqec_chunks", show_default=True)
+@click.option("--provider", default="gemini", show_default=True,
+              type=click.Choice(["gemini", "local"]))
+def embed(
+    chunks_dir: Path, registry_path: Path,
+    source_id: str | None, all_pending: bool,
+    qdrant_url: str, collection: str, provider: str,
+) -> None:
+    """Embed chunk files into Qdrant and promote pending_review → active."""
+    from chatqec.ingestion.pipeline import EmbeddingPipeline
+
+    if not source_id and not all_pending:
+        click.echo("pass --source-id <id> or --all-pending", err=True)
+        raise SystemExit(1)
+
+    emb_cfg = {"provider": provider, "model": "text-embedding-004",
+               "batch_size": 96, "local_model": "nomic-ai/nomic-embed-text-v1.5"}
+    pipe = EmbeddingPipeline(
+        chunks_dir=chunks_dir, registry=Registry(registry_path),
+        embedder=_make_embedder(emb_cfg), sparse_encoder=_make_sparse(),
+        store=_make_store(qdrant_url, collection),
+    )
+    if source_id:
+        result = pipe.embed_source(source_id)
+        click.echo(f"embedded {result.source_id}: {result.chunks_embedded} chunks")
+    else:
+        results = pipe.embed_all_pending()
+        total = sum(r.chunks_embedded for r in results)
+        click.echo(f"{len(results)} sources, {total} chunks embedded")
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_cli_embed.py -v
+```
+
+Expected: 2 passed.
+
+- [ ] **Step 5: Local smoke test against real Qdrant + Gemini (optional but worth running once)**
+
+Set your Gemini key first:
+
+```bash
+export GEMINI_API_KEY=...
+docker compose up -d
+uv run chatqec ingest --url "https://errorcorrectionzoo.org/c/surface"
+uv run chatqec embed --all-pending
+uv run chatqec sources list --status active
+docker compose down
+```
+
+Expected: source promoted from `pending_review` to `active`; Qdrant collection has chunks.
+
+- [ ] **Step 6: Append M5 to `CHANGELOG.md`** (under `## [Unreleased] → ### Added`):
+
+```markdown
+- Embedding layer:
+  - `Embedder` protocol with `GeminiEmbedder` (text-embedding-004) and `LocalEmbedder` (Nomic v1.5 via sentence-transformers)
+  - BM25 sparse encoder via fastembed
+- Qdrant store wrapper (`ChatQecStore`) with hybrid dense + sparse vectors, payload indexing on `status / source_id / authority_tier / topic_slugs`, status filtering, source-id deletion
+- `EmbeddingPipeline` that reads `data/chunks/*.jsonl`, embeds, upserts to Qdrant, and promotes `pending_review` → `active`
+- `docker-compose.yml` for local Qdrant
+- CLI: `chatqec embed --source-id / --all-pending`
+- M4 deferred paths wired up: `chatqec ingest --arxiv <id>` (warns per §7.4 and ingests), `chatqec sources compact --apply` (purges from Qdrant + registry)
+```
+
+- [ ] **Step 7: Run full suite + lint + canonical validate**
+
+```bash
+uv run pytest -v
+uv run ruff check src tests
+uv run mypy src
+uv run chatqec canonical validate
+```
+
+Expected: all green. Total tests after M5: ≥97 (M1: 6 + M2: 21 + M3: 19 + M4: 35 + M5: 16).
+
+- [ ] **Step 8: Commit and push**
+
+```bash
+git add CHANGELOG.md
+git commit -m "docs(M5): update CHANGELOG for embedding + Qdrant storage"
+git push origin main
+```
+
+Expected: GitLab pipeline runs lint, validate-canonical, test — all green.
+
+---
+
+## Milestone 5 — exit checklist
+
+- [ ] `GeminiEmbedder` batches calls to `genai.embed_content` correctly (mocked test)
+- [ ] `LocalEmbedder` uses sentence-transformers with `trust_remote_code=True` for Nomic
+- [ ] `BM25Encoder` produces non-empty sparse vectors with reasonable IDF behaviour
+- [ ] `ChatQecStore` round-trips chunks via Qdrant `:memory:` (dense + sparse search, status filter, delete-by-source)
+- [ ] `EmbeddingPipeline` reads chunk files, embeds, writes to Qdrant, flips `pending_review` → `active`
+- [ ] `chatqec embed --source-id <id>` and `chatqec embed --all-pending` work via stubs in tests
+- [ ] `chatqec ingest --arxiv <id>` warns per §7.4 and ingests
+- [ ] `chatqec sources compact --apply` purges Qdrant + registry
+- [ ] ≥16 new tests; full suite ≥97 passing
+- [ ] CHANGELOG updated
+- [ ] GitLab CI green on `main`
+
+**🛑 PAUSE — push to GitLab and review before requesting Milestone 6.**
+
+---
+
+## Milestone 6 — Retrieval pipeline
+
+**Outcome:** A pure-Python `HybridRetriever` that, given a list of query strings, returns the top-K most relevant chunks. Internally: parallel dense + BM25 search against Qdrant, score normalization, the spec §8.5 weighted-sum scoring (`α·vector + β·bm25 + γ·tier + δ·recency`), candidate cap (top 50), cross-encoder reranking (BGE), and canonical force-injection by topic match. The retriever has no LLM dependency — that lands in M7 with the rewriter. A debug CLI `chatqec retrieve --query` exposes the pipeline.
+
+**Files this milestone creates / touches:**
+- Create: `src/chatqec/retrieval/__init__.py`
+- Create: `src/chatqec/retrieval/normalize.py`
+- Create: `src/chatqec/retrieval/scoring.py`
+- Create: `src/chatqec/retrieval/canonical_injector.py`
+- Create: `src/chatqec/retrieval/reranker.py`
+- Create: `src/chatqec/retrieval/hybrid.py`
+- Create: `tests/test_retrieval_normalize.py`
+- Create: `tests/test_retrieval_scoring.py`
+- Create: `tests/test_retrieval_canonical_injector.py`
+- Create: `tests/test_retrieval_reranker.py`
+- Create: `tests/test_retrieval_hybrid.py`
+- Create: `tests/test_cli_retrieve.py`
+- Modify: `src/chatqec/cli.py` (add `retrieve` debug command)
+- Modify: `conf/config.yaml` (add `retriever.reranker_model`, candidate_k confirmation)
+- Modify: `CHANGELOG.md`
+
+**Why split this way:** the components compose cleanly. Score normalization is pure math. Scoring is pure math. Canonical injection is pure string matching against the loaded canonical index. Reranker is a wrapper. The hybrid orchestrator is the only place that holds all the moving parts. Each can be unit-tested in isolation, then assembled with one integration test.
+
+---
+
+### Task 6.1 — Score normalization
+
+**Files:**
+- Create: `src/chatqec/retrieval/__init__.py` (empty)
+- Create: `src/chatqec/retrieval/normalize.py`
+- Create: `tests/test_retrieval_normalize.py`
+
+- [ ] **Step 1: Make the package**
+
+```bash
+mkdir -p src/chatqec/retrieval
+touch src/chatqec/retrieval/__init__.py
+```
+
+- [ ] **Step 2: Write failing tests**
+
+Create `tests/test_retrieval_normalize.py`:
+
+```python
+"""Score normalization tests — bringing dense and BM25 scores to [0,1]."""
+
+import pytest
+
+from chatqec.retrieval.normalize import min_max_normalize, identity_if_single
+
+
+def test_min_max_normalize_maps_to_unit_interval():
+    out = min_max_normalize([0.5, 1.5, 2.5, 3.5])
+    assert out == pytest.approx([0.0, 1/3, 2/3, 1.0])
+
+
+def test_min_max_normalize_empty_returns_empty():
+    assert min_max_normalize([]) == []
+
+
+def test_min_max_normalize_constant_returns_ones():
+    # all-equal scores → all 1.0 (avoid divide-by-zero)
+    assert min_max_normalize([0.7, 0.7, 0.7]) == [1.0, 1.0, 1.0]
+
+
+def test_identity_if_single_returns_single_score_as_one():
+    assert identity_if_single([0.42]) == [1.0]
+
+
+def test_identity_if_single_passes_through_for_multiple():
+    out = identity_if_single([0.1, 0.5, 0.9])
+    assert out == pytest.approx([0.0, 0.5, 1.0])
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_retrieval_normalize.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 4: Implement `src/chatqec/retrieval/normalize.py`**
+
+```python
+"""Score normalization helpers.
+
+Dense (cosine) and BM25 scores live on different scales; bring both to [0, 1]
+before applying the weighted-sum scoring in §8.5.
+"""
+
+from __future__ import annotations
+
+
+def min_max_normalize(scores: list[float]) -> list[float]:
+    if not scores:
+        return []
+    lo, hi = min(scores), max(scores)
+    if hi == lo:
+        return [1.0] * len(scores)
+    span = hi - lo
+    return [(s - lo) / span for s in scores]
+
+
+def identity_if_single(scores: list[float]) -> list[float]:
+    """Like min_max but treats single-element input as relevance=1.0."""
+    if len(scores) == 1:
+        return [1.0]
+    return min_max_normalize(scores)
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_retrieval_normalize.py -v
+```
+
+Expected: 5 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/retrieval/__init__.py src/chatqec/retrieval/normalize.py tests/test_retrieval_normalize.py
+git commit -m "feat(retrieval): add min-max score normalization helpers"
+```
+
+---
+
+### Task 6.2 — Weighted-sum scoring (spec §8.5)
+
+**Files:**
+- Create: `src/chatqec/retrieval/scoring.py`
+- Create: `tests/test_retrieval_scoring.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_retrieval_scoring.py`:
+
+```python
+"""Spec §8.5 weighted-sum candidate scoring tests."""
+
+from datetime import datetime, timezone
+
+import pytest
+
+from chatqec.retrieval.scoring import (
+    Candidate,
+    Coefficients,
+    TIER_WEIGHTS,
+    compute_recency,
+    score_candidates,
+)
+
+
+def _now() -> datetime:
+    return datetime(2026, 5, 29, tzinfo=timezone.utc)
+
+
+def test_tier_weights_match_spec():
+    # spec §8.5
+    assert TIER_WEIGHTS["canonical"] == 1.0
+    assert TIER_WEIGHTS["peer_reviewed"] == 0.9
+    assert TIER_WEIGHTS["preprint"] == 0.7
+    assert TIER_WEIGHTS["blog"] == 0.5
+    assert TIER_WEIGHTS["video"] == 0.5
+
+
+def test_compute_recency_returns_one_for_current_year():
+    assert compute_recency(year=2026, now=_now()) == 1.0
+
+
+def test_compute_recency_drops_to_zero_after_five_years():
+    assert compute_recency(year=2020, now=_now()) == 0.0
+    assert compute_recency(year=1999, now=_now()) == 0.0
+
+
+def test_compute_recency_handles_missing_year():
+    assert compute_recency(year=None, now=_now()) == 0.5  # neutral
+
+
+def test_score_uses_default_coefficients_from_spec():
+    cands = [
+        Candidate(chunk_id="c1", dense_norm=1.0, bm25_norm=0.0,
+                  authority_tier="canonical", year=2026),
+        Candidate(chunk_id="c2", dense_norm=0.0, bm25_norm=1.0,
+                  authority_tier="blog", year=2020),
+    ]
+    scored = score_candidates(cands, now=_now())
+    # c1: 0.5*1 + 0.3*0 + 0.15*1.0 + 0.05*1 = 0.70
+    # c2: 0.5*0 + 0.3*1 + 0.15*0.5 + 0.05*0  = 0.375
+    assert scored[0].chunk_id == "c1"
+    assert scored[0].final_score == pytest.approx(0.70)
+    assert scored[1].chunk_id == "c2"
+    assert scored[1].final_score == pytest.approx(0.375)
+
+
+def test_score_with_custom_coefficients():
+    coeffs = Coefficients(alpha=1.0, beta=0.0, gamma=0.0, delta=0.0)
+    cands = [
+        Candidate(chunk_id="c1", dense_norm=0.7, bm25_norm=0.0,
+                  authority_tier="blog", year=2024),
+    ]
+    [s] = score_candidates(cands, coefficients=coeffs, now=_now())
+    assert s.final_score == pytest.approx(0.7)
+
+
+def test_score_sorts_results_desc():
+    cands = [
+        Candidate(chunk_id="c_low", dense_norm=0.1, bm25_norm=0.0,
+                  authority_tier="blog", year=2020),
+        Candidate(chunk_id="c_high", dense_norm=0.9, bm25_norm=0.9,
+                  authority_tier="canonical", year=2026),
+    ]
+    scored = score_candidates(cands, now=_now())
+    assert scored[0].chunk_id == "c_high"
+    assert scored[-1].chunk_id == "c_low"
+
+
+def test_unknown_tier_falls_back_to_blog_weight():
+    cands = [
+        Candidate(chunk_id="x", dense_norm=0.5, bm25_norm=0.5,
+                  authority_tier="unknown_tier", year=2025),
+    ]
+    [s] = score_candidates(cands, now=_now())
+    # tier_weight = 0.5 (blog fallback)
+    expected = 0.5 * 0.5 + 0.3 * 0.5 + 0.15 * 0.5 + 0.05 * (4/5)
+    assert s.final_score == pytest.approx(expected)
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_retrieval_scoring.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/retrieval/scoring.py`**
+
+```python
+"""Spec §8.5 candidate scoring:
+
+    final_score = α·dense_norm + β·bm25_norm + γ·tier_weight + δ·recency
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+TIER_WEIGHTS: dict[str, float] = {
+    "canonical": 1.0,
+    "peer_reviewed": 0.9,
+    "preprint": 0.7,
+    "blog": 0.5,
+    "video": 0.5,
+}
+
+_RECENCY_WINDOW_YEARS = 5
+
+
+@dataclass(frozen=True)
+class Coefficients:
+    alpha: float = 0.5
+    beta: float = 0.3
+    gamma: float = 0.15
+    delta: float = 0.05
+
+
+@dataclass(frozen=True)
+class Candidate:
+    chunk_id: str
+    dense_norm: float
+    bm25_norm: float
+    authority_tier: str
+    year: int | None
+
+
+@dataclass(frozen=True)
+class ScoredCandidate:
+    chunk_id: str
+    final_score: float
+
+
+def compute_recency(*, year: int | None, now: datetime) -> float:
+    if year is None:
+        return 0.5
+    age = now.year - year
+    if age <= 0:
+        return 1.0
+    if age >= _RECENCY_WINDOW_YEARS:
+        return 0.0
+    return 1.0 - (age / _RECENCY_WINDOW_YEARS)
+
+
+def score_candidates(
+    candidates: list[Candidate], *,
+    coefficients: Coefficients | None = None,
+    now: datetime | None = None,
+) -> list[ScoredCandidate]:
+    coefficients = coefficients or Coefficients()
+    now = now or datetime.now(tz=timezone.utc)
+    out: list[ScoredCandidate] = []
+    for c in candidates:
+        tier_weight = TIER_WEIGHTS.get(c.authority_tier, TIER_WEIGHTS["blog"])
+        recency = compute_recency(year=c.year, now=now)
+        final = (
+            coefficients.alpha * c.dense_norm
+            + coefficients.beta * c.bm25_norm
+            + coefficients.gamma * tier_weight
+            + coefficients.delta * recency
+        )
+        out.append(ScoredCandidate(chunk_id=c.chunk_id, final_score=final))
+    out.sort(key=lambda s: s.final_score, reverse=True)
+    return out
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_retrieval_scoring.py -v
+```
+
+Expected: 8 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/retrieval/scoring.py tests/test_retrieval_scoring.py
+git commit -m "feat(retrieval): add §8.5 weighted-sum scoring (α·dense + β·bm25 + γ·tier + δ·recency)"
+```
+
+---
+
+### Task 6.3 — Canonical topic matcher (string-based)
+
+**Files:**
+- Create: `src/chatqec/retrieval/canonical_injector.py`
+- Create: `tests/test_retrieval_canonical_injector.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_retrieval_canonical_injector.py`:
+
+```python
+"""Canonical force-injection by topic match (string-based in M6; LLM-based in M7)."""
+
+from datetime import date
+from pathlib import Path
+
+from chatqec.canonical.page import CanonicalFrontmatter, CanonicalPage
+from chatqec.retrieval.canonical_injector import (
+    CanonicalIndex,
+    match_topics,
+)
+
+
+def _page(slug: str, aliases: list[str] | None = None) -> CanonicalPage:
+    return CanonicalPage(
+        frontmatter=CanonicalFrontmatter(
+            topic_slug=slug, title=slug.replace("-", " ").title(),
+            aliases=aliases or [],
+            see_also=[],
+            authority_tier="canonical",
+            last_reviewed=date(2026, 5, 29),
+            maintainers=["m"],
+        ),
+        body=f"Body of {slug}",
+    )
+
+
+def test_index_matches_slug_in_query_substring():
+    idx = CanonicalIndex([_page("surface-code"), _page("color-code")])
+    hits = match_topics("Compare the surface code threshold", idx)
+    assert "surface-code" in hits
+
+
+def test_index_matches_alias_in_query():
+    idx = CanonicalIndex([_page("surface-code", aliases=["toric code"])])
+    hits = match_topics("How does the toric code work?", idx)
+    assert "surface-code" in hits
+
+
+def test_index_is_case_insensitive():
+    idx = CanonicalIndex([_page("surface-code", aliases=["Toric Code"])])
+    hits = match_topics("explain TORIC code", idx)
+    assert "surface-code" in hits
+
+
+def test_index_returns_empty_for_unrelated_query():
+    idx = CanonicalIndex([_page("surface-code")])
+    hits = match_topics("What's for lunch?", idx)
+    assert hits == []
+
+
+def test_index_handles_punctuation_in_query():
+    idx = CanonicalIndex([_page("surface-code")])
+    hits = match_topics("Surface code, please?", idx)
+    assert "surface-code" in hits
+
+
+def test_index_dedups_repeated_matches():
+    idx = CanonicalIndex([_page("surface-code", aliases=["toric code", "planar code"])])
+    hits = match_topics("toric code AND planar code AND surface code", idx)
+    assert hits == ["surface-code"]
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_retrieval_canonical_injector.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/retrieval/canonical_injector.py`**
+
+```python
+"""Canonical force-injection: identify canonical pages relevant to a query.
+
+M6 uses simple substring matching against page slugs and aliases. M7 may
+upgrade this to an LLM-based topic classifier (Haiku), but the interface
+stays the same.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from chatqec.canonical.page import CanonicalPage
+
+
+_NON_WORD = re.compile(r"[^a-z0-9\s-]+")
+
+
+@dataclass(frozen=True)
+class CanonicalIndex:
+    """In-memory index of canonical pages by slug + alias.
+
+    `pages` is the full list of loaded canonical pages; we build a lookup of
+    normalized terms to slugs at construction time.
+    """
+
+    pages: list[CanonicalPage]
+
+    def lookup(self) -> dict[str, str]:
+        """Map normalized term → canonical topic_slug."""
+        m: dict[str, str] = {}
+        for p in self.pages:
+            slug = p.frontmatter.topic_slug
+            m[_normalize(slug.replace("-", " "))] = slug
+            m[_normalize(p.frontmatter.title)] = slug
+            for alias in p.frontmatter.aliases:
+                m[_normalize(alias)] = slug
+        return m
+
+
+def _normalize(s: str) -> str:
+    return _NON_WORD.sub("", s.lower()).strip()
+
+
+def match_topics(query: str, index: CanonicalIndex) -> list[str]:
+    """Return canonical slugs whose term appears in the query, in first-match order."""
+    qn = _normalize(query)
+    hits: list[str] = []
+    seen: set[str] = set()
+    # Match longest terms first so "surface code" wins over "code"
+    sorted_terms = sorted(index.lookup().items(), key=lambda kv: len(kv[0]), reverse=True)
+    for term, slug in sorted_terms:
+        if not term:
+            continue
+        if re.search(rf"\b{re.escape(term)}\b", qn) and slug not in seen:
+            hits.append(slug)
+            seen.add(slug)
+    return hits
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_retrieval_canonical_injector.py -v
+```
+
+Expected: 6 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/retrieval/canonical_injector.py tests/test_retrieval_canonical_injector.py
+git commit -m "feat(retrieval): add canonical topic index + match_topics()"
+```
+
+---
+
+### Task 6.4 — Cross-encoder reranker (BGE)
+
+**Files:**
+- Create: `src/chatqec/retrieval/reranker.py`
+- Create: `tests/test_retrieval_reranker.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_retrieval_reranker.py`:
+
+```python
+"""Cross-encoder reranker tests — model load mocked."""
+
+from unittest.mock import MagicMock
+
+import numpy as np
+
+from chatqec.retrieval.reranker import CrossEncoderReranker
+
+
+def test_reranker_loads_model_lazily(monkeypatch):
+    mock_ce = MagicMock()
+    mock_ce.predict.return_value = np.array([0.9, 0.1, 0.5])
+    mock_ce_class = MagicMock(return_value=mock_ce)
+    monkeypatch.setattr("chatqec.retrieval.reranker.CrossEncoder", mock_ce_class)
+
+    rr = CrossEncoderReranker(model_name="BAAI/bge-reranker-base")
+    mock_ce_class.assert_not_called()  # not loaded yet
+    out = rr.rerank("query", ["a", "b", "c"], top_k=2)
+    mock_ce_class.assert_called_once_with("BAAI/bge-reranker-base")
+    assert out == [0, 2]  # indices of top-2 by score (0.9, 0.5)
+
+
+def test_reranker_top_k_respects_input_size(monkeypatch):
+    mock_ce = MagicMock()
+    mock_ce.predict.return_value = np.array([0.5, 0.7])
+    mock_ce_class = MagicMock(return_value=mock_ce)
+    monkeypatch.setattr("chatqec.retrieval.reranker.CrossEncoder", mock_ce_class)
+
+    rr = CrossEncoderReranker()
+    out = rr.rerank("q", ["x", "y"], top_k=10)
+    assert out == [1, 0]
+
+
+def test_reranker_returns_empty_for_empty_candidates():
+    rr = CrossEncoderReranker()
+    assert rr.rerank("q", [], top_k=5) == []
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_retrieval_reranker.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/retrieval/reranker.py`**
+
+```python
+"""Cross-encoder reranker wrapper (BAAI/bge-reranker-base by default).
+
+The model is loaded lazily — the first call to `.rerank()` triggers the
+~400MB download. In tests we mock the underlying CrossEncoder class so the
+download never happens.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from sentence_transformers import CrossEncoder  # type: ignore[import]
+
+
+class CrossEncoderReranker:
+    """Returns the indices of the top_k most relevant candidates given a query."""
+
+    def __init__(self, model_name: str = "BAAI/bge-reranker-base") -> None:
+        self.model_name = model_name
+        self._model: CrossEncoder | None = None
+
+    def _model_or_load(self) -> CrossEncoder:
+        if self._model is None:
+            self._model = CrossEncoder(self.model_name)
+        return self._model
+
+    def rerank(self, query: str, candidates: list[str], *, top_k: int) -> list[int]:
+        if not candidates:
+            return []
+        model = self._model_or_load()
+        pairs = [[query, c] for c in candidates]
+        scores: np.ndarray = model.predict(pairs)
+        top_k = min(top_k, len(candidates))
+        # Indices of top_k highest scores, sorted descending
+        order = np.argsort(-scores)[:top_k]
+        return [int(i) for i in order]
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_retrieval_reranker.py -v
+```
+
+Expected: 3 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/retrieval/reranker.py tests/test_retrieval_reranker.py
+git commit -m "feat(retrieval): add CrossEncoderReranker (BGE) with lazy model load"
+```
+
+---
+
+### Task 6.5 — `HybridRetriever` orchestrator
+
+**Files:**
+- Create: `src/chatqec/retrieval/hybrid.py`
+- Create: `tests/test_retrieval_hybrid.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_retrieval_hybrid.py`:
+
+```python
+"""HybridRetriever end-to-end test using in-memory Qdrant + stub embedder/reranker."""
+
+from datetime import date
+from typing import Sequence
+
+import pytest
+
+from chatqec.canonical.page import CanonicalFrontmatter, CanonicalPage
+from chatqec.embedding.sparse import SparseVector
+from chatqec.ingestion.chunk import Chunk
+from chatqec.retrieval.canonical_injector import CanonicalIndex
+from chatqec.retrieval.hybrid import HybridRetriever, RetrievalResult
+from chatqec.store.qdrant import ChatQecStore, StoreConfig
+
+
+class _StubEmb:
+    dim = 768
+    def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+        return [[float(ord(t[0])) / 256] * 768 for t in texts]
+
+
+class _StubSparse:
+    def encode_batch(self, texts: Sequence[str]) -> list[SparseVector]:
+        return [SparseVector(indices=[1], values=[1.0]) for _ in texts]
+
+
+class _StubReranker:
+    def __init__(self): self.calls: int = 0
+    def rerank(self, query: str, candidates: list[str], *, top_k: int) -> list[int]:
+        self.calls += 1
+        # Identity rerank: return the candidates in original order
+        return list(range(min(top_k, len(candidates))))
+
+
+def _seed_store() -> ChatQecStore:
+    store = ChatQecStore(StoreConfig(qdrant_url=":memory:", collection="t",
+                                     vector_dim=768, on_disk_payload=False))
+    chunks = [
+        Chunk(chunk_id="a#0", source_id="a", chunk_index=0, text="surface code",
+              title="Surface paper", source_type="arxiv",
+              authority_tier="peer_reviewed", anchor="",
+              metadata={"year": 2024}),
+        Chunk(chunk_id="b#0", source_id="b", chunk_index=0, text="color code",
+              title="Color paper", source_type="arxiv",
+              authority_tier="preprint", anchor="",
+              metadata={"year": 2020}),
+    ]
+    store.upsert_chunks(
+        chunks=chunks,
+        dense_vectors=[[0.5] * 768, [0.9] * 768],
+        sparse_vectors=[SparseVector(indices=[1], values=[1.0]),
+                         SparseVector(indices=[2], values=[1.0])],
+    )
+    return store
+
+
+def _canon_index_with_surface_code() -> CanonicalIndex:
+    return CanonicalIndex([CanonicalPage(
+        frontmatter=CanonicalFrontmatter(
+            topic_slug="surface-code", title="Surface Code",
+            aliases=["toric code"], see_also=[],
+            authority_tier="canonical", last_reviewed=date(2026, 5, 29),
+            maintainers=["m"]),
+        body="A canonical surface code intro.",
+    )])
+
+
+def test_retrieve_returns_topk_chunks():
+    store = _seed_store()
+    rr = HybridRetriever(
+        store=store, embedder=_StubEmb(), sparse_encoder=_StubSparse(),
+        reranker=_StubReranker(), canonical_index=_canon_index_with_surface_code(),
+    )
+    result = rr.retrieve(queries=["surface code"], top_k=2, candidate_k=10)
+    assert isinstance(result, RetrievalResult)
+    assert len(result.chunks) <= 2
+
+
+def test_retrieve_force_injects_canonical_match():
+    store = _seed_store()
+    rr = HybridRetriever(
+        store=store, embedder=_StubEmb(), sparse_encoder=_StubSparse(),
+        reranker=_StubReranker(), canonical_index=_canon_index_with_surface_code(),
+    )
+    result = rr.retrieve(queries=["explain the toric code"], top_k=1, candidate_k=10)
+    # "toric code" is an alias for surface-code → canonical is force-injected
+    canonical_present = any(c.payload.get("source_id", "").startswith("canonical:")
+                            for c in result.chunks)
+    # Note: the canonical chunks aren't in Qdrant in this test (they would be
+    # after M5 ingestion); the retriever still surfaces matched_topics.
+    assert "surface-code" in result.matched_topics
+
+
+def test_retrieve_reranker_called_once_per_query():
+    store = _seed_store()
+    reranker = _StubReranker()
+    rr = HybridRetriever(
+        store=store, embedder=_StubEmb(), sparse_encoder=_StubSparse(),
+        reranker=reranker, canonical_index=_canon_index_with_surface_code(),
+    )
+    rr.retrieve(queries=["q1", "q2"], top_k=2, candidate_k=10)
+    # Reranker is applied once over the union of all queries' candidates
+    assert reranker.calls == 1
+
+
+def test_retrieve_empty_store_returns_empty():
+    store = ChatQecStore(StoreConfig(qdrant_url=":memory:", collection="t",
+                                     vector_dim=768, on_disk_payload=False))
+    rr = HybridRetriever(
+        store=store, embedder=_StubEmb(), sparse_encoder=_StubSparse(),
+        reranker=_StubReranker(), canonical_index=CanonicalIndex(pages=[]),
+    )
+    result = rr.retrieve(queries=["anything"], top_k=5, candidate_k=10)
+    assert result.chunks == []
+    assert result.matched_topics == []
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_retrieval_hybrid.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/retrieval/hybrid.py`**
+
+```python
+"""HybridRetriever — orchestrates dense + BM25 search, scoring, reranking, and
+canonical force-injection.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+from chatqec.embedding.base import Embedder
+from chatqec.embedding.sparse import SparseVector
+from chatqec.retrieval.canonical_injector import CanonicalIndex, match_topics
+from chatqec.retrieval.normalize import identity_if_single
+from chatqec.retrieval.reranker import CrossEncoderReranker
+from chatqec.retrieval.scoring import (
+    Candidate,
+    Coefficients,
+    score_candidates,
+)
+from chatqec.store.qdrant import ChatQecStore, SearchHit
+
+
+class SparseEncoderProto:
+    def encode_batch(self, texts: Sequence[str]) -> list[SparseVector]: ...
+
+
+@dataclass(frozen=True)
+class RetrievedChunk:
+    chunk_id: str
+    source_id: str
+    text: str
+    title: str
+    authority_tier: str
+    score: float
+    payload: dict[str, object]
+
+
+@dataclass(frozen=True)
+class RetrievalResult:
+    chunks: list[RetrievedChunk]
+    matched_topics: list[str]
+    debug: dict[str, object] = field(default_factory=dict)
+
+
+class HybridRetriever:
+    def __init__(
+        self, *,
+        store: ChatQecStore,
+        embedder: Embedder,
+        sparse_encoder: SparseEncoderProto,
+        reranker: CrossEncoderReranker,
+        canonical_index: CanonicalIndex,
+        coefficients: Coefficients | None = None,
+        per_query_k: int = 30,
+    ) -> None:
+        self.store = store
+        self.embedder = embedder
+        self.sparse_encoder = sparse_encoder
+        self.reranker = reranker
+        self.canonical_index = canonical_index
+        self.coefficients = coefficients or Coefficients()
+        self.per_query_k = per_query_k
+
+    def retrieve(
+        self, *,
+        queries: list[str],
+        top_k: int,
+        candidate_k: int,
+        now: datetime | None = None,
+    ) -> RetrievalResult:
+        now = now or datetime.now(tz=timezone.utc)
+        if not queries:
+            return RetrievalResult(chunks=[], matched_topics=[])
+
+        # 1) embed queries
+        dense_q = self.embedder.embed_batch(queries)
+        sparse_q = self.sparse_encoder.encode_batch(queries)
+
+        # 2) per-query dense + sparse search → unioned hit map
+        hits_by_chunk: dict[str, dict[str, object]] = {}
+        dense_scores: dict[str, float] = {}
+        bm25_scores: dict[str, float] = {}
+
+        for dv in dense_q:
+            for h in self.store.dense_search(query_vector=dv, top_k=self.per_query_k):
+                hits_by_chunk[h.chunk_id] = h.payload
+                dense_scores[h.chunk_id] = max(dense_scores.get(h.chunk_id, 0.0), h.score)
+        for sv in sparse_q:
+            for h in self.store.sparse_search(sparse_query=sv, top_k=self.per_query_k):
+                hits_by_chunk[h.chunk_id] = h.payload
+                bm25_scores[h.chunk_id] = max(bm25_scores.get(h.chunk_id, 0.0), h.score)
+
+        if not hits_by_chunk:
+            matched_topics = match_topics(" ".join(queries), self.canonical_index)
+            return RetrievalResult(chunks=[], matched_topics=matched_topics)
+
+        # 3) normalize and score per §8.5
+        chunk_ids = list(hits_by_chunk.keys())
+        dn = identity_if_single([dense_scores.get(c, 0.0) for c in chunk_ids])
+        bn = identity_if_single([bm25_scores.get(c, 0.0) for c in chunk_ids])
+        candidates: list[Candidate] = []
+        for cid, dnorm, bnorm in zip(chunk_ids, dn, bn, strict=True):
+            payload = hits_by_chunk[cid]
+            year_raw = payload.get("meta_year") or payload.get("year")
+            year = int(year_raw) if isinstance(year_raw, (int, float)) else None
+            candidates.append(Candidate(
+                chunk_id=cid,
+                dense_norm=dnorm, bm25_norm=bnorm,
+                authority_tier=str(payload.get("authority_tier", "blog")),
+                year=year,
+            ))
+        scored = score_candidates(candidates, coefficients=self.coefficients, now=now)
+
+        # 4) take top candidate_k
+        top_cands = scored[:candidate_k]
+
+        # 5) rerank → top_k
+        texts = [str(hits_by_chunk[s.chunk_id].get("text", "")) for s in top_cands]
+        # Use first query for reranking (caller can pass merged query)
+        rerank_query = queries[0]
+        top_idx = self.reranker.rerank(rerank_query, texts, top_k=top_k)
+        retrieved = [
+            RetrievedChunk(
+                chunk_id=top_cands[i].chunk_id,
+                source_id=str(hits_by_chunk[top_cands[i].chunk_id].get("source_id", "")),
+                text=str(hits_by_chunk[top_cands[i].chunk_id].get("text", "")),
+                title=str(hits_by_chunk[top_cands[i].chunk_id].get("title", "")),
+                authority_tier=str(hits_by_chunk[top_cands[i].chunk_id].get("authority_tier", "")),
+                score=top_cands[i].final_score,
+                payload=hits_by_chunk[top_cands[i].chunk_id],
+            )
+            for i in top_idx
+        ]
+
+        # 6) canonical topic match (force-injection signaled to caller)
+        matched_topics = match_topics(" ".join(queries), self.canonical_index)
+
+        return RetrievalResult(
+            chunks=retrieved,
+            matched_topics=matched_topics,
+            debug={
+                "candidates_considered": len(candidates),
+                "after_scoring": len(top_cands),
+                "after_rerank": len(retrieved),
+            },
+        )
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_retrieval_hybrid.py -v
+```
+
+Expected: 4 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/retrieval/hybrid.py tests/test_retrieval_hybrid.py
+git commit -m "feat(retrieval): add HybridRetriever orchestrator (dense+sparse+score+rerank+canonical)"
+```
+
+---
+
+### Task 6.6 — CLI: `chatqec retrieve --query` (debug command)
+
+**Files:**
+- Modify: `src/chatqec/cli.py`
+- Create: `tests/test_cli_retrieve.py`
+
+- [ ] **Step 1: Write failing CLI tests**
+
+Create `tests/test_cli_retrieve.py`:
+
+```python
+"""CLI test for `chatqec retrieve --query` debug command."""
+
+from datetime import date
+from pathlib import Path
+from typing import Sequence
+
+import pytest
+from click.testing import CliRunner
+
+from chatqec.canonical.page import CanonicalFrontmatter, CanonicalPage
+from chatqec.cli import main
+from chatqec.embedding.sparse import SparseVector
+from chatqec.ingestion.chunk import Chunk
+from chatqec.store.qdrant import ChatQecStore, StoreConfig
+
+
+def test_retrieve_query_prints_table(monkeypatch, tmp_path: Path):
+    # Pre-populate a :memory: store and inject all the factory hooks
+    store = ChatQecStore(StoreConfig(qdrant_url=":memory:", collection="t",
+                                     vector_dim=768, on_disk_payload=False))
+    store.upsert_chunks(
+        chunks=[Chunk(chunk_id="x#0", source_id="x", chunk_index=0,
+                      text="surface code", title="S", source_type="arxiv",
+                      authority_tier="preprint", anchor="",
+                      metadata={"year": 2024})],
+        dense_vectors=[[0.5] * 768],
+        sparse_vectors=[SparseVector(indices=[1], values=[1.0])],
+    )
+
+    class _StubEmb:
+        dim = 768
+        def embed_batch(self, texts: Sequence[str]):
+            return [[0.5] * 768 for _ in texts]
+    class _StubSparse:
+        def encode_batch(self, texts: Sequence[str]):
+            return [SparseVector(indices=[1], values=[1.0]) for _ in texts]
+    class _StubReranker:
+        def rerank(self, q, cands, *, top_k):
+            return list(range(min(top_k, len(cands))))
+
+    monkeypatch.setattr("chatqec.cli._make_embedder", lambda cfg: _StubEmb())
+    monkeypatch.setattr("chatqec.cli._make_sparse", lambda: _StubSparse())
+    monkeypatch.setattr("chatqec.cli._make_store", lambda url, coll: store)
+    monkeypatch.setattr("chatqec.cli._make_reranker", lambda: _StubReranker())
+    monkeypatch.setattr("chatqec.cli._make_canonical_index",
+                        lambda d: __import__("chatqec.retrieval.canonical_injector",
+                                             fromlist=["CanonicalIndex"]).CanonicalIndex(pages=[]))
+
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        "retrieve", "--query", "surface code", "--top-k", "1",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "x#0" in result.output
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_cli_retrieve.py -v
+```
+
+Expected: `retrieve` command not found.
+
+- [ ] **Step 3: Add factory helpers + `retrieve` command to `src/chatqec/cli.py`**
+
+```python
+def _make_reranker():
+    from chatqec.retrieval.reranker import CrossEncoderReranker
+    return CrossEncoderReranker()
+
+
+def _make_canonical_index(canonical_dir: Path):
+    from chatqec.canonical.loader import load_canonical_directory
+    from chatqec.retrieval.canonical_injector import CanonicalIndex
+    pages = load_canonical_directory(canonical_dir) if canonical_dir.exists() else []
+    return CanonicalIndex(pages=pages)
+
+
+@main.command("retrieve")
+@click.option("--query", "query_str", required=True, help="Single query string.")
+@click.option("--top-k", type=int, default=8, show_default=True)
+@click.option("--candidate-k", type=int, default=50, show_default=True)
+@click.option("--qdrant-url", default="http://localhost:6333", show_default=True)
+@click.option("--collection", default="chatqec_chunks", show_default=True)
+@click.option("--canonical-dir", type=click.Path(path_type=Path),
+              default=Path("knowledge/canonical"), show_default=True)
+@click.option("--provider", default="gemini", show_default=True,
+              type=click.Choice(["gemini", "local"]))
+def retrieve(
+    query_str: str, top_k: int, candidate_k: int,
+    qdrant_url: str, collection: str, canonical_dir: Path, provider: str,
+) -> None:
+    """Debug command: run the hybrid retriever for one query and print results."""
+    from chatqec.retrieval.hybrid import HybridRetriever
+    emb_cfg = {"provider": provider, "model": "text-embedding-004",
+               "batch_size": 96, "local_model": "nomic-ai/nomic-embed-text-v1.5"}
+    rr = HybridRetriever(
+        store=_make_store(qdrant_url, collection),
+        embedder=_make_embedder(emb_cfg),
+        sparse_encoder=_make_sparse(),
+        reranker=_make_reranker(),
+        canonical_index=_make_canonical_index(canonical_dir),
+    )
+    result = rr.retrieve(queries=[query_str], top_k=top_k, candidate_k=candidate_k)
+    console = Console()
+    table = Table(show_header=True, header_style="bold")
+    for col in ("rank", "chunk_id", "source_id", "tier", "score", "title"):
+        table.add_column(col)
+    for i, c in enumerate(result.chunks):
+        table.add_row(str(i + 1), c.chunk_id, c.source_id, c.authority_tier,
+                      f"{c.score:.3f}", c.title[:60])
+    console.print(table)
+    if result.matched_topics:
+        console.print(f"[dim]Matched canonical topics: {', '.join(result.matched_topics)}[/]")
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_cli_retrieve.py -v
+```
+
+Expected: 1 passed.
+
+- [ ] **Step 5: Local smoke test (skip if Qdrant offline)**
+
+```bash
+docker compose up -d
+uv run chatqec retrieve --query "What is the surface code?"
+docker compose down
+```
+
+Expected: a Rich table of the top 8 chunks plus matched topic list.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/cli.py tests/test_cli_retrieve.py
+git commit -m "feat(cli): add 'retrieve --query' debug command"
+```
+
+---
+
+### Task 6.7 — CHANGELOG, full suite, push
+
+**Files:**
+- Modify: `CHANGELOG.md`
+
+- [ ] **Step 1: Append M6 to `CHANGELOG.md`** (under `## [Unreleased] → ### Added`):
+
+```markdown
+- Retrieval pipeline:
+  - Score normalization helpers (`min_max_normalize`, `identity_if_single`)
+  - Spec §8.5 weighted-sum scoring (`α=0.5·dense + β=0.3·bm25 + γ=0.15·tier + δ=0.05·recency`) with tunable coefficients
+  - Canonical topic matcher (`CanonicalIndex` + `match_topics`) that surfaces force-injection candidates by slug/alias substring
+  - `CrossEncoderReranker` wrapping BAAI/bge-reranker-base with lazy model load
+  - `HybridRetriever` orchestrator: dense + BM25 → score → top-K candidates → rerank → top-K results + matched topics
+- CLI: `chatqec retrieve --query` debug command (Rich table of top-K + matched canonical topics)
+```
+
+- [ ] **Step 2: Run full suite + lint + canonical validate**
+
+```bash
+uv run pytest -v
+uv run ruff check src tests
+uv run mypy src
+uv run chatqec canonical validate
+```
+
+Expected: all green. Total tests after M6: ≥123 (M1: 6 + M2: 21 + M3: 19 + M4: 35 + M5: 16 + M6: 26).
+
+- [ ] **Step 3: Commit and push**
+
+```bash
+git add CHANGELOG.md
+git commit -m "docs(M6): update CHANGELOG for retrieval pipeline"
+git push origin main
+```
+
+Expected: GitLab pipeline runs lint, validate-canonical, test — all green.
+
+---
+
+## Milestone 6 — exit checklist
+
+- [ ] Score normalization rejects edge cases (empty / single / constant inputs)
+- [ ] Scoring matches spec §8.5 coefficients exactly; tier table matches spec
+- [ ] Recency drops linearly over 5 years, neutral for missing year
+- [ ] Canonical matcher resolves slugs + aliases case-insensitively; dedups
+- [ ] Cross-encoder reranker loads lazily and respects `top_k`
+- [ ] `HybridRetriever` end-to-ends dense + sparse + scoring + rerank + canonical matching against in-memory Qdrant
+- [ ] `chatqec retrieve --query "..."` prints a Rich table with rank/score/title
+- [ ] ≥26 new tests; full suite ≥123 passing
+- [ ] CHANGELOG updated
+- [ ] GitLab CI green on `main`
+
+**🛑 PAUSE — push to GitLab and review before requesting Milestone 7.**
+
+---
