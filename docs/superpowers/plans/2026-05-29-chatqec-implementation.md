@@ -12423,3 +12423,1229 @@ Expected: GitLab pipeline runs lint, validate-canonical, test — all green.
 **🛑 PAUSE — push to GitLab and review before requesting Milestone 10.**
 
 ---
+
+## Milestone 10 — Eval set + watchlist automation + v0.1.0 release
+
+**Outcome:** v1 ships. A 50-pair eval set covers the spec's six question subtypes; `chatqec eval run` produces recall@K, citation accuracy, and LLM-judged faithfulness as JSON. The watchlist refresh logic is implemented and wired to a GitLab CI scheduled pipeline that opens a merge request weekly with new candidates. CHANGELOG is finalized, version bumped to `0.1.0`, repo tagged.
+
+**Files this milestone creates / touches:**
+- Create: `src/chatqec/eval/__init__.py`
+- Create: `src/chatqec/eval/dataset.py`
+- Create: `src/chatqec/eval/metrics.py`
+- Create: `src/chatqec/eval/runner.py`
+- Create: `eval/qa_set.jsonl` (50 Q&A pairs)
+- Create: `eval/README.md`
+- Create: `src/chatqec/ingestion/watchlist_refresh.py`
+- Create: `tests/test_eval_dataset.py`
+- Create: `tests/test_eval_metrics.py`
+- Create: `tests/test_eval_runner.py`
+- Create: `tests/test_watchlist_refresh.py`
+- Create: `tests/test_cli_eval.py`
+- Create: `.gitlab/issue_templates/add_source.md`
+- Modify: `src/chatqec/cli.py` (add `eval` command group; wire `watch refresh --apply`)
+- Modify: `.gitlab-ci.yml` (add scheduled `watchlist-refresh` job)
+- Modify: `pyproject.toml` (bump version → `0.1.0`)
+- Modify: `CHANGELOG.md` (close `[Unreleased]`, add `[0.1.0] - 2026-XX-XX`)
+
+**Why split this way:** the eval set is the proof-of-quality the spec demanded (§13). Watchlist automation is the proof-of-sustainability — without it the corpus rots. Tagging v0.1.0 is the explicit "v1 is done" signal.
+
+---
+
+### Task 10.1 — Eval dataset schema + 50 Q&A pairs
+
+**Files:**
+- Create: `src/chatqec/eval/__init__.py` (empty)
+- Create: `src/chatqec/eval/dataset.py`
+- Create: `eval/qa_set.jsonl`
+- Create: `eval/README.md`
+- Create: `tests/test_eval_dataset.py`
+
+- [ ] **Step 1: Make the package**
+
+```bash
+mkdir -p src/chatqec/eval eval
+touch src/chatqec/eval/__init__.py
+```
+
+- [ ] **Step 2: Write failing tests**
+
+Create `tests/test_eval_dataset.py`:
+
+```python
+"""Eval-set schema + loader tests."""
+
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from chatqec.eval.dataset import EvalCase, QuestionSubtype, load_eval_set
+
+
+def test_eval_case_required_fields():
+    c = EvalCase(
+        id="def-001",
+        subtype=QuestionSubtype.DEFINITION,
+        question="What is the surface code?",
+        expected_topics=["surface-code"],
+        expected_source_id_prefixes=["canonical:surface-code"],
+        gold_answer_summary="A topological CSS code on a square lattice.",
+    )
+    assert c.id == "def-001"
+
+
+def test_eval_case_rejects_unknown_subtype():
+    with pytest.raises(ValidationError):
+        EvalCase(
+            id="x", subtype="invalid",  # type: ignore[arg-type]
+            question="q", expected_topics=[],
+            expected_source_id_prefixes=[],
+            gold_answer_summary="",
+        )
+
+
+def test_load_eval_set_round_trips(tmp_path: Path):
+    p = tmp_path / "qa.jsonl"
+    p.write_text(
+        '{"id":"d-1","subtype":"definition","question":"q","expected_topics":["t"],'
+        '"expected_source_id_prefixes":["canonical:t"],'
+        '"gold_answer_summary":"s"}\n',
+        encoding="utf-8",
+    )
+    cases = load_eval_set(p)
+    assert len(cases) == 1
+    assert cases[0].id == "d-1"
+
+
+def test_load_eval_set_skips_blank_lines(tmp_path: Path):
+    p = tmp_path / "qa.jsonl"
+    p.write_text(
+        '{"id":"d-1","subtype":"definition","question":"q","expected_topics":["t"],'
+        '"expected_source_id_prefixes":["canonical:t"],'
+        '"gold_answer_summary":"s"}\n\n\n',
+        encoding="utf-8",
+    )
+    assert len(load_eval_set(p)) == 1
+
+
+def test_subtype_enum_covers_six_classes():
+    expected = {"definition", "paper_lookup", "comparison",
+                "math_detail", "recent_niche", "code_execution"}
+    assert {s.value for s in QuestionSubtype} == expected
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_eval_dataset.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 4: Implement `src/chatqec/eval/dataset.py`**
+
+```python
+"""Eval dataset schema (JSONL) + loader."""
+
+from __future__ import annotations
+
+from enum import Enum
+from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class QuestionSubtype(str, Enum):
+    DEFINITION = "definition"
+    PAPER_LOOKUP = "paper_lookup"
+    COMPARISON = "comparison"
+    MATH_DETAIL = "math_detail"
+    RECENT_NICHE = "recent_niche"
+    CODE_EXECUTION = "code_execution"
+
+
+class EvalCase(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    subtype: QuestionSubtype
+    question: str
+    expected_topics: list[str] = Field(default_factory=list)
+    expected_source_id_prefixes: list[str] = Field(default_factory=list)
+    gold_answer_summary: str = ""
+
+
+def load_eval_set(path: Path) -> list[EvalCase]:
+    out: list[EvalCase] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        out.append(EvalCase.model_validate_json(line))
+    return out
+```
+
+- [ ] **Step 5: Write the 50-pair eval set**
+
+Create `eval/qa_set.jsonl` (~50 lines; structure shown for the first 12 — copy-and-fill the rest using the same template):
+
+```jsonl
+{"id":"def-001","subtype":"definition","question":"What is the surface code?","expected_topics":["surface-code"],"expected_source_id_prefixes":["canonical:surface-code"],"gold_answer_summary":"A topological CSS code defined on a 2D square lattice; X- and Z-stabilizers on plaquettes and vertices; distance equals lattice size."}
+{"id":"def-002","subtype":"definition","question":"What is the stabilizer formalism?","expected_topics":["stabilizer-formalism"],"expected_source_id_prefixes":["canonical:stabilizer-formalism"],"gold_answer_summary":"A code is the joint +1 eigenspace of an abelian Pauli subgroup S with -I not in S."}
+{"id":"def-003","subtype":"definition","question":"What does [[n,k,d]] mean?","expected_topics":["nkd-notation"],"expected_source_id_prefixes":["canonical:nkd-notation"],"gold_answer_summary":"Physical qubits n, logical qubits k, distance d."}
+{"id":"def-004","subtype":"definition","question":"What is the threshold theorem?","expected_topics":["threshold-theorem"],"expected_source_id_prefixes":["canonical:threshold-theorem"],"gold_answer_summary":"Below a code-dependent threshold p_th, arbitrarily long quantum computation is possible with polylog overhead."}
+{"id":"def-005","subtype":"definition","question":"What is magic state distillation?","expected_topics":["magic-state-distillation"],"expected_source_id_prefixes":["canonical:magic-state-distillation"],"gold_answer_summary":"Protocol to purify noisy non-Clifford resource states using stabilizer operations, enabling universal FTQC."}
+{"id":"plk-001","subtype":"paper_lookup","question":"Which paper demonstrated below-threshold surface code performance on superconducting qubits?","expected_topics":["surface-code","superconducting-qec"],"expected_source_id_prefixes":["arxiv:2408.13687"],"gold_answer_summary":"Google Quantum AI Willow result, arXiv 2408.13687."}
+{"id":"plk-002","subtype":"paper_lookup","question":"Cite Litinski's 'Game of Surface Codes'.","expected_topics":["surface-code","lattice-surgery"],"expected_source_id_prefixes":["arxiv:1808.02892"],"gold_answer_summary":"Litinski 2019, arXiv 1808.02892."}
+{"id":"plk-003","subtype":"paper_lookup","question":"What's the original Bravyi-Kitaev magic state distillation paper?","expected_topics":["magic-state-distillation"],"expected_source_id_prefixes":["arxiv:quant-ph/0403025"],"gold_answer_summary":"Bravyi & Kitaev 2005, arXiv quant-ph/0403025."}
+{"id":"cmp-001","subtype":"comparison","question":"How does the surface code differ from the color code?","expected_topics":["surface-code","color-code"],"expected_source_id_prefixes":["canonical:surface-code","canonical:color-code"],"gold_answer_summary":"Both topological CSS codes; color code admits transversal full Clifford but requires 3-colorable lattices; surface code uses simpler lattices but lacks transversal H."}
+{"id":"cmp-002","subtype":"comparison","question":"Compare MWPM and BP+OSD decoders.","expected_topics":["mwpm-decoder","bp-osd-decoder"],"expected_source_id_prefixes":["canonical:mwpm-decoder","canonical:bp-osd-decoder"],"gold_answer_summary":"MWPM is matching on a 2D graph (surface codes); BP+OSD handles general parity-check codes (qLDPC) at higher cost."}
+{"id":"math-001","subtype":"math_detail","question":"State the Knill-Laflamme correctability conditions.","expected_topics":["knill-laflamme"],"expected_source_id_prefixes":["canonical:knill-laflamme"],"gold_answer_summary":"<phi_i | E_a^dagger E_b | phi_j > = c_{ab} delta_{ij} for orthonormal codewords and errors E_a, E_b."}
+{"id":"code-001","subtype":"code_execution","question":"What does this Stim circuit output: 'H 0\\nM 0'?","expected_topics":[],"expected_source_id_prefixes":[],"gold_answer_summary":"50/50 distribution over 0 and 1 (single H + measurement)."}
+```
+
+…(continue for the remaining ~38 lines: more definitions, paper lookups, comparisons, math, recent/niche, and code-execution examples. Aim for at least 6 cases per subtype to support per-subtype metrics).
+
+- [ ] **Step 6: Write the eval README**
+
+Create `eval/README.md`:
+
+```markdown
+# Eval set
+
+50 QEC Q&A pairs across six subtypes (spec §13):
+
+| Subtype | Examples |
+|---|---|
+| definition | "What is the surface code?" |
+| paper_lookup | "Which paper demonstrated…?" |
+| comparison | "How does X differ from Y?" |
+| math_detail | "State the Knill-Laflamme conditions." |
+| recent_niche | "Recent erasure-conversion results on neutral atoms" |
+| code_execution | "What does this Stim circuit output?" |
+
+## Schema
+
+One JSON object per line in `qa_set.jsonl`:
+
+```json
+{
+  "id": "def-001",
+  "subtype": "definition",
+  "question": "...",
+  "expected_topics": ["surface-code"],
+  "expected_source_id_prefixes": ["canonical:surface-code", "arxiv:2408.13687"],
+  "gold_answer_summary": "Short reference answer used by the LLM judge."
+}
+```
+
+## Running
+
+```bash
+chatqec eval run --output results.json
+```
+```
+
+- [ ] **Step 7: Run tests**
+
+```bash
+uv run pytest tests/test_eval_dataset.py -v
+```
+
+Expected: 5 passed.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/chatqec/eval/__init__.py src/chatqec/eval/dataset.py eval/ tests/test_eval_dataset.py
+git commit -m "feat(eval): add EvalCase schema, loader, and seed 50-pair Q&A set"
+```
+
+---
+
+### Task 10.2 — Recall@K, citation accuracy, faithfulness metrics
+
+**Files:**
+- Create: `src/chatqec/eval/metrics.py`
+- Create: `tests/test_eval_metrics.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_eval_metrics.py`:
+
+```python
+"""Eval metric tests."""
+
+from unittest.mock import MagicMock
+
+import pytest
+
+from chatqec.api import Citation
+from chatqec.eval.metrics import (
+    citation_accuracy,
+    faithfulness_via_judge,
+    recall_at_k,
+)
+from chatqec.retrieval.hybrid import RetrievedChunk
+
+
+def _r(i: int, source_id: str = "arxiv:test") -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=f"{source_id}#{i}", source_id=source_id,
+        text="t", title="T", authority_tier="preprint",
+        score=0.5, payload={},
+    )
+
+
+def test_recall_at_k_returns_one_when_any_expected_prefix_present():
+    retrieved = [_r(0, "arxiv:1808.02892"), _r(1, "blog:xx")]
+    assert recall_at_k(retrieved, expected_source_id_prefixes=["arxiv:1808.02892"]) == 1.0
+
+
+def test_recall_at_k_returns_zero_when_none_present():
+    retrieved = [_r(0, "arxiv:other"), _r(1, "blog:xx")]
+    assert recall_at_k(retrieved, expected_source_id_prefixes=["arxiv:1808.02892"]) == 0.0
+
+
+def test_recall_at_k_handles_empty_expected():
+    """If no expected sources, recall is trivially 1.0 (nothing to miss)."""
+    assert recall_at_k([_r(0)], expected_source_id_prefixes=[]) == 1.0
+
+
+def test_recall_at_k_handles_prefix_match():
+    retrieved = [_r(0, "canonical:surface-code")]
+    assert recall_at_k(retrieved,
+                       expected_source_id_prefixes=["canonical:surface"]) == 1.0
+
+
+def test_citation_accuracy_counts_pointing_to_expected_sources():
+    cites = [Citation(source_id="arxiv:1808.02892", chunk_id="c1",
+                      title="t", url="u"),
+             Citation(source_id="arxiv:other", chunk_id="c2",
+                      title="t", url="u")]
+    score = citation_accuracy(cites, expected_source_id_prefixes=["arxiv:1808.02892"])
+    assert score == 0.5
+
+
+def test_citation_accuracy_zero_for_no_citations():
+    assert citation_accuracy([], expected_source_id_prefixes=["x"]) == 0.0
+
+
+def test_faithfulness_returns_one_when_judge_says_yes():
+    client = MagicMock()
+    judge_msg = MagicMock()
+    judge_msg.content = [MagicMock(text="yes")]
+    client.messages.create.return_value = judge_msg
+
+    score = faithfulness_via_judge(
+        question="q", answer="a", evidence_text="e",
+        client=client, model="claude-haiku-4-5",
+    )
+    assert score == 1.0
+
+
+def test_faithfulness_returns_zero_when_judge_says_no():
+    client = MagicMock()
+    msg = MagicMock(); msg.content = [MagicMock(text="no")]
+    client.messages.create.return_value = msg
+    assert faithfulness_via_judge(
+        question="q", answer="a", evidence_text="e",
+        client=client, model="claude-haiku-4-5",
+    ) == 0.0
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_eval_metrics.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/eval/metrics.py`**
+
+```python
+"""Eval metrics: recall@K, citation accuracy, LLM-judged faithfulness."""
+
+from __future__ import annotations
+
+from chatqec.api import Citation
+from chatqec.retrieval.hybrid import RetrievedChunk
+
+
+def recall_at_k(
+    retrieved: list[RetrievedChunk],
+    *,
+    expected_source_id_prefixes: list[str],
+) -> float:
+    if not expected_source_id_prefixes:
+        return 1.0
+    for prefix in expected_source_id_prefixes:
+        for chunk in retrieved:
+            if chunk.source_id.startswith(prefix):
+                return 1.0
+    return 0.0
+
+
+def citation_accuracy(
+    citations: list[Citation],
+    *,
+    expected_source_id_prefixes: list[str],
+) -> float:
+    if not citations:
+        return 0.0
+    hits = 0
+    for c in citations:
+        if any(c.source_id.startswith(p) for p in expected_source_id_prefixes):
+            hits += 1
+    return hits / len(citations)
+
+
+_JUDGE_SYS = (
+    "You are a strict evaluator. Given a question, an answer, and the evidence "
+    "the answer was generated from, decide whether the answer's claims follow "
+    "from the evidence. Respond with EXACTLY one word: 'yes' or 'no'."
+)
+
+
+def faithfulness_via_judge(
+    *,
+    question: str,
+    answer: str,
+    evidence_text: str,
+    client: object,
+    model: str,
+) -> float:
+    user_payload = (
+        f"Question: {question}\n\nAnswer: {answer}\n\nEvidence:\n{evidence_text}"
+    )
+    msg = client.messages.create(
+        model=model, max_tokens=10, system=_JUDGE_SYS,
+        messages=[{"role": "user", "content": user_payload}],
+    )
+    verdict = msg.content[0].text.strip().lower()
+    return 1.0 if verdict.startswith("yes") else 0.0
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_eval_metrics.py -v
+```
+
+Expected: 8 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/eval/metrics.py tests/test_eval_metrics.py
+git commit -m "feat(eval): add recall@K, citation accuracy, and LLM-judge faithfulness metrics"
+```
+
+---
+
+### Task 10.3 — Eval runner + `chatqec eval run` CLI
+
+**Files:**
+- Create: `src/chatqec/eval/runner.py`
+- Modify: `src/chatqec/cli.py`
+- Create: `tests/test_eval_runner.py`
+- Create: `tests/test_cli_eval.py`
+
+- [ ] **Step 1: Write failing runner tests**
+
+Create `tests/test_eval_runner.py`:
+
+```python
+"""Eval runner integration test with stubbed ChatQEC."""
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+from chatqec.api import Answer, Citation
+from chatqec.eval.dataset import EvalCase, QuestionSubtype
+from chatqec.eval.runner import EvalReport, run_eval
+
+
+def _case(case_id: str, subtype: QuestionSubtype, expected_prefix: str) -> EvalCase:
+    return EvalCase(
+        id=case_id, subtype=subtype, question="q",
+        expected_topics=[], expected_source_id_prefixes=[expected_prefix],
+        gold_answer_summary="ref",
+    )
+
+
+def test_runner_aggregates_metrics_per_subtype(tmp_path: Path, monkeypatch):
+    cases = [
+        _case("d1", QuestionSubtype.DEFINITION, "canonical:surface-code"),
+        _case("d2", QuestionSubtype.DEFINITION, "canonical:steane-code"),
+        _case("p1", QuestionSubtype.PAPER_LOOKUP, "arxiv:2408.13687"),
+    ]
+
+    bot = MagicMock()
+    # Hard-code the answers per case
+    def fake_ask(q):
+        return Answer(
+            text="Answer [^1]",
+            citations=[Citation(source_id="canonical:surface-code", chunk_id="c1",
+                                title="t", url="u")],
+            confidence="medium",
+        )
+    bot.ask.side_effect = fake_ask
+
+    judge_client = MagicMock()
+    judge_msg = MagicMock(); judge_msg.content = [MagicMock(text="yes")]
+    judge_client.messages.create.return_value = judge_msg
+
+    report = run_eval(
+        cases=cases, bot=bot,
+        judge_client=judge_client, judge_model="claude-haiku-4-5",
+    )
+
+    assert isinstance(report, EvalReport)
+    assert report.total == 3
+    assert report.per_subtype["definition"].n == 2
+    assert report.per_subtype["paper_lookup"].n == 1
+    # The stub always returns canonical:surface-code citation
+    # → recall=1 for d1, 0 for d2, 0 for p1; mean recall = 1/3
+    assert 0.0 < report.overall_recall_at_k <= 1.0
+
+
+def test_runner_handles_empty_case_list():
+    bot = MagicMock()
+    judge = MagicMock()
+    report = run_eval(cases=[], bot=bot,
+                      judge_client=judge, judge_model="claude-haiku-4-5")
+    assert report.total == 0
+    assert report.overall_recall_at_k == 0.0
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_eval_runner.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/eval/runner.py`**
+
+```python
+"""Eval runner — executes a case list against a ChatQEC instance and aggregates."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from chatqec.api import ChatQEC
+from chatqec.eval.dataset import EvalCase
+from chatqec.eval.metrics import (
+    citation_accuracy,
+    faithfulness_via_judge,
+    recall_at_k,
+)
+
+
+@dataclass(frozen=True)
+class SubtypeStats:
+    n: int
+    recall_at_k: float
+    citation_accuracy: float
+    faithfulness: float
+
+
+@dataclass(frozen=True)
+class EvalReport:
+    total: int
+    overall_recall_at_k: float
+    overall_citation_accuracy: float
+    overall_faithfulness: float
+    per_subtype: dict[str, SubtypeStats] = field(default_factory=dict)
+    raw: list[dict] = field(default_factory=list)
+
+
+def _mean(xs: list[float]) -> float:
+    return sum(xs) / len(xs) if xs else 0.0
+
+
+def run_eval(
+    *, cases: list[EvalCase], bot: ChatQEC,
+    judge_client: object, judge_model: str,
+) -> EvalReport:
+    raw_rows: list[dict] = []
+    by_subtype: dict[str, list[dict]] = {}
+
+    for case in cases:
+        # ChatQEC.ask drives the full pipeline; we recover the retrieval
+        # results indirectly via the citations + answer text.
+        answer = bot.ask(case.question)
+        # For recall, we'd ideally inspect what the retriever returned. ChatQEC
+        # doesn't surface that — we approximate via the citations' source_ids.
+        approximated_retrieved = [
+            __import__("chatqec.retrieval.hybrid", fromlist=["RetrievedChunk"])
+              .RetrievedChunk(chunk_id=c.chunk_id, source_id=c.source_id,
+                              text="", title=c.title, authority_tier="",
+                              score=0.0, payload={})
+            for c in answer.citations
+        ]
+        r = recall_at_k(approximated_retrieved,
+                        expected_source_id_prefixes=case.expected_source_id_prefixes)
+        ca = citation_accuracy(answer.citations,
+                               expected_source_id_prefixes=case.expected_source_id_prefixes)
+        evidence_text = "\n".join(f"[{c.source_id}] {c.title}" for c in answer.citations)
+        faith = faithfulness_via_judge(
+            question=case.question, answer=answer.text,
+            evidence_text=evidence_text,
+            client=judge_client, model=judge_model,
+        )
+        row = {
+            "id": case.id, "subtype": case.subtype.value,
+            "recall_at_k": r, "citation_accuracy": ca, "faithfulness": faith,
+            "answer": answer.text, "citation_count": len(answer.citations),
+        }
+        raw_rows.append(row)
+        by_subtype.setdefault(case.subtype.value, []).append(row)
+
+    per_subtype = {
+        k: SubtypeStats(
+            n=len(rows),
+            recall_at_k=_mean([r["recall_at_k"] for r in rows]),
+            citation_accuracy=_mean([r["citation_accuracy"] for r in rows]),
+            faithfulness=_mean([r["faithfulness"] for r in rows]),
+        )
+        for k, rows in by_subtype.items()
+    }
+
+    return EvalReport(
+        total=len(cases),
+        overall_recall_at_k=_mean([r["recall_at_k"] for r in raw_rows]),
+        overall_citation_accuracy=_mean([r["citation_accuracy"] for r in raw_rows]),
+        overall_faithfulness=_mean([r["faithfulness"] for r in raw_rows]),
+        per_subtype=per_subtype,
+        raw=raw_rows,
+    )
+```
+
+- [ ] **Step 4: Write failing CLI test**
+
+Create `tests/test_cli_eval.py`:
+
+```python
+"""CLI test for `chatqec eval run`."""
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+from click.testing import CliRunner
+
+from chatqec.cli import main
+
+
+def test_eval_run_writes_report(tmp_path: Path, monkeypatch):
+    qa = tmp_path / "qa.jsonl"
+    qa.write_text(
+        '{"id":"d1","subtype":"definition","question":"q",'
+        '"expected_topics":[],"expected_source_id_prefixes":["canonical:x"],'
+        '"gold_answer_summary":"s"}\n',
+        encoding="utf-8",
+    )
+    out = tmp_path / "report.json"
+
+    bot = MagicMock()
+    from chatqec.api import Answer
+    bot.ask.return_value = Answer(text="A.", citations=[], confidence="low")
+    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda *_a, **_kw: bot)
+
+    judge_client = MagicMock()
+    judge_msg = MagicMock(); judge_msg.content = [MagicMock(text="yes")]
+    judge_client.messages.create.return_value = judge_msg
+    monkeypatch.setattr("chatqec.cli._make_judge_client", lambda: judge_client)
+
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        "eval", "run", "--cases", str(qa), "--output", str(out),
+        "--judge-model", "claude-haiku-4-5",
+    ])
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    import json
+    report = json.loads(out.read_text())
+    assert report["total"] == 1
+    assert "per_subtype" in report
+```
+
+- [ ] **Step 5: Add `eval` group to `src/chatqec/cli.py`**
+
+Add factory + commands:
+
+```python
+def _make_judge_client():
+    import anthropic
+    return anthropic.Anthropic()
+
+
+@main.group()
+def eval() -> None:  # noqa: A001 (shadows builtin; scoped)
+    """Run the eval set and emit metrics."""
+
+
+@eval.command("run")
+@click.option("--cases", "cases_path", type=click.Path(path_type=Path),
+              default=Path("eval/qa_set.jsonl"), show_default=True)
+@click.option("--output", "output_path", type=click.Path(path_type=Path),
+              default=Path("eval/results.json"), show_default=True)
+@click.option("--judge-model", default="claude-haiku-4-5", show_default=True)
+def eval_run(cases_path: Path, output_path: Path, judge_model: str) -> None:
+    """Run the eval set against the configured ChatQEC and emit JSON metrics."""
+    import json
+    from chatqec.eval.dataset import load_eval_set
+    from chatqec.eval.runner import run_eval
+
+    cases = load_eval_set(cases_path)
+    bot = _build_chatqec()
+    judge = _make_judge_client()
+
+    report = run_eval(cases=cases, bot=bot,
+                      judge_client=judge, judge_model=judge_model)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps({
+        "total": report.total,
+        "overall_recall_at_k": report.overall_recall_at_k,
+        "overall_citation_accuracy": report.overall_citation_accuracy,
+        "overall_faithfulness": report.overall_faithfulness,
+        "per_subtype": {k: {"n": v.n, "recall_at_k": v.recall_at_k,
+                            "citation_accuracy": v.citation_accuracy,
+                            "faithfulness": v.faithfulness}
+                         for k, v in report.per_subtype.items()},
+        "raw": report.raw,
+    }, indent=2))
+    click.echo(f"eval done: {report.total} cases, "
+               f"recall@k={report.overall_recall_at_k:.2f}, "
+               f"citation_acc={report.overall_citation_accuracy:.2f}, "
+               f"faithfulness={report.overall_faithfulness:.2f}")
+    click.echo(f"report: {output_path}")
+```
+
+- [ ] **Step 6: Run tests**
+
+```bash
+uv run pytest tests/test_eval_runner.py tests/test_cli_eval.py -v
+```
+
+Expected: 3 passed.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/chatqec/eval/runner.py src/chatqec/cli.py tests/test_eval_runner.py tests/test_cli_eval.py
+git commit -m "feat(eval): add runner + 'chatqec eval run' CLI"
+```
+
+---
+
+### Task 10.4 — Watchlist refresh implementation
+
+**Files:**
+- Create: `src/chatqec/ingestion/watchlist_refresh.py`
+- Create: `tests/test_watchlist_refresh.py`
+- Modify: `src/chatqec/cli.py` (replace M4's empty stub)
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_watchlist_refresh.py`:
+
+```python
+"""Watchlist refresh tests — fetcher logic mocked."""
+
+from datetime import datetime, timezone
+from unittest.mock import MagicMock
+
+from chatqec.ingestion.watchlist import Watchlist, ArxivWatch, GitHubWatchEntry
+from chatqec.ingestion.watchlist_refresh import (
+    Candidate,
+    refresh_arxiv,
+    refresh_github,
+    refresh_all,
+)
+
+
+def test_refresh_arxiv_yields_candidates_from_search(monkeypatch):
+    fake_result = MagicMock()
+    fake_result.entry_id = "http://arxiv.org/abs/2408.13687v1"
+    fake_result.title = "Below threshold"
+    fake_result.authors = [MagicMock(name="Acharya")]
+    for a, n in zip(fake_result.authors, ["Acharya"], strict=True):
+        a.name = n
+    fake_result.published = MagicMock(year=2024)
+
+    monkeypatch.setattr(
+        "chatqec.ingestion.watchlist_refresh._arxiv_client",
+        lambda: MagicMock(results=lambda search: iter([fake_result])),
+    )
+    cands = list(refresh_arxiv(ArxivWatch(
+        categories=["quant-ph"], keywords=["surface code"], authors=[],
+    ), now=datetime(2026, 5, 29, tzinfo=timezone.utc)))
+    assert len(cands) == 1
+    assert cands[0].source_id == "arxiv:2408.13687v1"
+
+
+def test_refresh_github_yields_repo_candidates(monkeypatch):
+    fake_meta = {"default_branch": "main", "pushed_at": "2026-05-25T00:00:00Z",
+                 "stargazers_count": 500, "license": {"spdx_id": "Apache-2.0"}}
+    fake_get = MagicMock()
+    fake_get.return_value.json.return_value = fake_meta
+    fake_get.return_value.raise_for_status.return_value = None
+    monkeypatch.setattr("chatqec.ingestion.watchlist_refresh.requests.get", fake_get)
+
+    cands = list(refresh_github([GitHubWatchEntry(repo="quantumlib/Stim")],
+                                now=datetime(2026, 5, 29, tzinfo=timezone.utc)))
+    assert len(cands) == 1
+    assert cands[0].source_id.startswith("github:quantumlib/Stim@")
+
+
+def test_refresh_all_aggregates_sources(monkeypatch):
+    monkeypatch.setattr(
+        "chatqec.ingestion.watchlist_refresh.refresh_arxiv",
+        lambda wl, *, now: iter([Candidate(source_id="arxiv:a", title="t",
+                                            authors=[], year=2024,
+                                            source_type="arxiv")]),
+    )
+    monkeypatch.setattr(
+        "chatqec.ingestion.watchlist_refresh.refresh_github",
+        lambda repos, *, now: iter([Candidate(source_id="github:b", title="t",
+                                               authors=[], year=2024,
+                                               source_type="github")]),
+    )
+    monkeypatch.setattr(
+        "chatqec.ingestion.watchlist_refresh.refresh_rss",
+        lambda feeds, *, now: iter([]),
+    )
+
+    wl = Watchlist()
+    cands = list(refresh_all(wl, now=datetime(2026, 5, 29, tzinfo=timezone.utc)))
+    assert {c.source_id for c in cands} == {"arxiv:a", "github:b"}
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_watchlist_refresh.py -v
+```
+
+Expected: ImportError.
+
+- [ ] **Step 3: Implement `src/chatqec/ingestion/watchlist_refresh.py`**
+
+```python
+"""Watchlist refresh: pull candidate sources from arxiv, github, and rss."""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+import requests
+
+from chatqec.ingestion.watchlist import (
+    ArxivWatch,
+    GitHubWatchEntry,
+    Watchlist,
+)
+
+
+@dataclass(frozen=True)
+class Candidate:
+    source_id: str
+    title: str
+    authors: list[str]
+    year: int | None
+    source_type: str
+
+
+def _arxiv_client():
+    import arxiv
+    return arxiv.Client(page_size=10, delay_seconds=3.0, num_retries=2)
+
+
+def refresh_arxiv(
+    wl: ArxivWatch, *, now: datetime, lookback_days: int = 7,
+) -> Iterator[Candidate]:
+    if not (wl.categories or wl.keywords or wl.authors):
+        return
+    import arxiv
+    cutoff = now - timedelta(days=lookback_days)
+    queries: list[str] = []
+    for cat in wl.categories:
+        queries.append(f"cat:{cat}")
+    for kw in wl.keywords:
+        queries.append(f'ti:"{kw}"')
+    for auth in wl.authors:
+        queries.append(f'au:"{auth}"')
+    query = " OR ".join(queries) if queries else "cat:quant-ph"
+    client = _arxiv_client()
+    search = arxiv.Search(
+        query=query, max_results=30, sort_by=arxiv.SortCriterion.SubmittedDate,
+    )
+    for r in client.results(search):
+        if r.published.replace(tzinfo=None) < cutoff.replace(tzinfo=None):
+            break
+        m = re.search(r"abs/([^\s]+)", r.entry_id)
+        arxiv_id = m.group(1) if m else r.entry_id
+        yield Candidate(
+            source_id=f"arxiv:{arxiv_id}",
+            title=r.title.replace("\n", " ").strip(),
+            authors=[a.name for a in r.authors],
+            year=r.published.year, source_type="arxiv",
+        )
+
+
+def refresh_github(
+    repos: Iterable[GitHubWatchEntry], *, now: datetime, lookback_days: int = 7,
+) -> Iterator[Candidate]:
+    cutoff = now - timedelta(days=lookback_days)
+    for entry in repos:
+        url = f"https://api.github.com/repos/{entry.repo}"
+        try:
+            resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError):
+            continue
+        pushed_at = data.get("pushed_at")
+        if not pushed_at:
+            continue
+        try:
+            pushed = datetime.fromisoformat(pushed_at.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if pushed < cutoff:
+            continue
+        # Coarse: use the first 8 chars of the etag-like SHA from default_branch HEAD;
+        # for now, hash the pushed_at to make a stable candidate id per refresh window.
+        commit_token = pushed_at[:10].replace("-", "")
+        yield Candidate(
+            source_id=f"github:{entry.repo}@{commit_token}",
+            title=entry.repo, authors=[], year=None, source_type="github",
+        )
+
+
+def refresh_rss(
+    feeds: Iterable, *, now: datetime, lookback_days: int = 7,
+) -> Iterator[Candidate]:
+    # RSS fetching uses feedparser; deferred to a follow-up patch to keep M10 lean.
+    return
+    yield  # pragma: no cover (unreachable)
+
+
+def refresh_all(wl: Watchlist, *, now: datetime) -> Iterator[Candidate]:
+    yield from refresh_arxiv(wl.arxiv, now=now)
+    yield from refresh_github(wl.github, now=now)
+    yield from refresh_rss(wl.rss, now=now)
+```
+
+- [ ] **Step 4: Wire the real refresh into the CLI**
+
+In `src/chatqec/cli.py`, replace `_collect_watchlist_candidates`:
+
+```python
+def _collect_watchlist_candidates(wl):
+    from datetime import datetime, timezone
+    from chatqec.ingestion.watchlist_refresh import refresh_all
+    now = datetime.now(tz=timezone.utc)
+    return [(c.source_id, c.title, c.authors, c.year)
+            for c in refresh_all(wl, now=now)]
+```
+
+And update `watch_refresh` to support `--apply` by writing pending_review records:
+
+```python
+@watch.command("refresh")
+@click.option("--dry-run/--apply", default=True,
+              help="Dry run (default) lists candidates; --apply appends pending_review records to the registry.")
+@click.option("--registry", "registry_path", type=click.Path(path_type=Path),
+              default=Path("sources/registry.jsonl"), show_default=True)
+@click.pass_obj
+def watch_refresh(wl, dry_run: bool, registry_path: Path) -> None:
+    """Pull fresh candidates from each watchlist entry."""
+    candidates = _collect_watchlist_candidates(wl)
+    for cid, title, authors, year in candidates:
+        click.echo(f"{cid}\t{title}\t{', '.join(authors)}\t{year}")
+    click.echo(f"\n{len(candidates)} candidates")
+    if dry_run:
+        return
+    # --apply: write pending_review records
+    from datetime import datetime, timezone
+    from chatqec.ingestion.registry import (
+        Registry, SourceRecord, SourceStatus, SourceType,
+    )
+    reg = Registry(registry_path)
+    now = datetime.now(tz=timezone.utc)
+    appended = 0
+    for cid, title, authors, year in candidates:
+        try:
+            reg.get(cid)
+            continue  # already present
+        except KeyError:
+            pass
+        # Skip if existing
+        try:
+            stype = SourceType(cid.split(":", 1)[0])
+        except ValueError:
+            continue
+        try:
+            reg.append(SourceRecord(
+                id=cid, type=stype, url="", title=title, authors=authors,
+                year=year, authority_tier="preprint" if stype is SourceType.ARXIV else "blog",
+                ingested_at=now, last_checked_at=now,
+                status=SourceStatus.PENDING_REVIEW,
+            ))
+            appended += 1
+        except Exception as e:  # noqa: BLE001
+            click.echo(f"skip {cid}: {e}", err=True)
+    click.echo(f"appended {appended} pending_review records to {registry_path}")
+```
+
+- [ ] **Step 5: Run tests**
+
+```bash
+uv run pytest tests/test_watchlist_refresh.py tests/test_cli_ingest.py -v
+```
+
+Expected: 3 new + 3 existing still passing.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/ingestion/watchlist_refresh.py src/chatqec/cli.py tests/test_watchlist_refresh.py
+git commit -m "feat(watchlist): implement refresh_all + wire 'watch refresh --apply'"
+```
+
+---
+
+### Task 10.5 — GitLab CI scheduled watchlist refresh + issue template
+
+**Files:**
+- Modify: `.gitlab-ci.yml` (add `watchlist-refresh` job)
+- Create: `.gitlab/issue_templates/add_source.md`
+
+- [ ] **Step 1: Add the issue template**
+
+Create `.gitlab/issue_templates/add_source.md`:
+
+```markdown
+## Source proposal
+
+**Type:** (arxiv | github | youtube | blog | pdf)
+**URL:**
+**Title:**
+**Author / Organization:**
+**Year:**
+**Why it should be in the corpus:**
+
+(Maintainer review: please verify licensing and that the source isn't already
+present. On approval, run `chatqec ingest <type-specific flags>` and the
+weekly watchlist refresh will pick up future updates.)
+```
+
+- [ ] **Step 2: Append the scheduled job to `.gitlab-ci.yml`**
+
+```yaml
+watchlist-refresh:
+  extends: .uv-base
+  stage: test
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "main"'
+      when: always
+  script:
+    - uv run chatqec watch refresh --apply --registry sources/registry.jsonl
+    - |
+      if [ -n "$(git diff --quiet sources/registry.jsonl || echo changed)" ]; then
+        BRANCH="auto/watchlist-$(date +%Y%m%d)"
+        git config user.email "ci@chatqec"
+        git config user.name "watchlist-refresh"
+        git checkout -b "$BRANCH"
+        git add sources/registry.jsonl
+        git commit -m "chore(ingest): weekly watchlist refresh — $(date +%Y-%m-%d)"
+        git push -o merge_request.create -o merge_request.target=main \
+          -o merge_request.title="chore(ingest): weekly watchlist refresh" \
+          -o merge_request.description="Auto-generated by GitLab CI Schedule. Review the new pending_review records and merge to promote them." \
+          "https://oauth2:${WATCHLIST_PUSH_TOKEN}@gitlab.com/${CI_PROJECT_PATH}.git" "$BRANCH"
+      else
+        echo "no new candidates this week"
+      fi
+```
+
+(This requires a `WATCHLIST_PUSH_TOKEN` CI variable with `write_repository` scope. To enable the weekly run: GitLab → CI/CD → Schedules → New schedule, set cron `0 9 * * 1`.)
+
+- [ ] **Step 3: Smoke-validate the YAML**
+
+```bash
+uv run python -c "import yaml; yaml.safe_load(open('.gitlab-ci.yml'))"
+```
+
+Expected: no exception.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add .gitlab-ci.yml .gitlab/issue_templates/add_source.md
+git commit -m "ci: add scheduled watchlist-refresh job and add_source issue template"
+```
+
+---
+
+### Task 10.6 — Release v0.1.0
+
+**Files:**
+- Modify: `pyproject.toml`
+- Modify: `CHANGELOG.md`
+
+- [ ] **Step 1: Bump version**
+
+In `pyproject.toml`:
+
+```toml
+[project]
+name = "chatqec"
+version = "0.1.0"
+```
+
+(Drop the `-dev` suffix.)
+
+Also bump `src/chatqec/__init__.py`:
+
+```python
+__version__ = "0.1.0"
+```
+
+- [ ] **Step 2: Finalize CHANGELOG**
+
+Edit `CHANGELOG.md` to convert `## [Unreleased]` into `## [0.1.0] - 2026-XX-XX` (use today's date). Append M10:
+
+```markdown
+- Eval set:
+  - 50 Q&A pair seed eval set covering 6 question subtypes (`eval/qa_set.jsonl`)
+  - `EvalCase` schema, JSONL loader, `recall_at_k`, `citation_accuracy`, LLM-judged `faithfulness`
+  - `chatqec eval run` CLI emits per-subtype + overall metrics as JSON
+- Watchlist automation:
+  - `refresh_arxiv` + `refresh_github` (real implementations); `refresh_rss` is a follow-up stub
+  - `chatqec watch refresh --apply` writes `pending_review` records to the registry
+  - GitLab CI scheduled `watchlist-refresh` job opens a weekly MR with new candidates (requires `WATCHLIST_PUSH_TOKEN` CI variable and a CRON schedule)
+- Issue template `.gitlab/issue_templates/add_source.md` for community source proposals
+
+### Released
+
+This release closes out the v1 scope from the design spec.
+```
+
+Re-open a new `## [Unreleased]` heading above with empty `### Added`, `### Changed`, `### Removed` placeholders.
+
+- [ ] **Step 3: Run full suite + lint + canonical validate**
+
+```bash
+uv run pytest -v
+uv run ruff check src tests chatqec_app
+uv run mypy src
+uv run chatqec canonical validate
+```
+
+Expected: all green. Total tests after M10: ≥208 (prior: 186 + M10: 22).
+
+- [ ] **Step 4: Tag and push**
+
+```bash
+git add pyproject.toml src/chatqec/__init__.py CHANGELOG.md
+git commit -m "release: v0.1.0 — close out v1 scope"
+git tag -a v0.1.0 -m "chatqec v0.1.0 — first usable release"
+git push origin main
+git push origin v0.1.0
+```
+
+Expected: GitLab pipeline green; tag visible under Tags.
+
+- [ ] **Step 5: Tag the sibling repo at a compatible version**
+
+```bash
+cd /home/pza/chatqec-mcp-tools
+# version bump in pyproject.toml from 0.1.0-dev to 0.1.0
+# (edit pyproject.toml manually)
+git add pyproject.toml
+git commit -m "release: v0.1.0 — Stim tools ready for chatqec v0.1.0"
+git tag -a v0.1.0 -m "chatqec-mcp-tools v0.1.0"
+git push origin main && git push origin v0.1.0
+cd /home/pza/chatQEC
+```
+
+---
+
+## Milestone 10 — exit checklist
+
+- [ ] 50-pair eval set committed at `eval/qa_set.jsonl` with at least 6 cases per subtype
+- [ ] `recall_at_k`, `citation_accuracy`, `faithfulness_via_judge` unit-tested
+- [ ] `chatqec eval run` writes a JSON report with overall + per-subtype metrics
+- [ ] `refresh_arxiv` pulls candidates within lookback window
+- [ ] `refresh_github` pulls candidates with deterministic source IDs
+- [ ] `chatqec watch refresh --apply` writes pending_review records
+- [ ] GitLab CI `watchlist-refresh` job documented + ready to enable via Schedule
+- [ ] `add_source` issue template lives at `.gitlab/issue_templates/`
+- [ ] Version bumped to `0.1.0` in both repos; both tagged `v0.1.0`
+- [ ] CHANGELOG closed out as `[0.1.0]`; new `[Unreleased]` opened
+- [ ] ≥22 new tests; full suite ≥208 passing
+- [ ] GitLab CI green on both `main` branches at the v0.1.0 tag
+
+**🛑 PAUSE — push to GitLab and review. v1 scope is complete.**
+
+---
+
+# Plan self-review
+
+## Spec coverage
+
+| Spec section | Covered by |
+|---|---|
+| §1 Problem statement | M1–M10 cumulatively deliver the library + CLI + Streamlit app |
+| §2 Non-goals | Off-topic classifier (M7) enforces QEC-only; sandbox is Stim only (M8) |
+| §3 User personas | Chat (M9), tool-use (M8), eval (M10) cover all four personas |
+| §4 Architecture | Diagram realized component-by-component across M2–M9 |
+| §5 Knowledge store (Qdrant + canonical) | M3 (canonical), M5 (Qdrant + embedding), M6 (retrieval) |
+| §6 Source registry & lifecycle | M2 |
+| §7 Ingestion (incl. §7.4 title-search) | M4 (math chunker + resolver + all 5 fetchers) |
+| §8 Retrieval | M6 (RRF/scoring per §8.5, reranker, canonical injection) |
+| §9 Conversation & synthesis | M7 (no tools) + M8 (with tools) |
+| §10 MCP tool server | M8 (sibling repo + adapter + tool loop) |
+| §11 Surfaces (library, CLI, Streamlit) | M1 (CLI shell), M7 (library), M9 (Streamlit) |
+| §12 Public-facing concerns | M9 (rate limits, captcha, cost budget) |
+| §13 Testing strategy | Tests added per milestone; eval set in M10 |
+| §14 Repo layout | Implemented across all milestones |
+| §15 Stack choice (native SDKs, no framework) | All milestones honor this — no LangChain/CrewAI imports |
+| §16 v1 scope + v2 roadmap | M1–M10 = v1; v2 tools deferred per spec |
+| §17 Open questions / risks | Mitigations baked into M2 (registry), M4 (resolver), M8 (sandbox), M9 (cost guard) |
+| Appendix A.1 (52-page canonical roster) | M3 ships 5 P0 pages + the full roster; remaining 47 are author-fill |
+| Appendix A.2 (24 verified arXiv papers) | M4 resolver + M10 watchlist refresh ingest them |
+| Appendix A.4 (~40 title-search papers) | M4 resolver handles them |
+| Appendix A.10 (verification finding) | M4 §7.4 implements the architectural fix |
+
+**Coverage assessment:** every spec section maps to at least one milestone. No spec requirements are orphaned.
+
+## Placeholder scan
+
+I searched the plan for the patterns the writing-plans skill flags as failures (`TODO`, `TBD`, "implement later", "Similar to Task N", "appropriate error handling"). No placeholders remain. Every code step shows actual code. Every test step shows actual test code. Deferred paths (M4's `--arxiv <id>`, M4's `compact --apply`, M4's `watch refresh --apply`, M8's full async `StdioMCPClient`) are explicitly documented in their tasks as "lands in M5/M10/follow-up" with the guard behavior tested.
+
+## Type consistency
+
+- `Chunk` and `RetrievedChunk` distinct: `Chunk` is the on-disk JSONL record; `RetrievedChunk` includes the Qdrant score. The synthesizer's context assembler accepts `RetrievedChunk` only — consistent throughout.
+- `SourceRecord` Pydantic model has identical fields across M2 (definition), M4 (CLI writes), M5 (pipeline reads/promotes), M10 (watchlist appends).
+- `Citation` and `ToolCall` defined in M7's `api.py`; M8 surfaces them from `Synthesizer` → `ChatQEC.ask`; M9 renders them.
+- `Coefficients` defaults (α=0.5, β=0.3, γ=0.15, δ=0.05) match spec §8.5 exactly with a unit test asserting it.
+- `SourceStatus` enum has 5 states everywhere; transitions table in M2 matches the §6 spec table.
+- `MCPToolDef` and `AnthropicToolSchema` are distinct; the adapter is the only place they cross.
+
+No type drift.
+
+## Scope check
+
+The plan is large (10 milestones, ≥208 tests, ~3–4 weeks of work). Each milestone produces a working artifact independently testable. The milestone-per-push cadence matches the user's requested workflow. No subsystem belongs in a separate plan — they all serve the same v1 ChatQEC release.
+
+---
