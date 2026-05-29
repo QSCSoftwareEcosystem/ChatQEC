@@ -2098,3 +2098,1386 @@ Expected: GitLab pipeline runs and goes green.
 **🛑 PAUSE — push to GitLab and review before requesting Milestone 3.**
 
 ---
+
+## Milestone 3 — Canonical wiki layer
+
+**Outcome:** A typed canonical-page schema, frontmatter parser/loader, cross-reference validator, section chunker, the first 5 P0 canonical pages (with real content, expandable later), and CLI commands `chatqec canonical list / validate`. Canonical pages are now first-class citizens — ready for ingestion in M4 and force-injection in M6.
+
+**Files this milestone creates / touches:**
+- Create: `src/chatqec/canonical/__init__.py`
+- Create: `src/chatqec/canonical/page.py` (schema + parser)
+- Create: `src/chatqec/canonical/loader.py` (scan + validate)
+- Create: `src/chatqec/canonical/chunker.py` (section-based)
+- Create: `knowledge/canonical/README.md`
+- Create: `knowledge/canonical/_roster.yaml` (the 52-page roster from spec A.1)
+- Create: `knowledge/canonical/surface-code.md`
+- Create: `knowledge/canonical/stabilizer-formalism.md`
+- Create: `knowledge/canonical/threshold-theorem.md`
+- Create: `knowledge/canonical/css-codes.md`
+- Create: `knowledge/canonical/magic-state-distillation.md`
+- Create: `tests/test_canonical_page.py`
+- Create: `tests/test_canonical_loader.py`
+- Create: `tests/test_canonical_chunker.py`
+- Create: `tests/test_cli_canonical.py`
+- Modify: `src/chatqec/cli.py` (add `canonical` command group)
+- Modify: `CHANGELOG.md`
+
+**Why split this way:** the canonical layer is what grounds Claude in correct QEC terminology. The schema and validator are the contract; the 5 starter pages prove the contract works end-to-end; the chunker outputs what M5/M6 will index and inject.
+
+---
+
+### Task 3.1 — `CanonicalPage` Pydantic schema
+
+**Files:**
+- Create: `src/chatqec/canonical/__init__.py` (empty)
+- Create: `src/chatqec/canonical/page.py`
+- Create: `tests/test_canonical_page.py`
+
+- [ ] **Step 1: Make `canonical` a package**
+
+```bash
+touch src/chatqec/canonical/__init__.py
+```
+
+- [ ] **Step 2: Write failing tests for the schema**
+
+Create `tests/test_canonical_page.py`:
+
+```python
+"""CanonicalPage schema + frontmatter parsing tests."""
+
+from datetime import date
+
+import pytest
+from pydantic import ValidationError
+
+from chatqec.canonical.page import CanonicalFrontmatter, CanonicalPage, parse_page
+
+
+def test_frontmatter_accepts_valid_kebab_slug():
+    fm = CanonicalFrontmatter(
+        topic_slug="surface-code",
+        title="Surface Code",
+        aliases=["toric code", "planar code"],
+        see_also=["stabilizer-formalism", "color-code"],
+        authority_tier="canonical",
+        last_reviewed=date(2026, 5, 29),
+        maintainers=["sharmin"],
+    )
+    assert fm.topic_slug == "surface-code"
+
+
+def test_frontmatter_rejects_uppercase_slug():
+    with pytest.raises(ValidationError):
+        CanonicalFrontmatter(
+            topic_slug="Surface-Code",
+            title="x",
+            authority_tier="canonical",
+            last_reviewed=date(2026, 1, 1),
+            maintainers=["m"],
+        )
+
+
+def test_frontmatter_rejects_underscore_in_slug():
+    with pytest.raises(ValidationError):
+        CanonicalFrontmatter(
+            topic_slug="surface_code",
+            title="x",
+            authority_tier="canonical",
+            last_reviewed=date(2026, 1, 1),
+            maintainers=["m"],
+        )
+
+
+def test_frontmatter_requires_canonical_authority_tier():
+    with pytest.raises(ValidationError):
+        CanonicalFrontmatter(
+            topic_slug="x",
+            title="x",
+            authority_tier="preprint",  # not allowed for canonical pages
+            last_reviewed=date(2026, 1, 1),
+            maintainers=["m"],
+        )
+
+
+def test_parse_page_splits_frontmatter_and_body():
+    text = """---
+topic_slug: surface-code
+title: "Surface Code"
+aliases: ["toric code"]
+see_also: ["stabilizer-formalism"]
+authority_tier: canonical
+last_reviewed: 2026-05-29
+maintainers: ["sharmin"]
+---
+# Surface Code
+
+The surface code is a topological CSS code.
+
+## Stabilizers
+
+X-type plaquettes and Z-type stars.
+"""
+    page = parse_page(text)
+    assert isinstance(page, CanonicalPage)
+    assert page.frontmatter.topic_slug == "surface-code"
+    assert "topological" in page.body.lower()
+    # The title heading should appear in the body
+    assert page.body.lstrip().startswith("# Surface Code")
+
+
+def test_parse_page_rejects_missing_frontmatter():
+    text = "# Surface Code\n\nNo frontmatter here.\n"
+    with pytest.raises(ValueError, match="frontmatter"):
+        parse_page(text)
+
+
+def test_parse_page_rejects_unterminated_frontmatter():
+    text = "---\ntopic_slug: x\n# missing closing fence\n"
+    with pytest.raises(ValueError):
+        parse_page(text)
+```
+
+- [ ] **Step 3: Run failing tests**
+
+```bash
+uv run pytest tests/test_canonical_page.py -v
+```
+
+Expected: ImportError on `chatqec.canonical.page`.
+
+- [ ] **Step 4: Implement `src/chatqec/canonical/page.py`**
+
+```python
+"""Canonical wiki page schema and frontmatter parser.
+
+Canonical pages live in knowledge/canonical/<slug>.md and are the only sources
+authored by humans rather than fetched. They get authority_tier="canonical"
+and are force-injected into context when the query matches their topic_slug
+or aliases (see spec §5.2 and §8.4).
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import date
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n(.*)\Z", re.DOTALL)
+
+
+class CanonicalFrontmatter(BaseModel):
+    """YAML frontmatter of a canonical wiki page."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    topic_slug: str
+    title: str
+    aliases: list[str] = Field(default_factory=list)
+    see_also: list[str] = Field(default_factory=list)
+    authority_tier: str
+    last_reviewed: date
+    maintainers: list[str]
+
+    @field_validator("topic_slug")
+    @classmethod
+    def _kebab_slug(cls, v: str) -> str:
+        if not _SLUG_RE.match(v):
+            raise ValueError(f"topic_slug must be kebab-case (a-z, 0-9, hyphen): {v!r}")
+        return v
+
+    @field_validator("see_also", "aliases")
+    @classmethod
+    def _no_blanks(cls, v: list[str]) -> list[str]:
+        if any(not s.strip() for s in v):
+            raise ValueError("entries must be non-empty strings")
+        return v
+
+    @field_validator("authority_tier")
+    @classmethod
+    def _must_be_canonical(cls, v: str) -> str:
+        if v != "canonical":
+            raise ValueError(f"canonical pages must have authority_tier='canonical', got {v!r}")
+        return v
+
+
+@dataclass(frozen=True)
+class CanonicalPage:
+    """A parsed canonical wiki page = frontmatter + raw markdown body."""
+
+    frontmatter: CanonicalFrontmatter
+    body: str
+
+
+def parse_page(text: str) -> CanonicalPage:
+    """Parse a canonical page from raw markdown text."""
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        raise ValueError(
+            "canonical page must start with YAML frontmatter delimited by '---' fences"
+        )
+    fm_text, body = match.group(1), match.group(2)
+    fm_data = yaml.safe_load(fm_text)
+    if not isinstance(fm_data, dict):
+        raise ValueError("frontmatter must be a YAML mapping")
+    return CanonicalPage(
+        frontmatter=CanonicalFrontmatter(**fm_data),
+        body=body,
+    )
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_canonical_page.py -v
+```
+
+Expected: 7 passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/canonical/__init__.py src/chatqec/canonical/page.py tests/test_canonical_page.py
+git commit -m "feat(canonical): add CanonicalFrontmatter schema and parser"
+```
+
+---
+
+### Task 3.2 — Canonical page loader + cross-reference validator
+
+**Files:**
+- Create: `src/chatqec/canonical/loader.py`
+- Create: `tests/test_canonical_loader.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_canonical_loader.py`:
+
+```python
+"""Canonical loader tests — scans knowledge/canonical/ and validates cross-refs."""
+
+from pathlib import Path
+
+import pytest
+
+from chatqec.canonical.loader import (
+    CrossReferenceError,
+    DuplicateAliasError,
+    DuplicateSlugError,
+    load_canonical_directory,
+)
+
+
+def _write_page(path: Path, slug: str, aliases: list[str] | None = None,
+                see_also: list[str] | None = None) -> None:
+    aliases = aliases or []
+    see_also = see_also or []
+    path.write_text(f"""---
+topic_slug: {slug}
+title: "{slug}"
+aliases: {aliases!r}
+see_also: {see_also!r}
+authority_tier: canonical
+last_reviewed: 2026-05-29
+maintainers: ["m"]
+---
+# {slug}
+
+body for {slug}
+""", encoding="utf-8")
+
+
+def test_load_canonical_directory_returns_all_pages(tmp_path: Path):
+    _write_page(tmp_path / "a.md", "a")
+    _write_page(tmp_path / "b.md", "b")
+    pages = load_canonical_directory(tmp_path)
+    assert {p.frontmatter.topic_slug for p in pages} == {"a", "b"}
+
+
+def test_load_canonical_directory_skips_underscored_files(tmp_path: Path):
+    # Files starting with _ (e.g. _roster.yaml, _index.md) are ignored
+    _write_page(tmp_path / "a.md", "a")
+    (tmp_path / "_index.md").write_text("# index", encoding="utf-8")
+    (tmp_path / "_roster.yaml").write_text("foo: bar\n", encoding="utf-8")
+    pages = load_canonical_directory(tmp_path)
+    assert len(pages) == 1
+
+
+def test_load_rejects_duplicate_slug(tmp_path: Path):
+    _write_page(tmp_path / "a.md", "x")
+    _write_page(tmp_path / "b.md", "x")  # same slug, different file
+    with pytest.raises(DuplicateSlugError):
+        load_canonical_directory(tmp_path)
+
+
+def test_load_rejects_alias_colliding_with_existing_slug(tmp_path: Path):
+    _write_page(tmp_path / "a.md", "surface-code", aliases=["color-code"])
+    _write_page(tmp_path / "b.md", "color-code")
+    with pytest.raises(DuplicateAliasError):
+        load_canonical_directory(tmp_path)
+
+
+def test_load_rejects_unresolved_see_also(tmp_path: Path):
+    _write_page(tmp_path / "a.md", "a", see_also=["nonexistent-slug"])
+    _write_page(tmp_path / "b.md", "b")
+    with pytest.raises(CrossReferenceError, match="nonexistent-slug"):
+        load_canonical_directory(tmp_path)
+
+
+def test_load_allows_see_also_pointing_at_alias(tmp_path: Path):
+    _write_page(tmp_path / "a.md", "a", see_also=["toric-code"])
+    _write_page(tmp_path / "b.md", "surface-code", aliases=["toric-code"])
+    # Should NOT raise — see_also resolution checks slugs ∪ aliases.
+    pages = load_canonical_directory(tmp_path)
+    assert len(pages) == 2
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_canonical_loader.py -v
+```
+
+Expected: ImportError on `chatqec.canonical.loader`.
+
+- [ ] **Step 3: Implement `src/chatqec/canonical/loader.py`**
+
+```python
+"""Loader and cross-reference validator for the canonical wiki directory."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from chatqec.canonical.page import CanonicalPage, parse_page
+
+
+class CanonicalLoadError(Exception):
+    pass
+
+
+class DuplicateSlugError(CanonicalLoadError):
+    pass
+
+
+class DuplicateAliasError(CanonicalLoadError):
+    pass
+
+
+class CrossReferenceError(CanonicalLoadError):
+    pass
+
+
+def load_canonical_directory(directory: Path) -> list[CanonicalPage]:
+    """Scan a directory of canonical pages, parse, and validate cross-refs.
+
+    Rules:
+    - Files starting with '_' are ignored (e.g. _roster.yaml, _index.md).
+    - All topic_slugs must be unique.
+    - No alias may collide with another page's slug or another alias.
+    - Every see_also entry must resolve to an existing slug OR alias.
+    """
+    pages: list[CanonicalPage] = []
+    for path in sorted(directory.glob("*.md")):
+        if path.name.startswith("_"):
+            continue
+        pages.append(parse_page(path.read_text(encoding="utf-8")))
+
+    slugs: set[str] = set()
+    alias_to_slug: dict[str, str] = {}
+    for p in pages:
+        slug = p.frontmatter.topic_slug
+        if slug in slugs:
+            raise DuplicateSlugError(slug)
+        slugs.add(slug)
+    for p in pages:
+        for alias in p.frontmatter.aliases:
+            if alias in slugs and alias != p.frontmatter.topic_slug:
+                raise DuplicateAliasError(
+                    f"alias {alias!r} on page {p.frontmatter.topic_slug!r} collides with slug {alias!r}"
+                )
+            if alias in alias_to_slug:
+                raise DuplicateAliasError(
+                    f"alias {alias!r} appears on both "
+                    f"{alias_to_slug[alias]!r} and {p.frontmatter.topic_slug!r}"
+                )
+            alias_to_slug[alias] = p.frontmatter.topic_slug
+
+    resolvable = slugs | set(alias_to_slug.keys())
+    for p in pages:
+        for ref in p.frontmatter.see_also:
+            if ref not in resolvable:
+                raise CrossReferenceError(
+                    f"see_also entry {ref!r} on page {p.frontmatter.topic_slug!r} "
+                    f"does not resolve to any slug or alias"
+                )
+    return pages
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_canonical_loader.py -v
+```
+
+Expected: 6 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/canonical/loader.py tests/test_canonical_loader.py
+git commit -m "feat(canonical): add directory loader and cross-reference validator"
+```
+
+---
+
+### Task 3.3 — Section-based chunker for canonical pages
+
+**Files:**
+- Create: `src/chatqec/canonical/chunker.py`
+- Create: `tests/test_canonical_chunker.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_canonical_chunker.py`:
+
+```python
+"""Section-based chunker for canonical pages.
+
+Canonical content is author-controlled and well-structured; we chunk on '##'
+boundaries and emit one chunk per section.
+"""
+
+from chatqec.canonical.chunker import CanonicalChunk, chunk_canonical_body
+
+
+SAMPLE = """# Surface Code
+
+Intro paragraph mentioning the toric code.
+
+## Stabilizers
+
+X-plaquettes and Z-stars.
+
+## Decoding
+
+MWPM on the syndrome graph.
+
+### Subdecoders
+
+Union-Find is faster.
+"""
+
+
+def test_chunker_emits_one_chunk_per_h2():
+    chunks = chunk_canonical_body(SAMPLE)
+    assert [c.section_title for c in chunks] == ["Preamble", "Stabilizers", "Decoding"]
+
+
+def test_chunker_includes_h3_in_parent_h2():
+    chunks = chunk_canonical_body(SAMPLE)
+    decoding = next(c for c in chunks if c.section_title == "Decoding")
+    assert "Union-Find" in decoding.text
+    assert "### Subdecoders" in decoding.text
+
+
+def test_chunker_preamble_captures_text_before_first_h2():
+    chunks = chunk_canonical_body(SAMPLE)
+    preamble = chunks[0]
+    assert preamble.section_title == "Preamble"
+    assert "toric code" in preamble.text
+
+
+def test_chunker_anchor_is_kebab_of_section_title():
+    chunks = chunk_canonical_body(SAMPLE)
+    assert chunks[1].anchor == "stabilizers"
+    assert chunks[2].anchor == "decoding"
+    assert chunks[0].anchor == ""  # preamble has no heading anchor
+
+
+def test_chunker_yields_no_chunks_for_empty_body():
+    assert list(chunk_canonical_body("")) == []
+
+
+def test_chunk_dataclass_is_frozen():
+    chunks = chunk_canonical_body(SAMPLE)
+    import dataclasses
+    import pytest
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        chunks[0].text = "x"  # type: ignore[misc]
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_canonical_chunker.py -v
+```
+
+Expected: ImportError on `chatqec.canonical.chunker`.
+
+- [ ] **Step 3: Implement `src/chatqec/canonical/chunker.py`**
+
+```python
+"""Section-based chunker for canonical wiki pages.
+
+Splits markdown body into chunks at each '##' heading. Subheadings (###, ####)
+stay within their parent ## section. Text before the first ## (if any) becomes
+a "Preamble" chunk.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class CanonicalChunk:
+    section_title: str
+    text: str
+    anchor: str  # kebab-case version of section_title, "" for preamble
+
+
+_H2_RE = re.compile(r"^##[ \t]+(.+?)\s*$", re.MULTILINE)
+
+
+def _slugify(title: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    return s
+
+
+def chunk_canonical_body(body: str) -> list[CanonicalChunk]:
+    if not body.strip():
+        return []
+
+    # Locate all H2 headings. Each H2 starts a section that runs until the next H2.
+    matches = list(_H2_RE.finditer(body))
+    chunks: list[CanonicalChunk] = []
+
+    if not matches:
+        # Whole body is preamble
+        return [CanonicalChunk(section_title="Preamble", text=body.strip(), anchor="")]
+
+    # Preamble = everything before first H2
+    first = matches[0]
+    preamble = body[: first.start()].strip()
+    if preamble:
+        chunks.append(CanonicalChunk(section_title="Preamble", text=preamble, anchor=""))
+
+    for i, m in enumerate(matches):
+        title = m.group(1).strip()
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+        section_text = body[start:end].strip()
+        chunks.append(
+            CanonicalChunk(section_title=title, text=section_text, anchor=_slugify(title))
+        )
+    return chunks
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_canonical_chunker.py -v
+```
+
+Expected: 6 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/chatqec/canonical/chunker.py tests/test_canonical_chunker.py
+git commit -m "feat(canonical): add section-based chunker (## boundaries)"
+```
+
+---
+
+### Task 3.4 — `knowledge/canonical/` directory + README + 52-page roster
+
+**Files:**
+- Create: `knowledge/canonical/README.md`
+- Create: `knowledge/canonical/_roster.yaml`
+
+- [ ] **Step 1: Make the directory**
+
+```bash
+mkdir -p knowledge/canonical
+```
+
+- [ ] **Step 2: Write the contributor README**
+
+Create `knowledge/canonical/README.md`:
+
+```markdown
+# Canonical Wiki
+
+This directory holds the hand-curated canonical wiki pages — the highest-authority
+content in the ChatQEC corpus. Each page is one QEC concept and gets force-injected
+into context whenever a user query matches its `topic_slug` or `aliases`.
+
+## File format
+
+Each page is a markdown file `<topic-slug>.md` with YAML frontmatter:
+
+```yaml
+---
+topic_slug: surface-code
+title: "Surface Code"
+aliases: ["toric code variant", "planar code"]
+see_also: [stabilizer-formalism, color-code, mwpm-decoder, lattice-surgery]
+authority_tier: canonical
+last_reviewed: 2026-05-29
+maintainers: ["sharmin"]
+---
+```
+
+### Required fields
+
+- `topic_slug` — kebab-case, must match the filename (`surface-code.md` ↔ `topic_slug: surface-code`)
+- `title` — display name
+- `authority_tier` — must be `canonical`
+- `last_reviewed` — ISO date
+- `maintainers` — at least one name
+
+### Optional fields
+
+- `aliases` — alternate names users might query (e.g. "toric code" → surface-code page)
+- `see_also` — related slugs; every entry must resolve to a real slug or alias
+
+## Validation
+
+Run `chatqec canonical validate` to check the entire directory. CI runs this on every PR.
+
+## Roster
+
+The full v1 roster of 52 pages (P0/P1/P2 priority) is in `_roster.yaml`. Files starting
+with `_` are not loaded as pages — they are documentation / configuration.
+```
+
+- [ ] **Step 3: Write the roster file (top of file shown; copy full A.1 from the spec)**
+
+Create `knowledge/canonical/_roster.yaml`:
+
+```yaml
+# Canonical wiki roster — v1 target (52 pages: 24 P0, 20 P1, 8 P2).
+# Authoritative source: docs/superpowers/specs/2026-05-29-chatqec-design.md §A.1
+# This file is documentation; the loader ignores files starting with '_'.
+
+pages:
+  # --- P0 — Foundations ---
+  - {slug: "pauli-group", title: "Pauli Group", priority: P0, bucket: foundations,
+     aliases: ["Pauli operators", "n-qubit Pauli group"],
+     see_also: [stabilizer-formalism, pauli-channels, logical-operators]}
+  - {slug: "stabilizer-formalism", title: "Stabilizer Formalism", priority: P0, bucket: foundations,
+     aliases: ["stabilizer codes intro", "Pauli stabilizers", "Gottesman formalism"],
+     see_also: [pauli-group, css-codes, logical-operators, syndrome-extraction, clifford-group]}
+  - {slug: "nkd-notation", title: "[[n,k,d]] Code Parameters", priority: P0, bucket: foundations,
+     aliases: ["code distance", "n k d notation", "code parameters"],
+     see_also: [logical-operators, stabilizer-formalism, threshold-theorem]}
+  - {slug: "logical-operators", title: "Logical Operators", priority: P0, bucket: foundations,
+     aliases: ["logical Pauli operators", "logical X", "logical Z", "encoded operators"],
+     see_also: [stabilizer-formalism, nkd-notation, transversal-gates]}
+  - {slug: "knill-laflamme", title: "Knill-Laflamme Conditions", priority: P0, bucket: foundations,
+     aliases: ["KL conditions", "QEC conditions"],
+     see_also: [stabilizer-formalism, nkd-notation, syndrome-extraction]}
+  - {slug: "syndrome-extraction", title: "Syndrome Extraction", priority: P0, bucket: foundations,
+     aliases: ["stabilizer measurement", "syndrome measurement", "parity checks"],
+     see_also: [stabilizer-formalism, decoding, fault-tolerance, measurement-errors, circuit-level-noise]}
+  - {slug: "decoding", title: "Decoding (General)", priority: P0, bucket: decoders,
+     aliases: ["quantum decoder", "syndrome decoding"],
+     see_also: [syndrome-extraction, mwpm-decoder, bp-osd-decoder, union-find-decoder, threshold-theorem]}
+  - {slug: "threshold-theorem", title: "Threshold Theorem", priority: P0, bucket: foundations,
+     aliases: ["fault tolerance threshold", "accuracy threshold theorem"],
+     see_also: [fault-tolerance, concatenated-codes, surface-code, circuit-level-noise]}
+  - {slug: "fault-tolerance", title: "Fault Tolerance", priority: P0, bucket: fault-tolerance,
+     aliases: ["fault-tolerant quantum computation", "FTQC"],
+     see_also: [threshold-theorem, transversal-gates, syndrome-extraction, magic-state-distillation]}
+  - {slug: "clifford-group", title: "Clifford Group", priority: P0, bucket: foundations,
+     aliases: ["Clifford gates", "Clifford operations"],
+     see_also: [pauli-group, transversal-gates, magic-state-distillation]}
+  - {slug: "shor-code", title: "Shor Code", priority: P0, bucket: codes,
+     aliases: ["9-qubit code", "Shor 9-qubit code", "[[9,1,3]] code"],
+     see_also: [steane-code, css-codes, concatenated-codes]}
+  - {slug: "steane-code", title: "Steane Code", priority: P0, bucket: codes,
+     aliases: ["[[7,1,3]] code", "7-qubit Steane code", "Hamming-based code"],
+     see_also: [css-codes, shor-code, transversal-gates, color-code]}
+  - {slug: "css-codes", title: "CSS Codes", priority: P0, bucket: codes,
+     aliases: ["Calderbank-Shor-Steane codes", "CSS construction"],
+     see_also: [stabilizer-formalism, steane-code, surface-code, qldpc-codes]}
+  - {slug: "five-qubit-code", title: "Five-Qubit Code", priority: P0, bucket: codes,
+     aliases: ["perfect code", "[[5,1,3]] code", "smallest QEC code"],
+     see_also: [stabilizer-formalism, knill-laflamme, nkd-notation]}
+  - {slug: "surface-code", title: "Surface Code", priority: P0, bucket: codes,
+     aliases: ["toric code", "planar surface code", "Kitaev surface code", "rotated surface code"],
+     see_also: [css-codes, color-code, mwpm-decoder, lattice-surgery, circuit-level-noise]}
+  - {slug: "color-code", title: "Color Code", priority: P0, bucket: codes,
+     aliases: ["2D color code", "triangular color code", "Bombin color code"],
+     see_also: [surface-code, css-codes, transversal-gates]}
+  - {slug: "bacon-shor-code", title: "Bacon-Shor Code", priority: P0, bucket: codes,
+     aliases: ["Bacon-Shor subsystem code", "compass code family"],
+     see_also: [subsystem-codes, shor-code, css-codes]}
+  - {slug: "transversal-gates", title: "Transversal Gates", priority: P0, bucket: fault-tolerance,
+     aliases: ["transversal logic", "Eastin-Knill"],
+     see_also: [clifford-group, steane-code, reed-muller-codes, magic-state-distillation]}
+  - {slug: "magic-state-distillation", title: "Magic State Distillation", priority: P0, bucket: fault-tolerance,
+     aliases: ["MSD", "T-state distillation"],
+     see_also: [magic-state-injection, triorthogonal-codes, reed-muller-codes, t-gate-count]}
+  - {slug: "magic-state-injection", title: "Magic State Injection", priority: P0, bucket: fault-tolerance,
+     aliases: ["state injection", "T-state injection"],
+     see_also: [magic-state-distillation, lattice-surgery, transversal-gates]}
+  - {slug: "lattice-surgery", title: "Lattice Surgery", priority: P0, bucket: fault-tolerance,
+     aliases: ["surface code lattice surgery", "merge and split"],
+     see_also: [surface-code, code-deformation, magic-state-injection]}
+  - {slug: "reed-muller-codes", title: "Reed-Muller Codes (Quantum)", priority: P0, bucket: codes,
+     aliases: ["quantum Reed-Muller", "[[15,1,3]] code"],
+     see_also: [transversal-gates, magic-state-distillation, triorthogonal-codes]}
+  - {slug: "depolarizing-noise", title: "Depolarizing Noise", priority: P0, bucket: noise,
+     aliases: ["depolarizing channel", "symmetric Pauli noise"],
+     see_also: [pauli-channels, circuit-level-noise, biased-noise]}
+  - {slug: "measurement-errors", title: "Measurement Errors", priority: P0, bucket: noise,
+     aliases: ["readout errors", "syndrome measurement noise"],
+     see_also: [syndrome-extraction, circuit-level-noise, mwpm-decoder]}
+
+  # --- P1 — modern codes, decoders, missing pieces ---
+  - {slug: "qldpc-codes", title: "Quantum LDPC Codes", priority: P1, bucket: codes, aliases: ["qLDPC"], see_also: [bivariate-bicycle-codes, bp-osd-decoder, css-codes]}
+  - {slug: "bivariate-bicycle-codes", title: "Bivariate Bicycle Codes", priority: P1, bucket: codes, aliases: ["BB codes", "IBM bicycle codes", "gross code"], see_also: [qldpc-codes, bp-osd-decoder]}
+  - {slug: "floquet-codes", title: "Floquet Codes", priority: P1, bucket: codes, aliases: ["honeycomb code", "Hastings-Haah code", "dynamical codes"], see_also: [surface-code, subsystem-codes]}
+  - {slug: "subsystem-codes", title: "Subsystem Codes", priority: P1, bucket: codes, aliases: ["gauge codes", "OQEC"], see_also: [bacon-shor-code, floquet-codes, stabilizer-formalism]}
+  - {slug: "concatenated-codes", title: "Concatenated Codes", priority: P1, bucket: codes, aliases: ["code concatenation"], see_also: [shor-code, threshold-theorem, steane-code]}
+  - {slug: "gkp-codes", title: "GKP Codes", priority: P1, bucket: codes, aliases: ["Gottesman-Kitaev-Preskill code", "grid states"], see_also: [cat-codes, continuous-variable-qec]}
+  - {slug: "cat-codes", title: "Cat Codes", priority: P1, bucket: codes, aliases: ["cat qubits", "dissipative cat codes"], see_also: [gkp-codes, biased-noise]}
+  - {slug: "biased-noise", title: "Biased Noise", priority: P1, bucket: noise, aliases: ["Z-biased noise", "dephasing-dominated noise"], see_also: [cat-codes, xzzx-surface-code, depolarizing-noise]}
+  - {slug: "triorthogonal-codes", title: "Triorthogonal Codes", priority: P1, bucket: codes, aliases: ["Bravyi-Haah codes"], see_also: [magic-state-distillation, reed-muller-codes]}
+  - {slug: "code-deformation", title: "Code Deformation and Code Switching", priority: P1, bucket: fault-tolerance, aliases: ["gauge fixing"], see_also: [lattice-surgery, color-code, surface-code]}
+  - {slug: "solovay-kitaev", title: "Solovay-Kitaev Theorem", priority: P1, bucket: fault-tolerance, aliases: ["SK theorem", "gate synthesis"], see_also: [clifford-group, t-gate-count]}
+  - {slug: "t-gate-count", title: "T-Gate Count and Non-Clifford Resources", priority: P1, bucket: fault-tolerance, aliases: ["T-count", "magic budget"], see_also: [magic-state-distillation, solovay-kitaev]}
+  - {slug: "mwpm-decoder", title: "MWPM Decoder", priority: P1, bucket: decoders, aliases: ["MWPM", "Edmonds blossom decoder", "PyMatching"], see_also: [surface-code, decoding, union-find-decoder]}
+  - {slug: "bp-osd-decoder", title: "BP+OSD Decoder", priority: P1, bucket: decoders, aliases: ["belief propagation OSD", "ordered statistics decoding"], see_also: [qldpc-codes, bivariate-bicycle-codes]}
+  - {slug: "union-find-decoder", title: "Union-Find Decoder", priority: P1, bucket: decoders, aliases: ["UF decoder", "Delfosse-Nickerson decoder"], see_also: [mwpm-decoder, surface-code]}
+  - {slug: "tensor-network-decoders", title: "Tensor Network Decoders", priority: P1, bucket: decoders, aliases: ["TN decoder", "MPS decoder"], see_also: [decoding, surface-code]}
+  - {slug: "neural-decoders", title: "Neural and ML Decoders", priority: P1, bucket: decoders, aliases: ["ML decoder", "transformer decoder"], see_also: [decoding, mwpm-decoder]}
+  - {slug: "color-code-decoders", title: "Color Code Decoders", priority: P1, bucket: decoders, aliases: ["restriction decoder", "projection decoder"], see_also: [color-code, mwpm-decoder]}
+  - {slug: "circuit-level-noise", title: "Circuit-Level Noise Models", priority: P1, bucket: noise, aliases: ["SD6", "SI1000"], see_also: [depolarizing-noise, measurement-errors, surface-code]}
+  - {slug: "coherent-errors", title: "Coherent Errors", priority: P1, bucket: noise, aliases: ["unitary errors", "over-rotation errors"], see_also: [pauli-channels, pauli-frame-tracking]}
+  - {slug: "leakage", title: "Leakage Errors", priority: P1, bucket: noise, aliases: ["leakage reduction"], see_also: [crosstalk, circuit-level-noise]}
+  - {slug: "pauli-channels", title: "Pauli Channels and Twirling", priority: P1, bucket: theory, aliases: ["Pauli twirling"], see_also: [depolarizing-noise, coherent-errors]}
+  - {slug: "pauli-frame-tracking", title: "Pauli Frame Tracking", priority: P1, bucket: fault-tolerance, aliases: ["Pauli frame", "frame tracking"], see_also: [clifford-group, syndrome-extraction]}
+
+  # --- P2 — theory depth, hardware platforms ---
+  - {slug: "anyons", title: "Anyons", priority: P2, bucket: theory, see_also: [topological-order, surface-code]}
+  - {slug: "topological-order", title: "Topological Order", priority: P2, bucket: theory, see_also: [anyons, surface-code, floquet-codes]}
+  - {slug: "crosstalk", title: "Crosstalk", priority: P2, bucket: noise, aliases: ["ZZ crosstalk", "spectator errors"], see_also: [leakage, circuit-level-noise]}
+  - {slug: "xzzx-surface-code", title: "XZZX Surface Code", priority: P2, bucket: codes, aliases: ["tailored surface code"], see_also: [surface-code, biased-noise]}
+  - {slug: "superconducting-qec", title: "Superconducting QEC", priority: P2, bucket: hardware, aliases: ["transmon QEC"], see_also: [surface-code, leakage]}
+  - {slug: "neutral-atom-qec", title: "Neutral Atom QEC", priority: P2, bucket: hardware, aliases: ["Rydberg atom QEC"], see_also: [qldpc-codes, transversal-gates]}
+  - {slug: "trapped-ion-qec", title: "Trapped Ion QEC", priority: P2, bucket: hardware, aliases: ["ion trap QEC"], see_also: [color-code, transversal-gates]}
+  - {slug: "photonic-qec", title: "Photonic QEC", priority: P2, bucket: hardware, aliases: ["fusion-based quantum computing"], see_also: [gkp-codes, continuous-variable-qec]}
+  - {slug: "continuous-variable-qec", title: "Continuous-Variable QEC", priority: P2, bucket: hardware, aliases: ["CV QEC", "bosonic QEC"], see_also: [gkp-codes, cat-codes, photonic-qec]}
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add knowledge/canonical/README.md knowledge/canonical/_roster.yaml
+git commit -m "docs(canonical): add knowledge/canonical/ README and 52-page roster"
+```
+
+---
+
+### Task 3.5 — Write 5 P0 canonical pages (starter content)
+
+**Files (create all five):**
+- Create: `knowledge/canonical/surface-code.md`
+- Create: `knowledge/canonical/stabilizer-formalism.md`
+- Create: `knowledge/canonical/threshold-theorem.md`
+- Create: `knowledge/canonical/css-codes.md`
+- Create: `knowledge/canonical/magic-state-distillation.md`
+
+**Note:** Each page below has complete frontmatter (used by the loader) and brief but accurate body content the maintainer can expand later. The five chosen pages cross-reference each other heavily, so they form a self-consistent starter set.
+
+- [ ] **Step 1: Create `knowledge/canonical/surface-code.md`**
+
+```markdown
+---
+topic_slug: surface-code
+title: "Surface Code"
+aliases:
+  - "toric code"
+  - "planar surface code"
+  - "Kitaev surface code"
+  - "rotated surface code"
+see_also:
+  - css-codes
+  - threshold-theorem
+  - stabilizer-formalism
+authority_tier: canonical
+last_reviewed: 2026-05-29
+maintainers:
+  - sharmin
+---
+
+# Surface Code
+
+The surface code is a topological CSS quantum error-correcting code defined on a
+2D square lattice of qubits. It is the leading near-term candidate for
+fault-tolerant quantum computation because of its high threshold (~1% under
+circuit-level depolarizing noise), its requirement of only nearest-neighbour
+2-qubit gates, and its compatibility with planar superconducting and
+neutral-atom architectures.
+
+## Construction
+
+Place a data qubit on every edge of an $L \times L$ square lattice. Associate
+two types of stabilizers with the lattice:
+
+- **Plaquette (face) stabilizers** $B_p = \prod_{e \in \partial p} Z_e$
+- **Vertex (star) stabilizers** $A_v = \prod_{e \ni v} X_e$
+
+All stabilizers commute by construction (each pair shares an even number of
+qubits). For a planar code with rough/smooth boundaries, the code encodes
+$k = 1$ logical qubit with distance $d = L$.
+
+## Logical operators
+
+A logical $\bar{X}$ is a string of $X$ operators connecting two rough
+boundaries; logical $\bar{Z}$ is a string of $Z$ operators connecting two
+smooth boundaries. Both have weight $L$.
+
+## Decoding
+
+Bit-flip errors leave $Z$-syndrome on adjacent plaquettes; phase-flip errors
+leave $X$-syndrome on adjacent stars. Decoding is the problem of inferring the
+most likely error from the syndrome — typically by **minimum-weight perfect
+matching** on the syndrome graph (see [[mwpm-decoder]]).
+
+## Why it dominates near-term QEC
+
+- High threshold under realistic noise (~1% for SD6, SI1000)
+- Local 2-qubit gates only
+- Well-developed lattice-surgery primitives for logical operations
+- Mature simulator + decoder ecosystem (Stim, PyMatching)
+
+## See also
+
+- [[css-codes]] — the CSS construction the surface code instantiates
+- [[threshold-theorem]] — what "below threshold" actually means
+- [[stabilizer-formalism]] — the abstract framework underneath
+```
+
+- [ ] **Step 2: Create `knowledge/canonical/stabilizer-formalism.md`**
+
+```markdown
+---
+topic_slug: stabilizer-formalism
+title: "Stabilizer Formalism"
+aliases:
+  - "stabilizer codes intro"
+  - "Pauli stabilizers"
+  - "Gottesman formalism"
+see_also:
+  - css-codes
+  - surface-code
+  - threshold-theorem
+authority_tier: canonical
+last_reviewed: 2026-05-29
+maintainers:
+  - sharmin
+---
+
+# Stabilizer Formalism
+
+The stabilizer formalism (Gottesman 1997) describes a quantum code as the
+joint $+1$-eigenspace of an abelian subgroup $S \subseteq P_n$ of the $n$-qubit
+Pauli group, where $-I \notin S$. Nearly every practical QEC code in use today
+— including the surface, color, and qLDPC families — is a stabilizer code.
+
+## Definition
+
+Let $S = \langle g_1, \ldots, g_{n-k} \rangle$ be generated by $n - k$
+independent commuting Pauli operators. The code space is
+
+$$\mathcal{C}(S) = \{ |\psi\rangle : g_i |\psi\rangle = |\psi\rangle \ \forall i \}$$
+
+and encodes $k$ logical qubits.
+
+## Logical operators
+
+The normalizer $N(S) \setminus S$ contains $2k$ independent Pauli operators
+that commute with every stabilizer but are not themselves stabilizers. These
+are the encoded $\bar{X}_i, \bar{Z}_i$ operators.
+
+## Error correction
+
+An error $E \in P_n$ either commutes with all stabilizers (the syndrome is
+trivial — either no error or a logical error) or anti-commutes with some — the
+**syndrome** is the bit string $s_i = [g_i, E] / 2$.
+
+A code with distance $d$ corrects $\lfloor (d-1)/2 \rfloor$ Pauli errors.
+
+## Why it matters
+
+- All efficient classical-simulable circuits (Gottesman-Knill) live in the stabilizer formalism
+- Syndrome measurement reduces to measuring stabilizer generators
+- Most decoders operate on the syndrome graph derived from the stabilizers
+
+## See also
+
+- [[css-codes]] — a structured family of stabilizer codes
+- [[surface-code]] — the practical topological stabilizer code
+- [[threshold-theorem]] — what the formalism enables
+```
+
+- [ ] **Step 3: Create `knowledge/canonical/threshold-theorem.md`**
+
+```markdown
+---
+topic_slug: threshold-theorem
+title: "Threshold Theorem"
+aliases:
+  - "fault tolerance threshold"
+  - "accuracy threshold theorem"
+see_also:
+  - surface-code
+  - stabilizer-formalism
+authority_tier: canonical
+last_reviewed: 2026-05-29
+maintainers:
+  - sharmin
+---
+
+# Threshold Theorem
+
+The threshold theorem (Aharonov & Ben-Or 1999; Knill, Laflamme, Zurek 1996;
+Kitaev 1997) states that if the physical error rate per gate is below a
+code-dependent constant $p_{th}$, then arbitrarily long quantum computations
+are possible with polylogarithmic overhead.
+
+## Statement (informal)
+
+For a family of fault-tolerant constructions of code distance $d$, there
+exists a threshold $p_{th}$ such that the logical error rate satisfies
+
+$$p_L(d) \lesssim A \left( \frac{p}{p_{th}} \right)^{(d+1)/2}$$
+
+for $p < p_{th}$. Increasing distance exponentially suppresses logical errors
+below threshold.
+
+## Surface code threshold
+
+Under circuit-level depolarizing noise with the standard syndrome-extraction
+circuit, the surface code threshold is approximately $p_{th} \approx 1\%$.
+Under biased noise, tailored variants like [[surface-code]] XZZX achieve
+higher thresholds against the dominant error type.
+
+## What "below threshold" means experimentally
+
+A system operates **below threshold** when increasing the code distance
+*decreases* the logical error rate. Google's 2024 Willow result (arXiv:2408.13687)
+demonstrated this for $d = 3, 5, 7$ on a superconducting surface code.
+
+## Common misconceptions
+
+- The threshold is *not* the physical error rate at which one logical qubit
+  beats one physical qubit — that's a separate engineering threshold.
+- The threshold depends on the *noise model*, the *code*, the *decoder*, and
+  the *syndrome-extraction circuit*. Quoting a threshold without specifying
+  these is meaningless.
+
+## See also
+
+- [[surface-code]] — primary code where below-threshold has been demonstrated
+- [[stabilizer-formalism]] — algebraic framework used in threshold proofs
+```
+
+- [ ] **Step 4: Create `knowledge/canonical/css-codes.md`**
+
+```markdown
+---
+topic_slug: css-codes
+title: "CSS Codes"
+aliases:
+  - "Calderbank-Shor-Steane codes"
+  - "CSS construction"
+see_also:
+  - stabilizer-formalism
+  - surface-code
+authority_tier: canonical
+last_reviewed: 2026-05-29
+maintainers:
+  - sharmin
+---
+
+# CSS Codes
+
+CSS codes (Calderbank-Shor-Steane, 1996) are stabilizer codes whose generators
+can be split into two sets: one consisting purely of $X$-type operators and
+one purely of $Z$-type. They are constructed from a pair of classical linear
+codes satisfying a duality condition.
+
+## Construction
+
+Let $C_1, C_2$ be classical binary linear codes with $C_2 \subseteq C_1$. The
+parity-check matrices $H_1$ (for $C_1$) and $H_2$ (for $C_2^\perp$) define the
+stabilizer generators:
+
+- $X$-stabilizers: one $X$ on each non-zero column of $H_2$ — using rows of $H_2$
+- $Z$-stabilizers: one $Z$ on each non-zero column of $H_1$ — using rows of $H_1$
+
+The resulting quantum code has parameters $[[n, k, d]]$ where
+$k = \dim(C_1) - \dim(C_2)$.
+
+## Why CSS matters
+
+- Bit-flip and phase-flip errors decode *independently*, simplifying decoder design
+- Many practical codes are CSS: [[surface-code]], color code, qLDPC codes
+- Transversal CNOT works on any CSS code
+
+## Notable CSS codes
+
+| Code | $[[n,k,d]]$ | Construction |
+|---|---|---|
+| Steane | $[[7,1,3]]$ | $C_1 = C_2^\perp = [7,4]$ Hamming |
+| Surface | $[[L^2, 1, L]]$ | toric / planar topological |
+| Bivariate bicycle | various | qLDPC family |
+
+## Limitations
+
+Eastin-Knill rules out a universal transversal gate set for any non-trivial
+quantum code — including CSS codes. Hence the need for [[magic-state-distillation]].
+
+## See also
+
+- [[stabilizer-formalism]] — the broader algebraic context
+- [[surface-code]] — the practical topological CSS code
+```
+
+- [ ] **Step 5: Create `knowledge/canonical/magic-state-distillation.md`**
+
+```markdown
+---
+topic_slug: magic-state-distillation
+title: "Magic State Distillation"
+aliases:
+  - "MSD"
+  - "T-state distillation"
+  - "state distillation"
+see_also:
+  - css-codes
+  - stabilizer-formalism
+authority_tier: canonical
+last_reviewed: 2026-05-29
+maintainers:
+  - sharmin
+---
+
+# Magic State Distillation
+
+Magic state distillation (Bravyi & Kitaev 2005) is the standard route to
+universal fault-tolerant quantum computation on stabilizer codes. Eastin-Knill
+forbids a transversal universal gate set, so non-Clifford operations are
+implemented by **injecting** a noisy magic state and **distilling** purified
+copies using stabilizer operations only.
+
+## The magic states
+
+The canonical resource state is
+
+$$|T\rangle = \cos(\pi/8)|0\rangle + e^{i\pi/4}\sin(\pi/8)|1\rangle$$
+
+Consuming one ideal $|T\rangle$ enables one $T = \mathrm{diag}(1, e^{i\pi/4})$
+gate by gate teleportation. Combined with the Clifford group (achievable
+transversally on many stabilizer codes), this gives universality.
+
+## The protocol
+
+1. Prepare $n$ noisy $|T\rangle$ states with error rate $p$.
+2. Encode them into the $[[15, 1, 3]]$ Reed-Muller code (or a triorthogonal code).
+3. Measure the code's stabilizers; on the trivial syndrome, the output magic
+   state has lower error rate $p' \sim O(p^d)$ where $d$ is the code distance.
+4. Repeat in cascade until the desired fidelity is reached.
+
+## Cost
+
+Magic state distillation dominates the resource cost of fault-tolerant
+algorithms (Gidney-Ekera 2021 RSA estimate). Modern work (Litinski 2019,
+Wills-Lin-Yoder 2024) substantially reduces this overhead via
+**triorthogonal codes** and improved factory architectures.
+
+## See also
+
+- [[css-codes]] — the codes used in distillation factories
+- [[stabilizer-formalism]] — what makes Clifford-only operations "free"
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add knowledge/canonical/*.md
+git commit -m "docs(canonical): add 5 P0 canonical pages (surface-code, stabilizer, threshold, css, msd)"
+```
+
+---
+
+### Task 3.6 — CLI: `chatqec canonical list` and `chatqec canonical validate`
+
+**Files:**
+- Modify: `src/chatqec/cli.py`
+- Create: `tests/test_cli_canonical.py`
+
+- [ ] **Step 1: Write failing CLI tests**
+
+Create `tests/test_cli_canonical.py`:
+
+```python
+"""CLI tests for `chatqec canonical` subcommands."""
+
+from pathlib import Path
+
+from click.testing import CliRunner
+
+from chatqec.cli import main
+
+
+def _write(path: Path, slug: str, see_also: list[str] | None = None) -> None:
+    see_also = see_also or []
+    path.write_text(f"""---
+topic_slug: {slug}
+title: "{slug}"
+aliases: []
+see_also: {see_also!r}
+authority_tier: canonical
+last_reviewed: 2026-05-29
+maintainers: ["m"]
+---
+# {slug}
+
+body
+""", encoding="utf-8")
+
+
+def test_canonical_list_prints_slugs(tmp_path: Path):
+    _write(tmp_path / "a.md", "a")
+    _write(tmp_path / "b.md", "b")
+    runner = CliRunner()
+    result = runner.invoke(main, ["canonical", "--dir", str(tmp_path), "list"])
+    assert result.exit_code == 0
+    assert "a" in result.output
+    assert "b" in result.output
+
+
+def test_canonical_validate_passes_clean_dir(tmp_path: Path):
+    _write(tmp_path / "a.md", "a", see_also=["b"])
+    _write(tmp_path / "b.md", "b")
+    runner = CliRunner()
+    result = runner.invoke(main, ["canonical", "--dir", str(tmp_path), "validate"])
+    assert result.exit_code == 0
+    assert "ok" in result.output.lower() or "2 pages" in result.output.lower()
+
+
+def test_canonical_validate_reports_broken_cross_ref(tmp_path: Path):
+    _write(tmp_path / "a.md", "a", see_also=["nonexistent"])
+    runner = CliRunner()
+    result = runner.invoke(main, ["canonical", "--dir", str(tmp_path), "validate"])
+    assert result.exit_code != 0
+    assert "nonexistent" in result.output.lower()
+```
+
+- [ ] **Step 2: Run failing tests**
+
+```bash
+uv run pytest tests/test_cli_canonical.py -v
+```
+
+Expected: `canonical` command not found.
+
+- [ ] **Step 3: Add the `canonical` group to `src/chatqec/cli.py`**
+
+Insert the following block in `src/chatqec/cli.py`, immediately after the `sources_compact` function definition and before the `if __name__ == "__main__":` line. Also add the necessary import at the top of the file.
+
+Add to the imports section (near the other `from chatqec...` imports):
+
+```python
+from chatqec.canonical.loader import (
+    CanonicalLoadError,
+    load_canonical_directory,
+)
+```
+
+Then add the command group:
+
+```python
+@main.group()
+@click.option(
+    "--dir",
+    "canonical_dir",
+    type=click.Path(path_type=Path, exists=True, file_okay=False, dir_okay=True),
+    default=Path("knowledge/canonical"),
+    show_default=True,
+    help="Path to the canonical wiki directory.",
+)
+@click.pass_context
+def canonical(ctx: click.Context, canonical_dir: Path) -> None:
+    """Inspect and validate the canonical wiki layer."""
+    ctx.obj = canonical_dir
+
+
+@canonical.command("list")
+@click.pass_obj
+def canonical_list(canonical_dir: Path) -> None:
+    """List all canonical pages by topic_slug."""
+    pages = load_canonical_directory(canonical_dir)
+    console = Console()
+    table = Table(show_header=True, header_style="bold")
+    for col in ("topic_slug", "title", "aliases", "see_also", "last_reviewed"):
+        table.add_column(col)
+    for p in pages:
+        fm = p.frontmatter
+        table.add_row(
+            fm.topic_slug, fm.title,
+            ", ".join(fm.aliases), ", ".join(fm.see_also),
+            fm.last_reviewed.isoformat(),
+        )
+    console.print(table)
+    console.print(f"[dim]{len(pages)} pages[/]")
+
+
+@canonical.command("validate")
+@click.pass_obj
+def canonical_validate(canonical_dir: Path) -> None:
+    """Validate frontmatter + cross-references for every canonical page."""
+    try:
+        pages = load_canonical_directory(canonical_dir)
+    except CanonicalLoadError as e:
+        click.echo(f"validation failed: {e}", err=True)
+        raise SystemExit(2) from None
+    click.echo(f"ok — {len(pages)} pages parsed and cross-references resolve")
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+uv run pytest tests/test_cli_canonical.py -v
+```
+
+Expected: 3 passed.
+
+- [ ] **Step 5: Run the real CLI against the 5 P0 pages**
+
+```bash
+uv run chatqec canonical list
+uv run chatqec canonical validate
+```
+
+Expected: 5-row table, then `ok — 5 pages parsed and cross-references resolve`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/chatqec/cli.py tests/test_cli_canonical.py
+git commit -m "feat(cli): add 'canonical list/validate' commands"
+```
+
+---
+
+### Task 3.7 — CI hook: validate canonical pages on every push
+
+**Files:**
+- Modify: `.gitlab-ci.yml`
+
+- [ ] **Step 1: Add a `validate-canonical` stage and job**
+
+Open `.gitlab-ci.yml` and:
+
+a) Update the `stages:` list to include the new stage between `lint` and `test`:
+
+```yaml
+stages:
+  - lint
+  - validate-canonical
+  - test
+```
+
+b) Add a new job at the end of the file:
+
+```yaml
+validate-canonical:
+  extends: .uv-base
+  stage: validate-canonical
+  script:
+    - uv run chatqec canonical --dir knowledge/canonical validate
+```
+
+- [ ] **Step 2: Sanity-check locally**
+
+```bash
+uv run chatqec canonical --dir knowledge/canonical validate
+```
+
+Expected: `ok — 5 pages parsed and cross-references resolve`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add .gitlab-ci.yml
+git commit -m "ci: add validate-canonical stage to catch broken cross-references"
+```
+
+---
+
+### Task 3.8 — Update CHANGELOG, run full suite, push
+
+**Files:**
+- Modify: `CHANGELOG.md`
+
+- [ ] **Step 1: Append M3 to `CHANGELOG.md`** (under `## [Unreleased] → ### Added`):
+
+```markdown
+- Canonical wiki layer: `CanonicalFrontmatter` schema, directory loader with cross-reference validation, section-based chunker
+- 5 P0 canonical pages: surface-code, stabilizer-formalism, threshold-theorem, css-codes, magic-state-distillation
+- 52-page canonical roster documentation (`knowledge/canonical/_roster.yaml`)
+- CLI: `chatqec canonical list/validate`
+- CI: validate-canonical stage runs on every push
+```
+
+- [ ] **Step 2: Run full suite + lint + canonical validate**
+
+```bash
+uv run pytest -v
+uv run ruff check src tests
+uv run mypy src
+uv run chatqec canonical validate
+```
+
+Expected: all green. Total tests after M3: ≥46 (M1: 6 + M2: 21 + M3: 19).
+
+- [ ] **Step 3: Commit and push**
+
+```bash
+git add CHANGELOG.md
+git commit -m "docs: update CHANGELOG for M3 (canonical wiki layer + 5 starter pages)"
+git push origin main
+```
+
+Expected: GitLab pipeline shows lint, validate-canonical, and test all green.
+
+---
+
+## Milestone 3 — exit checklist
+
+- [ ] `parse_page` + `load_canonical_directory` round-trip the 5 P0 pages
+- [ ] Cross-reference validator catches dangling `see_also` entries
+- [ ] Section chunker splits on `##` boundaries with preamble + per-section + anchor
+- [ ] `chatqec canonical list` shows 5 rows
+- [ ] `chatqec canonical validate` exits 0
+- [ ] CI runs `validate-canonical` and is green
+- [ ] ≥19 new tests added; full suite ≥46 passing
+- [ ] CHANGELOG updated
+- [ ] GitLab CI green on `main`
+
+**🛑 PAUSE — push to GitLab and review before requesting Milestone 4.**
+
+---
