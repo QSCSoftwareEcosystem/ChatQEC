@@ -18,5 +18,6 @@ def test_answer_is_immutable():
     # dataclass(frozen=True) raises on field assignment
     import dataclasses
     import pytest
+
     with pytest.raises(dataclasses.FrozenInstanceError):
         answer.text = "changed"  # type: ignore[misc]

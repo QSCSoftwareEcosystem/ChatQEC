@@ -7,8 +7,14 @@ from chatqec.config import RetrieverConfig, ModelsConfig, ProjectConfig, ChatQEC
 
 
 def test_retriever_config_is_frozen():
-    cfg = RetrieverConfig(top_k=8, candidate_k=50, alpha_vector=0.5,
-                          beta_bm25=0.3, gamma_tier=0.15, delta_recency=0.05)
+    cfg = RetrieverConfig(
+        top_k=8,
+        candidate_k=50,
+        alpha_vector=0.5,
+        beta_bm25=0.3,
+        gamma_tier=0.15,
+        delta_recency=0.05,
+    )
     with pytest.raises(dataclasses.FrozenInstanceError):
         cfg.top_k = 16  # type: ignore[misc]
 
@@ -37,7 +43,13 @@ def test_chatqec_config_aggregates_subconfigs():
             long_context_fallback="gemini-2.5-pro",
             reranker="BAAI/bge-reranker-base",
         ),
-        retriever=RetrieverConfig(top_k=8, candidate_k=50, alpha_vector=0.5,
-                                  beta_bm25=0.3, gamma_tier=0.15, delta_recency=0.05),
+        retriever=RetrieverConfig(
+            top_k=8,
+            candidate_k=50,
+            alpha_vector=0.5,
+            beta_bm25=0.3,
+            gamma_tier=0.15,
+            delta_recency=0.05,
+        ),
     )
     assert cfg.project.name == "chatqec"
