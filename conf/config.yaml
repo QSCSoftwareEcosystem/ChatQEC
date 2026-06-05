@@ -1,0 +1,27 @@
+# ChatQEC root config (Hydra).
+# Sub-configs live under conf/{retriever,synthesizer,ingestion}/ (added in later milestones).
+
+project:
+  name: chatqec
+  version: "0.1.0-dev"
+
+models:
+  rewriter: claude-haiku-4-5
+  classifier: claude-haiku-4-5
+  synthesizer: claude-sonnet-4-6
+  embedder: text-embedding-004
+  long_context_fallback: gemini-2.5-pro
+  reranker: BAAI/bge-reranker-base
+
+retriever:
+  top_k: 8
+  candidate_k: 50
+  alpha_vector: 0.5
+  beta_bm25: 0.3
+  gamma_tier: 0.15
+  delta_recency: 0.05
+
+paths:
+  registry: sources/registry.jsonl
+  watchlist: sources/watchlist.yaml
+  canonical_dir: knowledge/canonical
