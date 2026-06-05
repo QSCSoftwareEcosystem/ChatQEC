@@ -1,0 +1,40 @@
+stages:
+  - lint
+  - test
+
+variables:
+  UV_VERSION: "0.4.18"
+  PYTHON_VERSION: "3.11"
+
+.uv-base:
+  image: python:3.11-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl git build-essential
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+    - uv --version
+    - uv sync --extra dev
+  cache:
+    key:
+      files: [uv.lock]
+    paths:
+      - .venv/
+
+lint:
+  extends: .uv-base
+  stage: lint
+  script:
+    - uv run ruff check src tests
+    - uv run mypy src
+
+test:
+  extends: .uv-base
+  stage: test
+  script:
+    - uv run pytest -v --cov=chatqec --cov-report=term-missing --cov-report=xml
+  coverage: '/(?i)total.*\s+(\d+%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
