@@ -24,5 +24,6 @@ repos:
       - id: mypy
         files: ^src/
         additional_dependencies:
+          - click>=8.1
           - pydantic>=2.8
           - types-PyYAML

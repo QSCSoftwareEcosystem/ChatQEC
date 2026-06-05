@@ -8,14 +8,14 @@ from chatqec import __version__
 from chatqec.api import ChatQEC
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})  # type: ignore[misc]
-@click.version_option(__version__, prog_name="chatqec")  # type: ignore[misc]
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.version_option(__version__, prog_name="chatqec")
 def main() -> None:
     """ChatQEC — open-source QEC research assistant."""
 
 
-@main.command()  # type: ignore[misc]
-@click.argument("question", nargs=-1, required=True)  # type: ignore[misc]
+@main.command()
+@click.argument("question", nargs=-1, required=True)
 def ask(question: tuple[str, ...]) -> None:
     """Answer a single QEC question (one-shot)."""
     bot = ChatQEC()
