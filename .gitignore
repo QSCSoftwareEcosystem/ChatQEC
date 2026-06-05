@@ -103,7 +103,6 @@ pytestdebug.log
 nosetests.xml
 
 # Type checking / build
-.python-version
 
 # -----------------------------------------------------------------------------
 # Hydra / OmegaConf outputs
