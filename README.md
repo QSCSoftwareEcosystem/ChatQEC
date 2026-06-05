@@ -1,28 +1,31 @@
 # ChatQEC
 
-Semi-automated QEC research assistant with retrieval-augmented generation and sandboxed Stim execution.
+Open-source semi-automated research assistant for Quantum Error Correction.
 
-## Overview
+ChatQEC answers QEC questions over a curated corpus of research papers, textbooks,
+tutorials, code repositories, and video transcripts, with inline citations and
+sandboxed Stim execution for circuit-level questions.
 
-ChatQEC provides a framework for quantum error correction research, featuring:
-- Retrieval-augmented generation for literature and knowledge synthesis
-- Integration with LLMs (Anthropic, Google)
-- Vector search via Qdrant
-- MCP-based tool servers
-- Streamlit-based UI
+## Status
 
-## Installation
+Pre-alpha. See [the design spec](docs/superpowers/specs/2026-05-29-chatqec-design.md)
+and [the implementation plan](docs/superpowers/plans/2026-05-29-chatqec-implementation.md).
 
-```bash
-uv sync
-```
-
-## Development
+## Quick start (developers)
 
 ```bash
+uv venv
 uv sync --extra dev
+uv run chatqec --help
+uv run pytest
 ```
+
+## Stack
+
+Python 3.11+, uv, Hydra, Qdrant, Anthropic + Gemini SDKs, Streamlit. Sandboxed
+QEC tooling (Stim, PyMatching, qiskit-qec) lives in a sibling
+[`chatqec-mcp-tools`](https://code.ornl.gov/qsc-as/chatqec-mcp-tools) MCP server.
 
 ## License
 
-Apache-2.0
+Apache 2.0 — see [LICENSE](LICENSE).
