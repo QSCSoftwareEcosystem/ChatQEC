@@ -11,6 +11,10 @@ from rich.table import Table
 
 from chatqec import __version__
 from chatqec.api import ChatQEC
+from chatqec.canonical.loader import (
+    CanonicalLoadError,
+    load_canonical_directory,
+)
 from chatqec.ingestion.registry import (
     InvalidTransitionError,
     RecordNotFoundError,
@@ -141,6 +145,55 @@ def sources_compact(reg: Registry, older_than_days: int, dry_run: bool) -> None:
     if not dry_run:
         click.echo("--apply not yet supported (wired up in Milestone 5)", err=True)
         raise SystemExit(4)
+
+
+@main.group()
+@click.option(
+    "--dir",
+    "canonical_dir",
+    type=click.Path(path_type=Path, exists=True, file_okay=False, dir_okay=True),
+    default=Path("knowledge/canonical"),
+    show_default=True,
+    help="Path to the canonical wiki directory.",
+)
+@click.pass_context
+def canonical(ctx: click.Context, canonical_dir: Path) -> None:
+    """Inspect and validate the canonical wiki layer."""
+    ctx.obj = canonical_dir
+
+
+@canonical.command("list")
+@click.pass_obj
+def canonical_list(canonical_dir: Path) -> None:
+    """List all canonical pages by topic_slug."""
+    pages = load_canonical_directory(canonical_dir)
+    console = Console()
+    table = Table(show_header=True, header_style="bold")
+    for col in ("topic_slug", "title", "aliases", "see_also", "last_reviewed"):
+        table.add_column(col)
+    for p in pages:
+        fm = p.frontmatter
+        table.add_row(
+            fm.topic_slug,
+            fm.title,
+            ", ".join(fm.aliases),
+            ", ".join(fm.see_also),
+            fm.last_reviewed.isoformat(),
+        )
+    console.print(table)
+    console.print(f"[dim]{len(pages)} pages[/]")
+
+
+@canonical.command("validate")
+@click.pass_obj
+def canonical_validate(canonical_dir: Path) -> None:
+    """Validate frontmatter + cross-references for every canonical page."""
+    try:
+        pages = load_canonical_directory(canonical_dir)
+    except CanonicalLoadError as e:
+        click.echo(f"validation failed: {e}", err=True)
+        raise SystemExit(2) from None
+    click.echo(f"ok — {len(pages)} pages parsed and cross-references resolve")
 
 
 if __name__ == "__main__":
