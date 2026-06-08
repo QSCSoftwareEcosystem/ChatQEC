@@ -1,5 +1,6 @@
 stages:
   - lint
+  - validate-canonical
   - test
 
 variables:
@@ -38,3 +39,9 @@ test:
       coverage_report:
         coverage_format: cobertura
         path: coverage.xml
+
+validate-canonical:
+  extends: .uv-base
+  stage: validate-canonical
+  script:
+    - uv run chatqec canonical --dir knowledge/canonical validate
