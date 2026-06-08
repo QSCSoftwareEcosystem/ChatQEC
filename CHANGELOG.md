@@ -13,3 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitLab CI with lint + test stages
 - Pre-commit hooks
 - Design spec and implementation plan
+- Source registry (`sources/registry.jsonl`) with typed `SourceRecord`, lifecycle states (`active|superseded|retracted|stale|pending_review`), and validated state transitions
+- SHA-256 content-hash utilities (`chatqec.ingestion.hashing`)
+- Canonical source-ID generators per source type (`chatqec.ingestion.ids`)
+- CLI: `chatqec sources list/show/mark-retracted/compact`
