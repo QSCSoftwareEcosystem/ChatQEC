@@ -17,3 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SHA-256 content-hash utilities (`chatqec.ingestion.hashing`)
 - Canonical source-ID generators per source type (`chatqec.ingestion.ids`)
 - CLI: `chatqec sources list/show/mark-retracted/compact`
+- Canonical wiki layer: `CanonicalFrontmatter` schema, directory loader with cross-reference validation, section-based chunker
+- 5 P0 canonical pages: surface-code, stabilizer-formalism, threshold-theorem, css-codes, magic-state-distillation
+- 52-page canonical roster documentation (`knowledge/canonical/_roster.yaml`)
+- CLI: `chatqec canonical list/validate`
+- CI: validate-canonical stage runs on every push
