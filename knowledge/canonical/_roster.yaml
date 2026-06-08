@@ -1,0 +1,114 @@
+# Canonical wiki roster — v1 target (52 pages: 24 P0, 20 P1, 8 P2).
+# Authoritative source: docs/superpowers/specs/2026-05-29-chatqec-design.md §A.1
+# This file is documentation; the loader ignores files starting with '_'.
+
+pages:
+  # --- P0 — Foundations ---
+  - {slug: "pauli-group", title: "Pauli Group", priority: P0, bucket: foundations,
+     aliases: ["Pauli operators", "n-qubit Pauli group"],
+     see_also: [stabilizer-formalism, pauli-channels, logical-operators]}
+  - {slug: "stabilizer-formalism", title: "Stabilizer Formalism", priority: P0, bucket: foundations,
+     aliases: ["stabilizer codes intro", "Pauli stabilizers", "Gottesman formalism"],
+     see_also: [pauli-group, css-codes, logical-operators, syndrome-extraction, clifford-group]}
+  - {slug: "nkd-notation", title: "[[n,k,d]] Code Parameters", priority: P0, bucket: foundations,
+     aliases: ["code distance", "n k d notation", "code parameters"],
+     see_also: [logical-operators, stabilizer-formalism, threshold-theorem]}
+  - {slug: "logical-operators", title: "Logical Operators", priority: P0, bucket: foundations,
+     aliases: ["logical Pauli operators", "logical X", "logical Z", "encoded operators"],
+     see_also: [stabilizer-formalism, nkd-notation, transversal-gates]}
+  - {slug: "knill-laflamme", title: "Knill-Laflamme Conditions", priority: P0, bucket: foundations,
+     aliases: ["KL conditions", "QEC conditions"],
+     see_also: [stabilizer-formalism, nkd-notation, syndrome-extraction]}
+  - {slug: "syndrome-extraction", title: "Syndrome Extraction", priority: P0, bucket: foundations,
+     aliases: ["stabilizer measurement", "syndrome measurement", "parity checks"],
+     see_also: [stabilizer-formalism, decoding, fault-tolerance, measurement-errors, circuit-level-noise]}
+  - {slug: "decoding", title: "Decoding (General)", priority: P0, bucket: decoders,
+     aliases: ["quantum decoder", "syndrome decoding"],
+     see_also: [syndrome-extraction, mwpm-decoder, bp-osd-decoder, union-find-decoder, threshold-theorem]}
+  - {slug: "threshold-theorem", title: "Threshold Theorem", priority: P0, bucket: foundations,
+     aliases: ["fault tolerance threshold", "accuracy threshold theorem"],
+     see_also: [fault-tolerance, concatenated-codes, surface-code, circuit-level-noise]}
+  - {slug: "fault-tolerance", title: "Fault Tolerance", priority: P0, bucket: fault-tolerance,
+     aliases: ["fault-tolerant quantum computation", "FTQC"],
+     see_also: [threshold-theorem, transversal-gates, syndrome-extraction, magic-state-distillation]}
+  - {slug: "clifford-group", title: "Clifford Group", priority: P0, bucket: foundations,
+     aliases: ["Clifford gates", "Clifford operations"],
+     see_also: [pauli-group, transversal-gates, magic-state-distillation]}
+  - {slug: "shor-code", title: "Shor Code", priority: P0, bucket: codes,
+     aliases: ["9-qubit code", "Shor 9-qubit code", "[[9,1,3]] code"],
+     see_also: [steane-code, css-codes, concatenated-codes]}
+  - {slug: "steane-code", title: "Steane Code", priority: P0, bucket: codes,
+     aliases: ["[[7,1,3]] code", "7-qubit Steane code", "Hamming-based code"],
+     see_also: [css-codes, shor-code, transversal-gates, color-code]}
+  - {slug: "css-codes", title: "CSS Codes", priority: P0, bucket: codes,
+     aliases: ["Calderbank-Shor-Steane codes", "CSS construction"],
+     see_also: [stabilizer-formalism, steane-code, surface-code, qldpc-codes]}
+  - {slug: "five-qubit-code", title: "Five-Qubit Code", priority: P0, bucket: codes,
+     aliases: ["perfect code", "[[5,1,3]] code", "smallest QEC code"],
+     see_also: [stabilizer-formalism, knill-laflamme, nkd-notation]}
+  - {slug: "surface-code", title: "Surface Code", priority: P0, bucket: codes,
+     aliases: ["toric code", "planar surface code", "Kitaev surface code", "rotated surface code"],
+     see_also: [css-codes, color-code, mwpm-decoder, lattice-surgery, circuit-level-noise]}
+  - {slug: "color-code", title: "Color Code", priority: P0, bucket: codes,
+     aliases: ["2D color code", "triangular color code", "Bombin color code"],
+     see_also: [surface-code, css-codes, transversal-gates]}
+  - {slug: "bacon-shor-code", title: "Bacon-Shor Code", priority: P0, bucket: codes,
+     aliases: ["Bacon-Shor subsystem code", "compass code family"],
+     see_also: [subsystem-codes, shor-code, css-codes]}
+  - {slug: "transversal-gates", title: "Transversal Gates", priority: P0, bucket: fault-tolerance,
+     aliases: ["transversal logic", "Eastin-Knill"],
+     see_also: [clifford-group, steane-code, reed-muller-codes, magic-state-distillation]}
+  - {slug: "magic-state-distillation", title: "Magic State Distillation", priority: P0, bucket: fault-tolerance,
+     aliases: ["MSD", "T-state distillation"],
+     see_also: [magic-state-injection, triorthogonal-codes, reed-muller-codes, t-gate-count]}
+  - {slug: "magic-state-injection", title: "Magic State Injection", priority: P0, bucket: fault-tolerance,
+     aliases: ["state injection", "T-state injection"],
+     see_also: [magic-state-distillation, lattice-surgery, transversal-gates]}
+  - {slug: "lattice-surgery", title: "Lattice Surgery", priority: P0, bucket: fault-tolerance,
+     aliases: ["surface code lattice surgery", "merge and split"],
+     see_also: [surface-code, code-deformation, magic-state-injection]}
+  - {slug: "reed-muller-codes", title: "Reed-Muller Codes (Quantum)", priority: P0, bucket: codes,
+     aliases: ["quantum Reed-Muller", "[[15,1,3]] code"],
+     see_also: [transversal-gates, magic-state-distillation, triorthogonal-codes]}
+  - {slug: "depolarizing-noise", title: "Depolarizing Noise", priority: P0, bucket: noise,
+     aliases: ["depolarizing channel", "symmetric Pauli noise"],
+     see_also: [pauli-channels, circuit-level-noise, biased-noise]}
+  - {slug: "measurement-errors", title: "Measurement Errors", priority: P0, bucket: noise,
+     aliases: ["readout errors", "syndrome measurement noise"],
+     see_also: [syndrome-extraction, circuit-level-noise, mwpm-decoder]}
+
+  # --- P1 — modern codes, decoders, missing pieces ---
+  - {slug: "qldpc-codes", title: "Quantum LDPC Codes", priority: P1, bucket: codes, aliases: ["qLDPC"], see_also: [bivariate-bicycle-codes, bp-osd-decoder, css-codes]}
+  - {slug: "bivariate-bicycle-codes", title: "Bivariate Bicycle Codes", priority: P1, bucket: codes, aliases: ["BB codes", "IBM bicycle codes", "gross code"], see_also: [qldpc-codes, bp-osd-decoder]}
+  - {slug: "floquet-codes", title: "Floquet Codes", priority: P1, bucket: codes, aliases: ["honeycomb code", "Hastings-Haah code", "dynamical codes"], see_also: [surface-code, subsystem-codes]}
+  - {slug: "subsystem-codes", title: "Subsystem Codes", priority: P1, bucket: codes, aliases: ["gauge codes", "OQEC"], see_also: [bacon-shor-code, floquet-codes, stabilizer-formalism]}
+  - {slug: "concatenated-codes", title: "Concatenated Codes", priority: P1, bucket: codes, aliases: ["code concatenation"], see_also: [shor-code, threshold-theorem, steane-code]}
+  - {slug: "gkp-codes", title: "GKP Codes", priority: P1, bucket: codes, aliases: ["Gottesman-Kitaev-Preskill code", "grid states"], see_also: [cat-codes, continuous-variable-qec]}
+  - {slug: "cat-codes", title: "Cat Codes", priority: P1, bucket: codes, aliases: ["cat qubits", "dissipative cat codes"], see_also: [gkp-codes, biased-noise]}
+  - {slug: "biased-noise", title: "Biased Noise", priority: P1, bucket: noise, aliases: ["Z-biased noise", "dephasing-dominated noise"], see_also: [cat-codes, xzzx-surface-code, depolarizing-noise]}
+  - {slug: "triorthogonal-codes", title: "Triorthogonal Codes", priority: P1, bucket: codes, aliases: ["Bravyi-Haah codes"], see_also: [magic-state-distillation, reed-muller-codes]}
+  - {slug: "code-deformation", title: "Code Deformation and Code Switching", priority: P1, bucket: fault-tolerance, aliases: ["gauge fixing"], see_also: [lattice-surgery, color-code, surface-code]}
+  - {slug: "solovay-kitaev", title: "Solovay-Kitaev Theorem", priority: P1, bucket: fault-tolerance, aliases: ["SK theorem", "gate synthesis"], see_also: [clifford-group, t-gate-count]}
+  - {slug: "t-gate-count", title: "T-Gate Count and Non-Clifford Resources", priority: P1, bucket: fault-tolerance, aliases: ["T-count", "magic budget"], see_also: [magic-state-distillation, solovay-kitaev]}
+  - {slug: "mwpm-decoder", title: "MWPM Decoder", priority: P1, bucket: decoders, aliases: ["MWPM", "Edmonds blossom decoder", "PyMatching"], see_also: [surface-code, decoding, union-find-decoder]}
+  - {slug: "bp-osd-decoder", title: "BP+OSD Decoder", priority: P1, bucket: decoders, aliases: ["belief propagation OSD", "ordered statistics decoding"], see_also: [qldpc-codes, bivariate-bicycle-codes]}
+  - {slug: "union-find-decoder", title: "Union-Find Decoder", priority: P1, bucket: decoders, aliases: ["UF decoder", "Delfosse-Nickerson decoder"], see_also: [mwpm-decoder, surface-code]}
+  - {slug: "tensor-network-decoders", title: "Tensor Network Decoders", priority: P1, bucket: decoders, aliases: ["TN decoder", "MPS decoder"], see_also: [decoding, surface-code]}
+  - {slug: "neural-decoders", title: "Neural and ML Decoders", priority: P1, bucket: decoders, aliases: ["ML decoder", "transformer decoder"], see_also: [decoding, mwpm-decoder]}
+  - {slug: "color-code-decoders", title: "Color Code Decoders", priority: P1, bucket: decoders, aliases: ["restriction decoder", "projection decoder"], see_also: [color-code, mwpm-decoder]}
+  - {slug: "circuit-level-noise", title: "Circuit-Level Noise Models", priority: P1, bucket: noise, aliases: ["SD6", "SI1000"], see_also: [depolarizing-noise, measurement-errors, surface-code]}
+  - {slug: "coherent-errors", title: "Coherent Errors", priority: P1, bucket: noise, aliases: ["unitary errors", "over-rotation errors"], see_also: [pauli-channels, pauli-frame-tracking]}
+  - {slug: "leakage", title: "Leakage Errors", priority: P1, bucket: noise, aliases: ["leakage reduction"], see_also: [crosstalk, circuit-level-noise]}
+  - {slug: "pauli-channels", title: "Pauli Channels and Twirling", priority: P1, bucket: theory, aliases: ["Pauli twirling"], see_also: [depolarizing-noise, coherent-errors]}
+  - {slug: "pauli-frame-tracking", title: "Pauli Frame Tracking", priority: P1, bucket: fault-tolerance, aliases: ["Pauli frame", "frame tracking"], see_also: [clifford-group, syndrome-extraction]}
+
+  # --- P2 — theory depth, hardware platforms ---
+  - {slug: "anyons", title: "Anyons", priority: P2, bucket: theory, see_also: [topological-order, surface-code]}
+  - {slug: "topological-order", title: "Topological Order", priority: P2, bucket: theory, see_also: [anyons, surface-code, floquet-codes]}
+  - {slug: "crosstalk", title: "Crosstalk", priority: P2, bucket: noise, aliases: ["ZZ crosstalk", "spectator errors"], see_also: [leakage, circuit-level-noise]}
+  - {slug: "xzzx-surface-code", title: "XZZX Surface Code", priority: P2, bucket: codes, aliases: ["tailored surface code"], see_also: [surface-code, biased-noise]}
+  - {slug: "superconducting-qec", title: "Superconducting QEC", priority: P2, bucket: hardware, aliases: ["transmon QEC"], see_also: [surface-code, leakage]}
+  - {slug: "neutral-atom-qec", title: "Neutral Atom QEC", priority: P2, bucket: hardware, aliases: ["Rydberg atom QEC"], see_also: [qldpc-codes, transversal-gates]}
+  - {slug: "trapped-ion-qec", title: "Trapped Ion QEC", priority: P2, bucket: hardware, aliases: ["ion trap QEC"], see_also: [color-code, transversal-gates]}
+  - {slug: "photonic-qec", title: "Photonic QEC", priority: P2, bucket: hardware, aliases: ["fusion-based quantum computing"], see_also: [gkp-codes, continuous-variable-qec]}
+  - {slug: "continuous-variable-qec", title: "Continuous-Variable QEC", priority: P2, bucket: hardware, aliases: ["CV QEC", "bosonic QEC"], see_also: [gkp-codes, cat-codes, photonic-qec]}
