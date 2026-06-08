@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from chatqec.ingestion.registry import (
     InvalidTransitionError,
     RecordNotFoundError,
+    RegistryError,
     Registry,
     SourceRecord,
     SourceStatus,
@@ -188,3 +189,18 @@ def test_registry_compact_excludes_recent_records(tmp_path: Path):
     reg.append(_make("recent-retracted", status=SourceStatus.RETRACTED))  # ingested 2026-01-01
     candidates = list(reg.compact_candidates(older_than_days=365, now=_utc(2026, 5, 29)))
     assert list(candidates) == []
+
+
+def test_registry_append_duplicate_raises_registry_error(tmp_path: Path):
+    reg = Registry(tmp_path / "registry.jsonl")
+    reg.append(_make("dup"))
+    with pytest.raises(RegistryError):
+        reg.append(_make("dup"))
+
+
+def test_registry_supersede_rejects_retracted_new(tmp_path: Path):
+    reg = Registry(tmp_path / "registry.jsonl")
+    reg.append(_make("v1", status=SourceStatus.ACTIVE))
+    reg.append(_make("v2", status=SourceStatus.RETRACTED))
+    with pytest.raises(InvalidTransitionError):
+        reg.supersede(old_id="v1", new_id="v2")

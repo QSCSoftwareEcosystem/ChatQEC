@@ -6,7 +6,7 @@ It lives in Git (sources/registry.jsonl) and is human-auditable.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from datetime import datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
@@ -159,6 +159,11 @@ class Registry:
             raise InvalidTransitionError(
                 f"can only supersede an ACTIVE record; {old_id} is {old.status.value}"
             )
+        if new.status in (SourceStatus.RETRACTED, SourceStatus.SUPERSEDED):
+            raise InvalidTransitionError(
+                f"supersede target {new_id} cannot be {new.status.value}; "
+                f"must be ACTIVE, PENDING_REVIEW, or STALE"
+            )
         old = old.model_copy(
             update={
                 "status": SourceStatus.SUPERSEDED,
@@ -176,7 +181,7 @@ class Registry:
         *,
         older_than_days: int,
         now: datetime,
-    ) -> Iterable[SourceRecord]:
+    ) -> Iterator[SourceRecord]:
         cutoff = now - timedelta(days=older_than_days)
         for rec in self._records.values():
             if (
