@@ -1,0 +1,9 @@
+{
+  "events": [
+    {"tStartMs": 0, "segs": [{"utf8": "Welcome to surface code 101."}]},
+    {"tStartMs": 5000, "segs": [{"utf8": "The surface code is topological."}]},
+    {"tStartMs": 12000, "segs": [{"utf8": "Stabilizers are local operators."}]},
+    {"tStartMs": 65000, "segs": [{"utf8": "We use MWPM for decoding."}]},
+    {"tStartMs": 130000, "segs": [{"utf8": "Thanks for watching."}]}
+  ]
+}
