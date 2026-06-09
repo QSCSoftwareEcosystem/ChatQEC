@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
 from rich.table import Table
 
 from chatqec import __version__
+
+if TYPE_CHECKING:
+    from chatqec.api import ChatQEC
 from chatqec.canonical.loader import (
     CanonicalLoadError,
     load_canonical_directory,
@@ -45,15 +49,95 @@ def main() -> None:
     """ChatQEC — open-source QEC research assistant."""
 
 
+def _build_chatqec() -> ChatQEC:  # pragma: no cover
+    """Build a ChatQEC instance from on-disk config. Overridable in tests."""
+    import os
+
+    import anthropic
+    from hydra import compose, initialize_config_dir
+    from omegaconf import OmegaConf
+
+    from chatqec.api import ChatQEC
+    from chatqec.conversation.classifier import OffTopicClassifier
+    from chatqec.conversation.rewriter import QueryRewriter
+    from chatqec.conversation.synthesizer import Synthesizer
+    from chatqec.retrieval.hybrid import HybridRetriever
+
+    conf_dir = str(Path(os.environ.get("CHATQEC_CONF_DIR", "conf")).resolve())
+    with initialize_config_dir(version_base=None, config_dir=conf_dir):
+        cfg = compose(config_name="config")
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    assert isinstance(cfg_dict, dict)
+
+    emb_cfg = dict(cfg_dict["embedding"])
+    embedder = _make_embedder(emb_cfg)
+    sparse = _make_sparse()
+    store = _make_store(
+        str(cfg_dict["store"]["qdrant_url"]),
+        str(cfg_dict["store"]["collection"]),
+    )
+    reranker = _make_reranker()
+    canonical_dir = Path(str(cfg_dict["paths"]["canonical_dir"]))
+    canonical_index = _make_canonical_index(canonical_dir)
+
+    retriever = HybridRetriever(
+        store=store,  # type: ignore[arg-type]
+        embedder=embedder,  # type: ignore[arg-type]
+        sparse_encoder=sparse,  # type: ignore[arg-type]
+        reranker=reranker,  # type: ignore[arg-type]
+        canonical_index=canonical_index,  # type: ignore[arg-type]
+    )
+
+    client = anthropic.Anthropic()
+    models = cfg_dict["models"]
+    return ChatQEC(
+        classifier=OffTopicClassifier(client=client, model=str(models["classifier"])),
+        rewriter=QueryRewriter(client=client, model=str(models["rewriter"])),
+        retriever=retriever,
+        synthesizer=Synthesizer(client=client, model=str(models["synthesizer"])),
+        canonical_index=canonical_index,  # type: ignore[arg-type]
+    )
+
+
 @main.command()
 @click.argument("question", nargs=-1, required=True)
 def ask(question: tuple[str, ...]) -> None:
-    """Answer a single QEC question (one-shot).
+    """Answer a single QEC question (one-shot)."""
+    bot = _build_chatqec()
+    answer = bot.ask(" ".join(question))
+    click.echo(answer.text)
+    if answer.citations:
+        click.echo("\nSources:")
+        for c in answer.citations:
+            click.echo(f"  - [{c.source_id}] {c.title}")
+    click.echo(f"\n(confidence: {answer.confidence})")
 
-    Full wiring lands in Task 7.8 — until then this prints a brief notice.
-    """
-    _ = " ".join(question)
-    click.echo("`chatqec ask` end-to-end wiring lands in Task 7.8.")
+
+@main.command()
+def chat() -> None:
+    """Interactive REPL chat. Type /quit to exit, /clear to wipe memory."""
+    bot = _build_chatqec()
+    click.echo("ChatQEC interactive chat. Type /quit to exit, /clear to reset memory.")
+    while True:
+        try:
+            line = click.prompt("you", prompt_suffix="> ", default="", show_default=False)
+        except (click.exceptions.Abort, EOFError):
+            click.echo("\nbye.")
+            return
+        line = line.strip()
+        if not line:
+            continue
+        if line == "/quit":
+            click.echo("bye.")
+            return
+        if line == "/clear":
+            bot.memory.clear()
+            click.echo("(memory cleared)")
+            continue
+        answer = bot.ask(line)
+        click.echo(f"chatqec> {answer.text}")
+        if answer.citations:
+            click.echo(f"  sources: {', '.join(c.source_id for c in answer.citations)}")
 
 
 @main.group()

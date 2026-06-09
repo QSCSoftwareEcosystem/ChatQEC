@@ -26,8 +26,8 @@ def test_cli_ask_subcommand_exists():
     assert "question" in result.output.lower()
 
 
-def test_cli_ask_emits_pending_wiring_notice():
+def test_cli_chat_subcommand_exists():
     runner = CliRunner()
-    result = runner.invoke(main, ["ask", "What is the surface code?"])
+    result = runner.invoke(main, ["chat", "--help"])
     assert result.exit_code == 0
-    assert "7.8" in result.output or "wiring" in result.output.lower()
+    assert "interactive" in result.output.lower() or "repl" in result.output.lower()
