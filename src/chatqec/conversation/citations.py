@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from chatqec.api import Citation
+from chatqec.api_types import Citation
 from chatqec.retrieval.hybrid import RetrievedChunk
 
 _FOOTNOTE_RE = re.compile(r"\[\^(\d+)\]")

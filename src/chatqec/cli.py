@@ -10,7 +10,6 @@ from rich.console import Console
 from rich.table import Table
 
 from chatqec import __version__
-from chatqec.api import ChatQEC
 from chatqec.canonical.loader import (
     CanonicalLoadError,
     load_canonical_directory,
@@ -49,10 +48,12 @@ def main() -> None:
 @main.command()
 @click.argument("question", nargs=-1, required=True)
 def ask(question: tuple[str, ...]) -> None:
-    """Answer a single QEC question (one-shot)."""
-    bot = ChatQEC()
-    answer = bot.ask(" ".join(question))
-    click.echo(answer.text)
+    """Answer a single QEC question (one-shot).
+
+    Full wiring lands in Task 7.8 — until then this prints a brief notice.
+    """
+    _ = " ".join(question)
+    click.echo("`chatqec ask` end-to-end wiring lands in Task 7.8.")
 
 
 @main.group()

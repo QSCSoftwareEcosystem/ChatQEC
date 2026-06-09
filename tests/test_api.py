@@ -1,23 +1,30 @@
-"""Public ChatQEC class — stub returning a placeholder until M7."""
+"""Smoke tests for public dataclasses (Answer, Citation).
 
-from chatqec.api import ChatQEC, Answer
+Heavy components (Anthropic, Qdrant) are not exercised here — see
+test_api_chatqec.py for end-to-end pipeline tests with mocks.
+"""
 
+import dataclasses
 
-def test_chatqec_ask_returns_answer_object():
-    bot = ChatQEC()
-    answer = bot.ask("What is the surface code?")
-    assert isinstance(answer, Answer)
-    assert answer.text  # non-empty
-    assert answer.citations == []
-    assert answer.confidence in {"low", "medium", "high"}
+import pytest
+
+from chatqec.api import Answer, Citation
 
 
 def test_answer_is_immutable():
-    bot = ChatQEC()
-    answer = bot.ask("foo")
-    # dataclass(frozen=True) raises on field assignment
-    import dataclasses
-    import pytest
-
+    a = Answer(text="hello")
     with pytest.raises(dataclasses.FrozenInstanceError):
-        answer.text = "changed"  # type: ignore[misc]
+        a.text = "x"  # type: ignore[misc]
+
+
+def test_answer_defaults():
+    a = Answer(text="hello")
+    assert a.citations == []
+    assert a.tool_calls == []
+    assert a.confidence == "low"
+
+
+def test_citation_is_immutable():
+    c = Citation(source_id="s", chunk_id="c", title="t", url="u")
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        c.title = "x"  # type: ignore[misc]

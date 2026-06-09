@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from chatqec.api import Citation
+from chatqec.api_types import Citation
 from chatqec.conversation.citations import extract_citations
 from chatqec.conversation.memory import Turn
 from chatqec.conversation.prompts import (
