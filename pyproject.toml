@@ -96,6 +96,14 @@ ignore_missing_imports = true
 module = ["unstructured.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["requests"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["trafilatura"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]

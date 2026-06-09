@@ -15,11 +15,27 @@ from chatqec.canonical.loader import (
     CanonicalLoadError,
     load_canonical_directory,
 )
+from chatqec.ingestion.chunk import ChunkSink
+from chatqec.ingestion.fetchers.arxiv import (
+    ArxivMetadata,
+)
+from chatqec.ingestion.fetchers.arxiv import (
+    paper_to_chunks as arxiv_paper_to_chunks,
+)
+from chatqec.ingestion.fetchers.url import URLMetadata, markdown_to_chunks
 from chatqec.ingestion.registry import (
     InvalidTransitionError,
     RecordNotFoundError,
     Registry,
+    SourceRecord,
     SourceStatus,
+    SourceType,
+)
+from chatqec.ingestion.resolver import (
+    AmbiguousResolutionError,
+    NoMatchError,
+    ResolverHit,
+    resolve_arxiv_paper,
 )
 
 
@@ -194,6 +210,178 @@ def canonical_validate(canonical_dir: Path) -> None:
         click.echo(f"validation failed: {e}", err=True)
         raise SystemExit(2) from None
     click.echo(f"ok — {len(pages)} pages parsed and cross-references resolve")
+
+
+def _fetch_url_as_markdown(url: str) -> tuple[str, str, str]:
+    """Default URL fetcher: HTTP GET + trafilatura → markdown. Overridable in tests."""
+    import requests
+    import trafilatura
+
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+    extracted = trafilatura.extract(
+        resp.text, output_format="markdown", include_links=True, with_metadata=True
+    )
+    if not extracted:
+        return (url, "", "")
+    md_text = extracted
+    # Best-effort metadata extraction
+    try:
+        meta = trafilatura.extract_metadata(resp.text)
+        title = (meta.title if meta and meta.title else url) or url
+        publish_date = (meta.date if meta and meta.date else "") or ""
+    except Exception:
+        title, publish_date = url, ""
+    return title, md_text, publish_date
+
+
+def _resolve_and_fetch_arxiv(
+    title_keywords: str,
+    authors: list[str],
+    year: int | None,
+) -> tuple[ResolverHit, str]:
+    """Resolve title+author to an arxiv id, then fetch the abstract+full text."""
+    import arxiv
+
+    hit = resolve_arxiv_paper(title_keywords=title_keywords, authors=authors, expected_year=year)
+    search = arxiv.Search(id_list=[hit.arxiv_id])
+    [result] = list(arxiv.Client().results(search))
+    # For M4 we ingest the abstract only; full-text PDF parsing lands here
+    # behind a flag in M5 once `unstructured` is wired into the pipeline.
+    return hit, result.summary
+
+
+@main.command("ingest")
+@click.option(
+    "--chunks-dir",
+    type=click.Path(path_type=Path),
+    default=Path("data/chunks"),
+    show_default=True,
+    help="Directory to write JSONL chunk files.",
+)
+@click.option(
+    "--registry",
+    "registry_path",
+    type=click.Path(path_type=Path),
+    default=Path("sources/registry.jsonl"),
+    show_default=True,
+    help="Path to the source registry.",
+)
+@click.option("--url", "url_value", default=None, help="Ingest a single URL (blog/HTML).")
+@click.option(
+    "--arxiv",
+    "arxiv_id_value",
+    default=None,
+    help="Ingest by arxiv id. WARNING: §7.4 — prefer --resolve-by-title.",
+)
+@click.option(
+    "--resolve-by-title",
+    "title_keywords",
+    default=None,
+    help="Resolve a paper by title keywords and ingest it.",
+)
+@click.option(
+    "--author",
+    "authors_opt",
+    multiple=True,
+    help="Author last names (use with --resolve-by-title).",
+)
+@click.option(
+    "--year",
+    type=int,
+    default=None,
+    help="Expected publication year (helps disambiguate).",
+)
+def ingest(
+    chunks_dir: Path,
+    registry_path: Path,
+    url_value: str | None,
+    arxiv_id_value: str | None,
+    title_keywords: str | None,
+    authors_opt: tuple[str, ...],
+    year: int | None,
+) -> None:
+    """Ingest one source. Writes chunks to disk and a pending_review record."""
+    sink = ChunkSink(chunks_dir)
+    reg = Registry(registry_path)
+    now = datetime.now(tz=UTC)
+
+    if url_value:
+        title, md_text, publish_date = _fetch_url_as_markdown(url_value)
+        md = URLMetadata(url=url_value, title=title, publish_date=publish_date)
+        chunks = markdown_to_chunks(md, markdown_text=md_text, target_tokens=512, overlap_tokens=64)
+        source_id = chunks[0].source_id
+        sink.write_many(source_id, chunks)
+        reg.append(
+            SourceRecord(
+                id=source_id,
+                type=SourceType.BLOG,
+                url=url_value,
+                title=title,
+                authority_tier="blog",
+                ingested_at=now,
+                last_checked_at=now,
+                status=SourceStatus.PENDING_REVIEW,
+                chunk_count=len(chunks),
+                chunk_ids=[c.chunk_id for c in chunks],
+            )
+        )
+        click.echo(f"ingested {source_id}: {len(chunks)} chunks → {chunks_dir}")
+        return
+
+    if title_keywords:
+        try:
+            hit, body = _resolve_and_fetch_arxiv(title_keywords, list(authors_opt), year)
+        except (NoMatchError, AmbiguousResolutionError) as e:
+            click.echo(f"resolver failed: {e}", err=True)
+            raise SystemExit(2) from None
+        md_arxiv = ArxivMetadata(
+            arxiv_id=hit.arxiv_id,
+            title=hit.title,
+            authors=[hit.first_author],
+            year=hit.year,
+            abstract=body,
+            pdf_url="",
+        )
+        chunks = arxiv_paper_to_chunks(
+            md_arxiv, body_text=body, target_tokens=512, overlap_tokens=64
+        )
+        source_id = chunks[0].source_id
+        sink.write_many(source_id, chunks)
+        reg.append(
+            SourceRecord(
+                id=source_id,
+                type=SourceType.ARXIV,
+                url=f"https://arxiv.org/abs/{hit.arxiv_id}",
+                title=hit.title,
+                authors=[hit.first_author],
+                year=hit.year,
+                authority_tier="preprint",
+                ingested_at=now,
+                last_checked_at=now,
+                status=SourceStatus.PENDING_REVIEW,
+                chunk_count=len(chunks),
+                chunk_ids=[c.chunk_id for c in chunks],
+                verified=True,
+            )
+        )
+        click.echo(f"ingested {source_id}: {len(chunks)} chunks (resolved from title)")
+        return
+
+    if arxiv_id_value:
+        click.echo(
+            "WARNING: --arxiv <id> trusts the supplied id. "
+            "Per spec §7.4 prefer --resolve-by-title for LLM-suggested papers.",
+            err=True,
+        )
+        # M4 implements only the resolve-by-title path live; the --arxiv path
+        # delegates to the same fetcher with id_list=[arxiv_id_value].
+        # Full implementation lands in M5 when we wire up _fetch_arxiv_by_id.
+        click.echo("--arxiv <id> ingestion is not yet supported (lands in M5)", err=True)
+        raise SystemExit(3)
+
+    click.echo("nothing to ingest — pass --url, --resolve-by-title, or --arxiv", err=True)
+    raise SystemExit(1)
 
 
 if __name__ == "__main__":
