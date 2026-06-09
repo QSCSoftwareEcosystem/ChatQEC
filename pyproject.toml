@@ -75,6 +75,11 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF"]
 ignore = ["E501", "PLR0913"]
+# PLC0415 is intentional in places (lazy imports for heavy/optional deps);
+# we still want it to warn, but not auto-fix (auto-fix moves imports to
+# module level, defeating the lazy-load purpose). Use `# noqa: PLC0415`
+# per-line to suppress where the lazy import is documented.
+unfixable = ["PLC0415"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["PLR2004", "S101", "I001", "PLC0415"]
