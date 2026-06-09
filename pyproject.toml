@@ -21,7 +21,9 @@ classifiers = [
 dependencies = [
   "anthropic>=0.40",
   "google-generativeai>=0.8",
-  "qdrant-client>=1.12",
+  "qdrant-client[fastembed]>=1.12",
+  "fastembed>=0.4",
+  "numpy>=1.26",
   "sentence-transformers>=3.0",
   "llama-index-readers-papers",
   "llama-index-readers-github",
@@ -82,6 +84,7 @@ ignore = ["E501", "PLR0913"]
 # Auto-fix would move them to module-level and defeat cold-start optimisation.
 "src/chatqec/cli.py" = ["PLC0415"]
 "src/chatqec/ingestion/fetchers/pdf.py" = ["PLC0415"]
+"src/chatqec/ingestion/fetchers/arxiv.py" = ["PLC0415"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -107,6 +110,17 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["trafilatura"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+  "google.generativeai",
+  "sentence_transformers",
+  "fastembed",
+  "qdrant_client",
+  "qdrant_client.*",
+]
+ignore_missing_imports = true
+follow_imports = "skip"
 
 [tool.pytest.ini_options]
 minversion = "8.0"

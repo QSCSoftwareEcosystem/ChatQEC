@@ -25,3 +25,15 @@ paths:
   registry: sources/registry.jsonl
   watchlist: sources/watchlist.yaml
   canonical_dir: knowledge/canonical
+
+store:
+  qdrant_url: "http://localhost:6333"
+  collection: "chatqec_chunks"
+  vector_dim: 768
+  on_disk_payload: true
+
+embedding:
+  provider: "gemini"        # "gemini" | "local"
+  model: "text-embedding-004"
+  batch_size: 96
+  local_model: "nomic-ai/nomic-embed-text-v1.5"  # used when provider="local"
