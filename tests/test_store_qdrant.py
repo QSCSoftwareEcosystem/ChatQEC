@@ -90,3 +90,41 @@ def test_store_delete_by_source_id():
     )
     store.delete_by_source_id("a")
     assert store.count() == 1
+
+
+def test_sparse_search_returns_results_for_overlapping_terms():
+    cfg = StoreConfig(qdrant_url=":memory:", collection="t", vector_dim=768, on_disk_payload=False)
+    store = ChatQecStore(cfg)
+    store.upsert_chunks(
+        chunks=[_chunk(0, text="surface"), _chunk(1, text="color")],
+        dense_vectors=[_dense(0.1), _dense(0.9)],
+        sparse_vectors=[
+            SparseVector(indices=[10, 20], values=[1.0, 0.5]),
+            SparseVector(indices=[30, 40], values=[1.0, 0.5]),
+        ],
+    )
+    # Query with sparse vector that overlaps with the first chunk's indices
+    hits = store.sparse_search(
+        sparse_query=SparseVector(indices=[10], values=[1.0]),
+        top_k=10,
+    )
+    assert len(hits) >= 1
+    # First chunk should rank higher because its sparse vector contains index 10
+    assert hits[0].chunk_id == "test:1#0"
+
+
+def test_sparse_search_filters_by_status():
+    cfg = StoreConfig(qdrant_url=":memory:", collection="t", vector_dim=768, on_disk_payload=False)
+    store = ChatQecStore(cfg)
+    store.upsert_chunks(
+        chunks=[_chunk(0)],
+        dense_vectors=[_dense(0.1)],
+        sparse_vectors=[SparseVector(indices=[1], values=[1.0])],
+    )
+    store.set_status_for_source("test:1", "retracted")
+    hits = store.sparse_search(
+        sparse_query=SparseVector(indices=[1], values=[1.0]),
+        top_k=10,
+        status_filter="active",
+    )
+    assert hits == []

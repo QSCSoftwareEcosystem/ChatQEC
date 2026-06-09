@@ -159,32 +159,21 @@ def sources_compact(reg: Registry, older_than_days: int, dry_run: bool) -> None:
         click.echo(f"{rec.id}\t{rec.status.value}\t{rec.last_checked_at.isoformat()}")
     click.echo(f"\n{len(candidates)} candidates")
     if not dry_run:
-        from chatqec.embedding.base import EmbedderConfig
-        from chatqec.embedding.gemini import GeminiEmbedder
-        from chatqec.embedding.sparse import BM25Encoder
-        from chatqec.ingestion.pipeline import EmbeddingPipeline
+        # Deletion-only path: skip embedder/sparse_encoder construction.
         from chatqec.store.qdrant import ChatQecStore, StoreConfig
 
-        # The purge path only needs the store handle for deletion; the embedder
-        # and sparse encoder are constructed but unused for deletion.
-        emb_cfg = EmbedderConfig(
-            provider="gemini", model="text-embedding-004", batch_size=8, local_model=""
+        store = ChatQecStore(
+            StoreConfig(
+                qdrant_url="http://localhost:6333",
+                collection="chatqec_chunks",
+                vector_dim=768,
+                on_disk_payload=True,
+            )
         )
-        pipe = EmbeddingPipeline(
-            chunks_dir=Path("data/chunks"),
-            registry=reg,
-            embedder=GeminiEmbedder(emb_cfg),
-            sparse_encoder=BM25Encoder(),
-            store=ChatQecStore(
-                StoreConfig(
-                    qdrant_url="http://localhost:6333",
-                    collection="chatqec_chunks",
-                    vector_dim=768,
-                    on_disk_payload=True,
-                )
-            ),
-        )
-        purged = pipe.purge_retracted(older_than_days=older_than_days, now=now)
+        purged: list[str] = []
+        for rec in candidates:
+            store.delete_by_source_id(rec.id)
+            purged.append(rec.id)
         click.echo(f"purged {len(purged)} sources from Qdrant")
 
 
