@@ -22,3 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 52-page canonical roster documentation (`knowledge/canonical/_roster.yaml`)
 - CLI: `chatqec canonical list/validate`
 - CI: validate-canonical stage runs on every push
+- Ingestion pipeline:
+  - `Chunk` model + on-disk `ChunkSink` writing `data/chunks/<source_id>.jsonl`
+  - Math-aware chunker that protects `$...$`, `$$...$$`, and `\begin{X}...\end{X}` environments
+  - arXiv title-and-author **resolver** (spec §7.4) — the architectural fix to the verification finding
+  - Fetchers: arXiv (Atom + chunk), GitHub (files+repo metadata → chunks), YouTube (60s-window transcripts), URL/blog (trafilatura → markdown), manual PDF (unstructured)
+  - Watchlist (`sources/watchlist.yaml`) schema + parser with seed entries for arxiv categories, GitHub repos, YouTube channels, and RSS feeds
+- CLI:
+  - `chatqec ingest --url / --resolve-by-title / --arxiv` (the `--arxiv <id>` path warns per spec §7.4)
+  - `chatqec watch refresh --dry-run`
+- Test infrastructure: `pytest -m network` marker; optional `network-tests` GitLab CI job (manual trigger)

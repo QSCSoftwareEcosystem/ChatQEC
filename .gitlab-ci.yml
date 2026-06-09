@@ -45,3 +45,13 @@ validate-canonical:
   stage: validate-canonical
   script:
     - uv run chatqec canonical --dir knowledge/canonical validate
+
+network-tests:
+  extends: .uv-base
+  stage: test
+  rules:
+    - if: '$RUN_NETWORK_TESTS == "true"'
+      when: always
+    - when: manual
+  script:
+    - uv run pytest -v -m network
