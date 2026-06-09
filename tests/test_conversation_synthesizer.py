@@ -1,0 +1,88 @@
+"""Synthesizer — wraps Anthropic SDK, supports non-streaming and streaming."""
+
+from unittest.mock import MagicMock
+
+from chatqec.conversation.memory import Turn
+from chatqec.conversation.synthesizer import SynthesisResult, Synthesizer
+from chatqec.retrieval.hybrid import RetrievedChunk
+
+
+def _ctx(i: int) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=f"x#{i}",
+        source_id="x",
+        text=f"chunk {i}",
+        title=f"T{i}",
+        authority_tier="preprint",
+        score=0.5,
+        payload={"url": "https://example.com"},
+    )
+
+
+def _client_with_text(text: str):
+    client = MagicMock()
+    msg = MagicMock()
+    msg.content = [MagicMock(text=text)]
+    msg.usage = MagicMock(input_tokens=100, output_tokens=50)
+    client.messages.create.return_value = msg
+    return client
+
+
+def test_synthesize_returns_answer_text_and_citations():
+    client = _client_with_text("The surface code is great [^1]. Period.")
+    synth = Synthesizer(client=client, model="claude-sonnet-4-6")
+    result = synth.synthesize(
+        question="What is the surface code?",
+        retrieved=[_ctx(0)],
+        canonical_chunks=[],
+        history=[],
+    )
+    assert isinstance(result, SynthesisResult)
+    assert "surface code" in result.text.lower()
+    assert len(result.citations) == 1
+
+
+def test_synthesize_passes_system_prompt_and_context_to_anthropic():
+    client = _client_with_text("answer [^1]")
+    synth = Synthesizer(client=client, model="claude-sonnet-4-6")
+    synth.synthesize(question="q", retrieved=[_ctx(0)], canonical_chunks=[], history=[])
+    kwargs = client.messages.create.call_args.kwargs
+    assert "ChatQEC" in kwargs["system"]
+    user_msg = kwargs["messages"][-1]
+    assert user_msg["role"] == "user"
+    assert "Retrieved context" in user_msg["content"]
+
+
+def test_synthesize_includes_recent_history():
+    client = _client_with_text("Follow-up answer")
+    synth = Synthesizer(client=client, model="claude-sonnet-4-6")
+    history = [
+        Turn(role="user", content="prev q"),
+        Turn(role="assistant", content="prev a"),
+    ]
+    synth.synthesize(
+        question="follow up",
+        retrieved=[_ctx(0)],
+        canonical_chunks=[],
+        history=history,
+    )
+    msgs = client.messages.create.call_args.kwargs["messages"]
+    assert msgs[0]["content"] == "prev q"
+    assert msgs[1]["content"] == "prev a"
+
+
+def test_synthesize_confidence_based_on_citation_count():
+    client_high = _client_with_text("A [^1]. B [^2]. C [^3].")
+    s_high = Synthesizer(client=client_high, model="claude-sonnet-4-6")
+    res = s_high.synthesize(
+        question="q",
+        retrieved=[_ctx(0), _ctx(1), _ctx(2)],
+        canonical_chunks=[],
+        history=[],
+    )
+    assert res.confidence == "high"
+
+    client_low = _client_with_text("no citations here")
+    s_low = Synthesizer(client=client_low, model="claude-sonnet-4-6")
+    res = s_low.synthesize(question="q", retrieved=[_ctx(0)], canonical_chunks=[], history=[])
+    assert res.confidence == "low"
