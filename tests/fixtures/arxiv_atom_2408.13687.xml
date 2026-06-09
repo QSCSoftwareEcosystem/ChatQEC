@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2408.13687v1</id>
+    <updated>2024-08-26T00:00:00Z</updated>
+    <published>2024-08-26T00:00:00Z</published>
+    <title>Quantum error correction below the surface code threshold</title>
+    <summary>Abstract: The surface code is a leading candidate for fault-tolerant quantum computation. We demonstrate that increasing the code distance from 3 to 7 decreases the logical error rate exponentially, marking the first below-threshold experiment on a real quantum processor.</summary>
+    <author><name>Rajeev Acharya</name></author>
+    <author><name>Google Quantum AI</name></author>
+    <link href="http://arxiv.org/pdf/2408.13687v1" rel="alternate" type="application/pdf"/>
+  </entry>
+</feed>
