@@ -40,3 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docker-compose.yml` for local Qdrant
 - CLI: `chatqec embed --source-id / --all-pending`
 - M4 deferred paths wired up: `chatqec ingest --arxiv <id>` (warns per §7.4 and ingests), `chatqec sources compact --apply` (purges from Qdrant + registry)
+- Retrieval pipeline:
+  - Score normalization helpers (`min_max_normalize`, `identity_if_single`)
+  - Spec §8.5 weighted-sum scoring (`α=0.5·dense + β=0.3·bm25 + γ=0.15·tier + δ=0.05·recency`) with tunable coefficients
+  - Canonical topic matcher (`CanonicalIndex` + `match_topics`) that surfaces force-injection candidates by slug/alias substring
+  - `CrossEncoderReranker` wrapping BAAI/bge-reranker-base with lazy model load
+  - `HybridRetriever` orchestrator: dense + BM25 → score → top-K candidates → rerank → top-K results + matched topics
+- CLI: `chatqec retrieve --query` debug command (Rich table of top-K + matched canonical topics)
