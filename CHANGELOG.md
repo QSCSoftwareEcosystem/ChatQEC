@@ -47,3 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `CrossEncoderReranker` wrapping BAAI/bge-reranker-base with lazy model load
   - `HybridRetriever` orchestrator: dense + BM25 → score → top-K candidates → rerank → top-K results + matched topics
 - CLI: `chatqec retrieve --query` debug command (Rich table of top-K + matched canonical topics)
+- Conversation & synthesis layer (no tools yet — Stim lands in M8):
+  - `ConversationMemory` for in-session message history (anonymous, in-memory)
+  - `OffTopicClassifier` (Haiku) cheap pre-filter that refuses non-QEC queries
+  - `QueryRewriter` (Haiku) for pronoun resolution + 0-3 retrieval variants
+  - System prompt + context assembler (numbered `[^N]` footnote scheme, canonical chunks first)
+  - `Synthesizer` (Sonnet) with `.synthesize()` and `.synthesize_stream()`
+  - Footnote-marker citation extraction → `Citation` objects
+  - Confidence heuristic: high (≥3 citations) / medium / low (no context)
+- `ChatQEC` public class fully wired (DI constructor; `_build_chatqec` Hydra-config factory in CLI)
+- CLI:
+  - `chatqec ask "..."` runs the real pipeline and prints citations + confidence
+  - `chatqec chat` interactive REPL with `/quit` and `/clear` commands
