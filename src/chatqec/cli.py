@@ -488,6 +488,20 @@ def _make_store(url: str, collection: str) -> object:
     )
 
 
+def _make_reranker() -> object:
+    from chatqec.retrieval.reranker import CrossEncoderReranker
+
+    return CrossEncoderReranker()
+
+
+def _make_canonical_index(canonical_dir: Path) -> object:
+    from chatqec.canonical.loader import load_canonical_directory
+    from chatqec.retrieval.canonical_injector import CanonicalIndex
+
+    pages = load_canonical_directory(canonical_dir) if canonical_dir.exists() else []
+    return CanonicalIndex(pages=pages)
+
+
 @main.command("embed")
 @click.option(
     "--chunks-dir",
@@ -554,6 +568,60 @@ def embed(
         results = pipe.embed_all_pending()
         total = sum(r.chunks_embedded for r in results)
         click.echo(f"{len(results)} sources, {total} chunks embedded")
+
+
+@main.command("retrieve")
+@click.option("--query", "query_str", required=True, help="Single query string.")
+@click.option("--top-k", type=int, default=8, show_default=True)
+@click.option("--candidate-k", type=int, default=50, show_default=True)
+@click.option("--qdrant-url", default="http://localhost:6333", show_default=True)
+@click.option("--collection", default="chatqec_chunks", show_default=True)
+@click.option(
+    "--canonical-dir",
+    type=click.Path(path_type=Path),
+    default=Path("knowledge/canonical"),
+    show_default=True,
+)
+@click.option(
+    "--provider", default="gemini", show_default=True, type=click.Choice(["gemini", "local"])
+)
+def retrieve(
+    query_str: str,
+    top_k: int,
+    candidate_k: int,
+    qdrant_url: str,
+    collection: str,
+    canonical_dir: Path,
+    provider: str,
+) -> None:
+    """Debug command: run the hybrid retriever for one query and print results."""
+    from chatqec.retrieval.hybrid import HybridRetriever
+
+    emb_cfg: dict[str, object] = {
+        "provider": provider,
+        "model": "text-embedding-004",
+        "batch_size": 96,
+        "local_model": "nomic-ai/nomic-embed-text-v1.5",
+    }
+    rr = HybridRetriever(
+        store=_make_store(qdrant_url, collection),  # type: ignore[arg-type]
+        embedder=_make_embedder(emb_cfg),  # type: ignore[arg-type]
+        sparse_encoder=_make_sparse(),  # type: ignore[arg-type]
+        reranker=_make_reranker(),  # type: ignore[arg-type]
+        canonical_index=_make_canonical_index(canonical_dir),  # type: ignore[arg-type]
+    )
+    result = rr.retrieve(queries=[query_str], top_k=top_k, candidate_k=candidate_k)
+    console = Console()
+    table = Table(show_header=True, header_style="bold")
+    for col in ("rank", "chunk_id", "source_id", "tier", "score", "title"):
+        table.add_column(col)
+    for i, c in enumerate(result.chunks):
+        table.add_row(
+            str(i + 1), c.chunk_id, c.source_id, c.authority_tier, f"{c.score:.3f}", c.title[:60]
+        )
+    console.print(table)
+    if result.matched_topics:
+        console.print(f"[dim]Matched canonical topics: {', '.join(result.matched_topics)}[/]")
 
 
 if __name__ == "__main__":
