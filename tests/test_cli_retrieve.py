@@ -48,9 +48,9 @@ def test_retrieve_query_prints_table(monkeypatch):
             return list(range(min(top_k, len(cands))))
 
     monkeypatch.setattr("chatqec.cli._make_embedder", lambda cfg: _StubEmb())
-    monkeypatch.setattr("chatqec.cli._make_sparse", lambda: _StubSparse())
+    monkeypatch.setattr("chatqec.cli._make_sparse", _StubSparse)
     monkeypatch.setattr("chatqec.cli._make_store", lambda url, coll: store)
-    monkeypatch.setattr("chatqec.cli._make_reranker", lambda: _StubReranker())
+    monkeypatch.setattr("chatqec.cli._make_reranker", _StubReranker)
     monkeypatch.setattr(
         "chatqec.cli._make_canonical_index",
         lambda d: __import__(
