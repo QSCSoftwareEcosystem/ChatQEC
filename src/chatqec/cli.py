@@ -215,8 +215,8 @@ def canonical_validate(canonical_dir: Path) -> None:
 
 def _fetch_url_as_markdown(url: str) -> tuple[str, str, str]:
     """Default URL fetcher: HTTP GET + trafilatura → markdown. Overridable in tests."""
-    import requests
-    import trafilatura
+    import requests  # noqa: PLC0415
+    import trafilatura  # noqa: PLC0415
 
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
@@ -242,7 +242,7 @@ def _resolve_and_fetch_arxiv(
     year: int | None,
 ) -> tuple[ResolverHit, str]:
     """Resolve title+author to an arxiv id, then fetch the abstract+full text."""
-    import arxiv
+    import arxiv  # noqa: PLC0415
 
     hit = resolve_arxiv_paper(title_keywords=title_keywords, authors=authors, expected_year=year)
     search = arxiv.Search(id_list=[hit.arxiv_id])

@@ -27,7 +27,7 @@ class PDFMetadata:
 
 def extract_pdf_text(path: Path) -> str:
     """Thin wrapper around `unstructured`. Not unit-tested — see network tests."""
-    from unstructured.partition.pdf import partition_pdf  # local import to keep cold-start fast
+    from unstructured.partition.pdf import partition_pdf  # noqa: PLC0415
 
     elements = partition_pdf(filename=str(path))
     return "\n".join(str(el) for el in elements)
