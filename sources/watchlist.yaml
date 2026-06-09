@@ -1,0 +1,52 @@
+# ChatQEC watchlist — drives the weekly refresh job.
+# Contributors: add entries via PR. The refresh job opens a PR with new candidates
+# in status=pending_review; maintainers approve via merge.
+# Authoritative seeds: docs/superpowers/specs/2026-05-29-chatqec-design.md §A.4–A.9
+
+arxiv:
+  categories: [quant-ph]
+  keywords:
+    - "surface code"
+    - "stabilizer code"
+    - "magic state"
+    - "fault-tolerant"
+    - "qLDPC"
+    - "threshold"
+    - "decoder"
+    - "Floquet code"
+    - "lattice surgery"
+  authors:
+    - Preskill
+    - Gottesman
+    - Kitaev
+    - Terhal
+    - Bombin
+    - Litinski
+    - Fowler
+    - Yoder
+    - Gidney
+    - Bravyi
+    - Roffe
+
+github:
+  - repo: quantumlib/Stim
+  - repo: oscarhiggott/PyMatching
+  - repo: qiskit-community/qiskit-qec
+  - repo: quantumgizmos/ldpc
+  - repo: panqec/panqec
+  - repo: errorcorrectionzoo/eczoo_data
+  - repo: microsoft/QuantumKatas
+  - repo: qiskit-community/qiskit-textbook
+
+youtube:
+  channels:
+    - "@GoogleQuantumAI"
+    - "@qiskit"
+    - "@Quantinuum"
+    - "@SimonsInstituteTOC"
+    - "@PerimeterInstitute"
+    - "@Riverlane"
+
+rss:
+  - https://quantum-journal.org/feed/
+  - https://scottaaronson.blog/?feed=rss2
