@@ -122,6 +122,10 @@ module = [
 ignore_missing_imports = true
 follow_imports = "skip"
 
+[[tool.mypy.overrides]]
+module = "chatqec.retrieval.reranker"
+disallow_any_unimported = false
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
