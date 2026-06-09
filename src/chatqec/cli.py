@@ -151,8 +151,7 @@ def sources_mark_retracted(reg: Registry, record_id: str) -> None:
 def sources_compact(reg: Registry, older_than_days: int, dry_run: bool) -> None:
     """List or purge records eligible for compaction.
 
-    NOTE: physical purge of chunks from Qdrant lands in Milestone 5.
-    In M2, --apply is rejected with a guard.
+    With --apply, retracted/superseded chunks are physically removed from Qdrant.
     """
     now = datetime.now(tz=UTC)
     candidates = list(reg.compact_candidates(older_than_days=older_than_days, now=now))
@@ -160,8 +159,33 @@ def sources_compact(reg: Registry, older_than_days: int, dry_run: bool) -> None:
         click.echo(f"{rec.id}\t{rec.status.value}\t{rec.last_checked_at.isoformat()}")
     click.echo(f"\n{len(candidates)} candidates")
     if not dry_run:
-        click.echo("--apply not yet supported (wired up in Milestone 5)", err=True)
-        raise SystemExit(4)
+        from chatqec.embedding.base import EmbedderConfig
+        from chatqec.embedding.gemini import GeminiEmbedder
+        from chatqec.embedding.sparse import BM25Encoder
+        from chatqec.ingestion.pipeline import EmbeddingPipeline
+        from chatqec.store.qdrant import ChatQecStore, StoreConfig
+
+        # The purge path only needs the store handle for deletion; the embedder
+        # and sparse encoder are constructed but unused for deletion.
+        emb_cfg = EmbedderConfig(
+            provider="gemini", model="text-embedding-004", batch_size=8, local_model=""
+        )
+        pipe = EmbeddingPipeline(
+            chunks_dir=Path("data/chunks"),
+            registry=reg,
+            embedder=GeminiEmbedder(emb_cfg),
+            sparse_encoder=BM25Encoder(),
+            store=ChatQecStore(
+                StoreConfig(
+                    qdrant_url="http://localhost:6333",
+                    collection="chatqec_chunks",
+                    vector_dim=768,
+                    on_disk_payload=True,
+                )
+            ),
+        )
+        purged = pipe.purge_retracted(older_than_days=older_than_days, now=now)
+        click.echo(f"purged {len(purged)} sources from Qdrant")
 
 
 @main.group()
@@ -384,11 +408,33 @@ def ingest(
             "Per spec §7.4 prefer --resolve-by-title for LLM-suggested papers.",
             err=True,
         )
-        # M4 implements only the resolve-by-title path live; the --arxiv path
-        # delegates to the same fetcher with id_list=[arxiv_id_value].
-        # Full implementation lands in M5 when we wire up _fetch_arxiv_by_id.
-        click.echo("--arxiv <id> ingestion is not yet supported (lands in M5)", err=True)
-        raise SystemExit(3)
+        from chatqec.ingestion.fetchers.arxiv import fetch_arxiv_by_id
+
+        md_id = fetch_arxiv_by_id(arxiv_id_value)
+        chunks = arxiv_paper_to_chunks(
+            md_id, body_text=md_id.abstract, target_tokens=512, overlap_tokens=64
+        )
+        source_id = chunks[0].source_id
+        sink.write_many(source_id, chunks)
+        reg.append(
+            SourceRecord(
+                id=source_id,
+                type=SourceType.ARXIV,
+                url=f"https://arxiv.org/abs/{md_id.arxiv_id}",
+                title=md_id.title,
+                authors=md_id.authors,
+                year=md_id.year,
+                authority_tier="preprint",
+                ingested_at=now,
+                last_checked_at=now,
+                status=SourceStatus.PENDING_REVIEW,
+                chunk_count=len(chunks),
+                chunk_ids=[c.chunk_id for c in chunks],
+                verified=False,
+            )
+        )
+        click.echo(f"ingested {source_id}: {len(chunks)} chunks (TRUSTED id — verify!)")
+        return
 
     click.echo("nothing to ingest — pass --url, --resolve-by-title, or --arxiv", err=True)
     raise SystemExit(1)
@@ -424,6 +470,101 @@ def watch_refresh(wl: Watchlist, dry_run: bool) -> None:
     for cid, title, authors, year in candidates:
         click.echo(f"{cid}\t{title}\t{', '.join(authors)}\t{year}")
     click.echo(f"\n{len(candidates)} candidates")
+
+
+def _make_embedder(cfg: dict[str, object]) -> object:
+    """Build the configured embedder. Overridable for tests."""
+    from chatqec.embedding.base import EmbedderConfig
+
+    if cfg["provider"] == "local":
+        from chatqec.embedding.local import LocalEmbedder
+
+        return LocalEmbedder(EmbedderConfig(**cfg))  # type: ignore[arg-type]
+    from chatqec.embedding.gemini import GeminiEmbedder
+
+    return GeminiEmbedder(EmbedderConfig(**cfg))  # type: ignore[arg-type]
+
+
+def _make_sparse() -> object:
+    from chatqec.embedding.sparse import BM25Encoder
+
+    return BM25Encoder()
+
+
+def _make_store(url: str, collection: str) -> object:
+    from chatqec.store.qdrant import ChatQecStore, StoreConfig
+
+    return ChatQecStore(
+        StoreConfig(qdrant_url=url, collection=collection, vector_dim=768, on_disk_payload=True)
+    )
+
+
+@main.command("embed")
+@click.option(
+    "--chunks-dir",
+    type=click.Path(path_type=Path),
+    default=Path("data/chunks"),
+    show_default=True,
+)
+@click.option(
+    "--registry",
+    "registry_path",
+    type=click.Path(path_type=Path),
+    default=Path("sources/registry.jsonl"),
+    show_default=True,
+)
+@click.option("--source-id", default=None, help="Embed a single source by id.")
+@click.option(
+    "--all-pending",
+    "all_pending",
+    is_flag=True,
+    default=False,
+    help="Embed every pending_review source in the registry.",
+)
+@click.option("--qdrant-url", default="http://localhost:6333", show_default=True)
+@click.option("--collection", default="chatqec_chunks", show_default=True)
+@click.option(
+    "--provider",
+    default="gemini",
+    show_default=True,
+    type=click.Choice(["gemini", "local"]),
+)
+def embed(
+    chunks_dir: Path,
+    registry_path: Path,
+    source_id: str | None,
+    all_pending: bool,
+    qdrant_url: str,
+    collection: str,
+    provider: str,
+) -> None:
+    """Embed chunk files into Qdrant and promote pending_review → active."""
+    from chatqec.ingestion.pipeline import EmbeddingPipeline
+
+    if not source_id and not all_pending:
+        click.echo("pass --source-id <id> or --all-pending", err=True)
+        raise SystemExit(1)
+
+    emb_cfg = {
+        "provider": provider,
+        "model": "text-embedding-004",
+        "batch_size": 96,
+        "local_model": "nomic-ai/nomic-embed-text-v1.5",
+    }
+    pipe = EmbeddingPipeline(
+        chunks_dir=chunks_dir,
+        registry=Registry(registry_path),
+        embedder=_make_embedder(emb_cfg),  # type: ignore[arg-type]
+        sparse_encoder=_make_sparse(),  # type: ignore[arg-type]
+        store=_make_store(qdrant_url, collection),  # type: ignore[arg-type]
+    )
+    if source_id:
+        result = pipe.embed_source(source_id)
+        click.echo(f"embedded {result.source_id}: {result.chunks_embedded} chunks")
+    else:
+        results = pipe.embed_all_pending()
+        total = sum(r.chunks_embedded for r in results)
+        click.echo(f"{len(results)} sources, {total} chunks embedded")
 
 
 if __name__ == "__main__":

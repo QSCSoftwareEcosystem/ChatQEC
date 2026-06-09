@@ -94,6 +94,22 @@ def parse_arxiv_atom(xml_text: str) -> ArxivMetadata:
     )
 
 
+def fetch_arxiv_by_id(arxiv_id: str) -> ArxivMetadata:
+    """Trusted-id fetch (only used after the user explicitly accepts §7.4 warning)."""
+    import arxiv
+
+    [result] = list(arxiv.Client().results(arxiv.Search(id_list=[arxiv_id])))
+    # Re-use the Atom parser by emitting metadata directly
+    return ArxivMetadata(
+        arxiv_id=arxiv_id,
+        title=result.title.replace("\n", " ").strip(),
+        authors=[a.name for a in result.authors],
+        year=result.published.year,
+        abstract=result.summary,
+        pdf_url=result.pdf_url or "",
+    )
+
+
 def paper_to_chunks(
     md: ArxivMetadata,
     *,

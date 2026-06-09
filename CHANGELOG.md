@@ -32,3 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `chatqec ingest --url / --resolve-by-title / --arxiv` (the `--arxiv <id>` path warns per spec §7.4)
   - `chatqec watch refresh --dry-run`
 - Test infrastructure: `pytest -m network` marker; optional `network-tests` GitLab CI job (manual trigger)
+- Embedding layer:
+  - `Embedder` protocol with `GeminiEmbedder` (text-embedding-004) and `LocalEmbedder` (Nomic v1.5 via sentence-transformers)
+  - BM25 sparse encoder via fastembed
+- Qdrant store wrapper (`ChatQecStore`) with hybrid dense + sparse vectors, payload indexing on `status / source_id / authority_tier / topic_slugs`, status filtering, source-id deletion
+- `EmbeddingPipeline` that reads `data/chunks/*.jsonl`, embeds, upserts to Qdrant, and promotes `pending_review` → `active`
+- `docker-compose.yml` for local Qdrant
+- CLI: `chatqec embed --source-id / --all-pending`
+- M4 deferred paths wired up: `chatqec ingest --arxiv <id>` (warns per §7.4 and ingests), `chatqec sources compact --apply` (purges from Qdrant + registry)
