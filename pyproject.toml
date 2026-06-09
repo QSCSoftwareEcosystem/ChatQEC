@@ -92,6 +92,10 @@ files = ["src"]
 module = ["arxiv"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["unstructured.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
