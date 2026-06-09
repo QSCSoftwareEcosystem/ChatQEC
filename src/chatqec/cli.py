@@ -37,6 +37,7 @@ from chatqec.ingestion.resolver import (
     ResolverHit,
     resolve_arxiv_paper,
 )
+from chatqec.ingestion.watchlist import Watchlist, load_watchlist
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -251,6 +252,15 @@ def _resolve_and_fetch_arxiv(
     return hit, result.summary
 
 
+def _collect_watchlist_candidates(wl: Watchlist) -> list[tuple[str, str, list[str], int | None]]:
+    """Return a list of (candidate_id, title, authors, year).
+
+    In M4 this stub returns an empty list; M10 will wire up the real
+    arxiv/github/youtube/rss polling logic behind a GitHub Action.
+    """
+    return []
+
+
 @main.command("ingest")
 @click.option(
     "--chunks-dir",
@@ -382,6 +392,38 @@ def ingest(
 
     click.echo("nothing to ingest — pass --url, --resolve-by-title, or --arxiv", err=True)
     raise SystemExit(1)
+
+
+@main.group()
+@click.option(
+    "--watchlist",
+    "watchlist_path",
+    type=click.Path(path_type=Path),
+    default=Path("sources/watchlist.yaml"),
+    show_default=True,
+)
+@click.pass_context
+def watch(ctx: click.Context, watchlist_path: Path) -> None:
+    """Inspect and refresh the source watchlist."""
+    ctx.obj = load_watchlist(watchlist_path)
+
+
+@watch.command("refresh")
+@click.option(
+    "--dry-run/--apply",
+    default=True,
+    help="Dry run lists candidates; --apply not yet supported (lands in M10).",
+)
+@click.pass_obj
+def watch_refresh(wl: Watchlist, dry_run: bool) -> None:
+    """Pull fresh candidates from each watchlist entry."""
+    candidates = _collect_watchlist_candidates(wl)
+    if not dry_run:
+        click.echo("--apply not yet supported (lands in M10 with GitHub Action)", err=True)
+        raise SystemExit(4)
+    for cid, title, authors, year in candidates:
+        click.echo(f"{cid}\t{title}\t{', '.join(authors)}\t{year}")
+    click.echo(f"\n{len(candidates)} candidates")
 
 
 if __name__ == "__main__":

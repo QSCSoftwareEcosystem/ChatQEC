@@ -95,3 +95,32 @@ def test_ingest_arxiv_with_resolve_by_title(
     assert result.exit_code == 0, result.output
     files = list(chunk_dir.glob("arxiv_2408.13687v1*"))
     assert len(files) == 1
+
+
+def test_watch_refresh_dry_run_prints_candidates(monkeypatch, tmp_path: Path):
+    # Stub the watchlist refresh to return a fixed candidate list
+    def fake_collect(_wl):
+        return [
+            ("arxiv:2408.13687v1", "Below threshold", ["Acharya"], 2024),
+            ("github:quantumlib/Stim@abc12345", "Stim README", ["Gidney"], 2024),
+        ]
+
+    monkeypatch.setattr("chatqec.cli._collect_watchlist_candidates", fake_collect)
+
+    wl_path = tmp_path / "watchlist.yaml"
+    wl_path.write_text("arxiv:\n  categories: [quant-ph]\n")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "watch",
+            "--watchlist",
+            str(wl_path),
+            "refresh",
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "arxiv:2408.13687v1" in result.output
+    assert "Stim README" in result.output
