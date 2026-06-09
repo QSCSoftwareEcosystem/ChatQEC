@@ -26,8 +26,8 @@ def test_cli_ask_subcommand_exists():
     assert "question" in result.output.lower()
 
 
-def test_cli_ask_with_stub_returns_placeholder():
+def test_cli_ask_emits_pending_wiring_notice():
     runner = CliRunner()
     result = runner.invoke(main, ["ask", "What is the surface code?"])
     assert result.exit_code == 0
-    assert "stub" in result.output.lower() or "not yet implemented" in result.output.lower()
+    assert "7.8" in result.output or "wiring" in result.output.lower()
