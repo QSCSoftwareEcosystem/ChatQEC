@@ -1,6 +1,6 @@
 [project]
 name = "chatqec-mcp-tools"
-version = "0.1.0-dev"
+version = "0.1.0"
 description = "MCP server exposing sandboxed QEC tools (Stim v1; PyMatching/qiskit-qec v2) for use with Claude Desktop, Claude Code, and the ChatQEC app."
 readme = "README.md"
 requires-python = ">=3.11"
