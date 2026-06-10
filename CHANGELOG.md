@@ -66,3 +66,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Answer.tool_calls` propagates Stim runs to library users
 - CLI: `chatqec ask --mcp-server "chatqec-mcp-tools"` (and `chatqec chat --mcp-server …`) enables the tool loop end-to-end
 - Stub `StdioMCPClient` placeholder (full async stdio client lands as a follow-up patch)
+- Guards (spec §12):
+  - `RateLimiter` (SQLite-backed) for per-IP per-action caps (20 asks/day, 5 tools/hour)
+  - `CostBudget` (SQLite-backed) for daily USD-equivalent cap with graceful "service degraded" fallback
+  - `HCaptchaVerifier` (free tier) with disabled-on-empty-secret pass-through for dev
+  - Token-cost estimator (`estimate_cost_usd`) per spec §12.3 pricing table
+- Streamlit app (`chatqec_app/`):
+  - 4 pages (Chat, Sources, Watchlist, About)
+  - Streaming Chat with citation cards and tool-output rendering (Stim SVG inline, samples as JSON)
+  - Sources page with type/status/tier filtering (pandas-free, plain list filtering)
+  - Watchlist page with "Submit a source" GitLab-issue link
+  - About page with corpus summary
+- App testing via `streamlit.testing.v1.AppTest` (4 page smoke tests)
+- Config: `limits:` and `captcha:` sections in `conf/config.yaml`

@@ -43,3 +43,17 @@ mcp:
   server_command: "chatqec-mcp-tools"
   server_args: []
   request_timeout_seconds: 60
+
+limits:
+  ask_per_day: 20
+  tool_per_hour: 5
+  daily_budget_usd: 5.00
+  per_query_wall_seconds: 30
+  per_query_tool_iterations: 5
+  per_query_chunks: 12
+  per_query_output_tokens: 4000
+
+captcha:
+  enabled: false
+  hcaptcha_sitekey: ""
+  # hcaptcha_secret is read from HCAPTCHA_SECRET env var
