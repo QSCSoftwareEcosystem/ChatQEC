@@ -1,6 +1,6 @@
 [project]
 name = "chatqec"
-version = "0.1.0-dev"
+version = "0.1.0"
 description = "Semi-automated QEC research assistant with retrieval-augmented generation and sandboxed Stim execution."
 readme = "README.md"
 requires-python = ">=3.11"

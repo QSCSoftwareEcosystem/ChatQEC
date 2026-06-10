@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Removed
+
+## [0.1.0] - 2026-06-10
+
+### Added
 - Initial project scaffolding (uv, Hydra, Click CLI shell, pytest, ruff, mypy)
 - ChatQEC public API stub returning placeholder Answer objects
 - GitLab CI with lint + test stages
@@ -79,3 +87,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - About page with corpus summary
 - App testing via `streamlit.testing.v1.AppTest` (4 page smoke tests)
 - Config: `limits:` and `captcha:` sections in `conf/config.yaml`
+- Eval set:
+  - 50 Q&A pair seed eval set covering 6 question subtypes (`eval/qa_set.jsonl`)
+  - `EvalCase` schema (StrEnum subtype), JSONL loader, `recall_at_k`, `citation_accuracy`, LLM-judged `faithfulness`
+  - `chatqec eval run` CLI emits per-subtype + overall metrics as JSON
+- Watchlist automation:
+  - `refresh_arxiv` + `refresh_github` (real implementations); `refresh_rss` is a follow-up stub
+  - `chatqec watch refresh --apply` writes `pending_review` records to the registry
+  - GitLab CI scheduled `watchlist-refresh` job opens a weekly MR with new candidates (requires `WATCHLIST_PUSH_TOKEN` CI variable and a cron schedule)
+- Issue template `.gitlab/issue_templates/add_source.md` for community source proposals
+
+### Released
+
+This release closes out the v1 scope from the design spec.
