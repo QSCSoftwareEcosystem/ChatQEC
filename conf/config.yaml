@@ -37,3 +37,9 @@ embedding:
   model: "text-embedding-004"
   batch_size: 96
   local_model: "nomic-ai/nomic-embed-text-v1.5"  # used when provider="local"
+
+mcp:
+  enabled: false
+  server_command: "chatqec-mcp-tools"
+  server_args: []
+  request_timeout_seconds: 60
