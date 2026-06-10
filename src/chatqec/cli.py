@@ -734,5 +734,76 @@ def retrieve(
         console.print(f"[dim]Matched canonical topics: {', '.join(result.matched_topics)}[/]")
 
 
+def _make_judge_client() -> object:  # pragma: no cover
+    """Build an Anthropic client used as the LLM judge in eval runs."""
+    import anthropic
+
+    return anthropic.Anthropic()
+
+
+@main.group("eval")
+def eval_group() -> None:
+    """Run the eval set and emit metrics."""
+
+
+@eval_group.command("run")
+@click.option(
+    "--cases",
+    "cases_path",
+    type=click.Path(path_type=Path),
+    default=Path("eval/qa_set.jsonl"),
+    show_default=True,
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(path_type=Path),
+    default=Path("eval/results.json"),
+    show_default=True,
+)
+@click.option("--judge-model", default="claude-haiku-4-5", show_default=True)
+def eval_run(cases_path: Path, output_path: Path, judge_model: str) -> None:
+    """Run the eval set against the configured ChatQEC and emit JSON metrics."""
+    import json
+
+    from chatqec.eval.dataset import load_eval_set
+    from chatqec.eval.runner import run_eval
+
+    cases = load_eval_set(cases_path)
+    bot = _build_chatqec()
+    judge = _make_judge_client()
+
+    report = run_eval(cases=cases, bot=bot, judge_client=judge, judge_model=judge_model)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(
+            {
+                "total": report.total,
+                "overall_recall_at_k": report.overall_recall_at_k,
+                "overall_citation_accuracy": report.overall_citation_accuracy,
+                "overall_faithfulness": report.overall_faithfulness,
+                "per_subtype": {
+                    k: {
+                        "n": v.n,
+                        "recall_at_k": v.recall_at_k,
+                        "citation_accuracy": v.citation_accuracy,
+                        "faithfulness": v.faithfulness,
+                    }
+                    for k, v in report.per_subtype.items()
+                },
+                "raw": report.raw,
+            },
+            indent=2,
+        )
+    )
+    click.echo(
+        f"eval done: {report.total} cases, "
+        f"recall@k={report.overall_recall_at_k:.2f}, "
+        f"citation_acc={report.overall_citation_accuracy:.2f}, "
+        f"faithfulness={report.overall_faithfulness:.2f}"
+    )
+    click.echo(f"report: {output_path}")
+
+
 if __name__ == "__main__":
     main()
