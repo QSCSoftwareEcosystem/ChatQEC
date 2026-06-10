@@ -378,10 +378,12 @@ def _resolve_and_fetch_arxiv(
 def _collect_watchlist_candidates(wl: Watchlist) -> list[tuple[str, str, list[str], int | None]]:
     """Return a list of (candidate_id, title, authors, year).
 
-    In M4 this stub returns an empty list; M10 will wire up the real
-    arxiv/github/youtube/rss polling logic behind a GitHub Action.
+    Backed by ``chatqec.ingestion.watchlist_refresh.refresh_all`` (arXiv + GitHub).
     """
-    return []
+    from chatqec.ingestion.watchlist_refresh import refresh_all
+
+    now = datetime.now(tz=UTC)
+    return [(c.source_id, c.title, c.authors, c.year) for c in refresh_all(wl, now=now)]
 
 
 @main.command("ingest")
@@ -557,18 +559,56 @@ def watch(ctx: click.Context, watchlist_path: Path) -> None:
 @click.option(
     "--dry-run/--apply",
     default=True,
-    help="Dry run lists candidates; --apply not yet supported (lands in M10).",
+    help="Dry run (default) lists candidates; --apply appends pending_review records to the registry.",
+)
+@click.option(
+    "--registry",
+    "registry_path",
+    type=click.Path(path_type=Path),
+    default=Path("sources/registry.jsonl"),
+    show_default=True,
 )
 @click.pass_obj
-def watch_refresh(wl: Watchlist, dry_run: bool) -> None:
+def watch_refresh(wl: Watchlist, dry_run: bool, registry_path: Path) -> None:
     """Pull fresh candidates from each watchlist entry."""
     candidates = _collect_watchlist_candidates(wl)
-    if not dry_run:
-        click.echo("--apply not yet supported (lands in M10 with GitHub Action)", err=True)
-        raise SystemExit(4)
     for cid, title, authors, year in candidates:
         click.echo(f"{cid}\t{title}\t{', '.join(authors)}\t{year}")
     click.echo(f"\n{len(candidates)} candidates")
+    if dry_run:
+        return
+    reg = Registry(registry_path)
+    now = datetime.now(tz=UTC)
+    appended = 0
+    for cid, title, authors, year in candidates:
+        try:
+            reg.get(cid)
+            continue
+        except RecordNotFoundError:
+            pass
+        try:
+            stype = SourceType(cid.split(":", 1)[0])
+        except ValueError:
+            continue
+        try:
+            reg.append(
+                SourceRecord(
+                    id=cid,
+                    type=stype,
+                    url="",
+                    title=title,
+                    authors=authors,
+                    year=year,
+                    authority_tier="preprint" if stype is SourceType.ARXIV else "blog",
+                    ingested_at=now,
+                    last_checked_at=now,
+                    status=SourceStatus.PENDING_REVIEW,
+                )
+            )
+            appended += 1
+        except (ValueError, InvalidTransitionError) as e:
+            click.echo(f"skip {cid}: {e}", err=True)
+    click.echo(f"appended {appended} pending_review records to {registry_path}")
 
 
 def _make_embedder(cfg: dict[str, object]) -> object:
