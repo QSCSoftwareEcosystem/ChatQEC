@@ -59,3 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI:
   - `chatqec ask "..."` runs the real pipeline and prints citations + confidence
   - `chatqec chat` interactive REPL with `/quit` and `/clear` commands
+- Sibling repo `chatqec-mcp-tools` (separate project): subprocess+rlimits sandbox runner; `stim_simulate` and `stim_diagram` tools; MCP server entry over stdio
+- `MCPAdapter` translating MCP tool definitions to Anthropic-SDK schemas
+- Anthropic-native `run_tool_loop` with iteration cap and unknown-tool fallback
+- `Synthesizer.mcp_adapter` enables tool use; `SynthesisResult.tool_invocations` exposes per-call I/O
+- `Answer.tool_calls` propagates Stim runs to library users
+- CLI: `chatqec ask --mcp-server "chatqec-mcp-tools"` (and `chatqec chat --mcp-server …`) enables the tool loop end-to-end
+- Stub `StdioMCPClient` placeholder (full async stdio client lands as a follow-up patch)
