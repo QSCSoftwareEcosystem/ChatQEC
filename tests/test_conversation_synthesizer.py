@@ -86,3 +86,45 @@ def test_synthesize_confidence_based_on_citation_count():
     s_low = Synthesizer(client=client_low, model="claude-sonnet-4-6")
     res = s_low.synthesize(question="q", retrieved=[_ctx(0)], canonical_chunks=[], history=[])
     assert res.confidence == "low"
+
+
+def test_synthesize_with_adapter_runs_tool_loop():
+    from chatqec.conversation.mcp_adapter import MCPAdapter, MCPToolDef
+
+    fake_mcp = MagicMock()
+    fake_mcp.list_tools.return_value = [
+        MCPToolDef(
+            name="stim_simulate",
+            description="run",
+            input_schema={"type": "object", "properties": {}},
+        ),
+    ]
+    fake_mcp.call_tool.return_value = {"ok": True, "summary": "result"}
+
+    client = MagicMock()
+    m1 = MagicMock()
+    m1.stop_reason = "tool_use"
+    b1 = MagicMock()
+    b1.type = "tool_use"
+    b1.id = "t1"
+    b1.name = "stim_simulate"
+    b1.input = {}
+    m1.content = [b1]
+    m1.usage = MagicMock(input_tokens=1, output_tokens=2)
+    m2 = MagicMock()
+    m2.stop_reason = "end_turn"
+    b2 = MagicMock()
+    b2.type = "text"
+    b2.text = "Answer [^1]"
+    m2.content = [b2]
+    m2.usage = MagicMock(input_tokens=1, output_tokens=2)
+    client.messages.create.side_effect = [m1, m2]
+
+    synth = Synthesizer(
+        client=client,
+        model="claude-sonnet-4-6",
+        mcp_adapter=MCPAdapter(client=fake_mcp),
+    )
+    result = synth.synthesize(question="q", retrieved=[_ctx(0)], canonical_chunks=[], history=[])
+    assert len(result.tool_invocations) == 1
+    assert result.tool_invocations[0].name == "stim_simulate"
