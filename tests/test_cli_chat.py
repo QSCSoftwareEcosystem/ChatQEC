@@ -11,7 +11,7 @@ from chatqec.cli import main
 def test_ask_uses_real_pipeline(monkeypatch):
     bot = MagicMock()
     bot.ask.return_value = Answer(text="Surface code intro.", confidence="medium")
-    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda: bot)
+    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda **_: bot)
 
     runner = CliRunner()
     result = runner.invoke(main, ["ask", "What is the surface code?"])
@@ -23,7 +23,7 @@ def test_ask_uses_real_pipeline(monkeypatch):
 def test_chat_repl_handles_single_turn(monkeypatch):
     bot = MagicMock()
     bot.ask.return_value = Answer(text="Reply.", confidence="medium")
-    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda: bot)
+    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda **_: bot)
 
     runner = CliRunner()
     result = runner.invoke(main, ["chat"], input="hello\n/quit\n")
@@ -33,7 +33,7 @@ def test_chat_repl_handles_single_turn(monkeypatch):
 
 def test_chat_repl_quit_command_exits_cleanly(monkeypatch):
     bot = MagicMock()
-    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda: bot)
+    monkeypatch.setattr("chatqec.cli._build_chatqec", lambda **_: bot)
 
     runner = CliRunner()
     result = runner.invoke(main, ["chat"], input="/quit\n")

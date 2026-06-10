@@ -76,7 +76,10 @@ class ChatQEC:
         return Answer(
             text=result.text,
             citations=result.citations,
-            tool_calls=[],
+            tool_calls=[
+                ToolCall(name=t.name, input=dict(t.input), output=str(t.output))
+                for t in result.tool_invocations
+            ],
             confidence=result.confidence,
         )
 

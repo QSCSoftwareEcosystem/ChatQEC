@@ -111,3 +111,25 @@ def test_ask_stream_yields_text_chunks():
     )
     chunks = list(bot.ask_stream("What is the surface code?"))
     assert "surface" in "".join(c.delta for c in chunks)
+
+
+def test_ask_surfaces_tool_calls_when_synthesizer_invoked_tool():
+    from chatqec.conversation.synthesizer import SynthesisResult
+    from chatqec.conversation.tool_loop import ToolInvocation
+
+    bot, _, synthesizer = _build_chatqec()
+    synthesizer.synthesize.return_value = SynthesisResult(
+        text="With tool result [^1].",
+        citations=[],
+        confidence="medium",
+        tool_invocations=[
+            ToolInvocation(
+                name="stim_simulate",
+                input={"circuit": "M 0\n", "shots": 1},
+                output={"ok": True, "summary": "shape=(1,1)"},
+            )
+        ],
+    )
+    answer = bot.ask("Run M 0 once.")
+    assert len(answer.tool_calls) == 1
+    assert answer.tool_calls[0].name == "stim_simulate"

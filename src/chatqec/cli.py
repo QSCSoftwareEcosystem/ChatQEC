@@ -49,8 +49,12 @@ def main() -> None:
     """ChatQEC — open-source QEC research assistant."""
 
 
-def _build_chatqec() -> ChatQEC:  # pragma: no cover
-    """Build a ChatQEC instance from on-disk config. Overridable in tests."""
+def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cover
+    """Build a ChatQEC instance from on-disk config. Overridable in tests.
+
+    When ``mcp_server`` is set, the synthesizer is given an MCP adapter wired to
+    a stdio-spawned MCP server (e.g. ``chatqec-mcp-tools``).
+    """
     import os
 
     import anthropic
@@ -90,22 +94,38 @@ def _build_chatqec() -> ChatQEC:  # pragma: no cover
 
     client = anthropic.Anthropic()
     models = cfg_dict["models"]
+    synthesizer = Synthesizer(client=client, model=str(models["synthesizer"]))
+    if mcp_server:
+        from chatqec.conversation.mcp_adapter import MCPAdapter
+        from chatqec.conversation.mcp_stdio import StdioMCPClient
+
+        synthesizer.mcp_adapter = MCPAdapter(client=StdioMCPClient(server_command=mcp_server))
+
     return ChatQEC(
         classifier=OffTopicClassifier(client=client, model=str(models["classifier"])),
         rewriter=QueryRewriter(client=client, model=str(models["rewriter"])),
         retriever=retriever,
-        synthesizer=Synthesizer(client=client, model=str(models["synthesizer"])),
+        synthesizer=synthesizer,
         canonical_index=canonical_index,  # type: ignore[arg-type]
     )
 
 
 @main.command()
 @click.argument("question", nargs=-1, required=True)
-def ask(question: tuple[str, ...]) -> None:
+@click.option(
+    "--mcp-server",
+    default=None,
+    help="Command to launch an MCP tool server (e.g. 'chatqec-mcp-tools').",
+)
+def ask(question: tuple[str, ...], mcp_server: str | None) -> None:
     """Answer a single QEC question (one-shot)."""
-    bot = _build_chatqec()
+    bot = _build_chatqec(mcp_server=mcp_server)
     answer = bot.ask(" ".join(question))
     click.echo(answer.text)
+    if answer.tool_calls:
+        click.echo("\nTool calls:")
+        for t in answer.tool_calls:
+            click.echo(f"  - {t.name}({t.input})")
     if answer.citations:
         click.echo("\nSources:")
         for c in answer.citations:
@@ -114,9 +134,14 @@ def ask(question: tuple[str, ...]) -> None:
 
 
 @main.command()
-def chat() -> None:
+@click.option(
+    "--mcp-server",
+    default=None,
+    help="Command to launch an MCP tool server (e.g. 'chatqec-mcp-tools').",
+)
+def chat(mcp_server: str | None) -> None:
     """Interactive REPL chat. Type /quit to exit, /clear to wipe memory."""
-    bot = _build_chatqec()
+    bot = _build_chatqec(mcp_server=mcp_server)
     click.echo("ChatQEC interactive chat. Type /quit to exit, /clear to reset memory.")
     while True:
         try:
