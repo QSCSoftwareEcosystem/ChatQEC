@@ -49,17 +49,74 @@ def main() -> None:
     """ChatQEC — open-source QEC research assistant."""
 
 
-def _build_llm_client(provider: str) -> object:  # pragma: no cover
-    """Construct the LLM client backing classifier+rewriter+synthesizer."""
-    if provider == "huggingface":
+_HF_MODEL_REMAP: dict[str, str] = {  # pragma: no cover
+    "claude-haiku-4-5": "meta-llama/Llama-3.1-8B-Instruct",
+    "claude-sonnet-4-6": "meta-llama/Llama-3.3-70B-Instruct",
+}
+
+
+def _try_anthropic() -> object | None:  # pragma: no cover
+    """Construct an Anthropic client if a key is available; None otherwise."""
+    import os
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    try:
+        import anthropic
+
+        client: object = anthropic.Anthropic()
+        return client
+    except Exception:
+        return None
+
+
+def _try_huggingface() -> object | None:  # pragma: no cover
+    """Construct a HuggingFace client if a token is available; None otherwise."""
+    import os
+
+    if not (os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")):
+        return None
+    try:
         from chatqec.providers.huggingface import HuggingFaceLLM
 
         return HuggingFaceLLM()
-    if provider != "anthropic":
-        raise ValueError(f"unknown LLM provider: {provider!r}")
-    import anthropic
+    except Exception:
+        return None
 
-    return anthropic.Anthropic()
+
+def _build_llm_client(provider: str) -> object:  # pragma: no cover
+    """Construct the LLM client backing classifier+rewriter+synthesizer."""
+    from chatqec.providers.fallback import Backend, FallbackLLMClient
+
+    if provider == "huggingface":
+        hf = _try_huggingface()
+        if hf is None:
+            raise RuntimeError("HF_TOKEN (or HUGGINGFACE_API_KEY) is not set")
+        return hf
+    if provider == "anthropic":
+        ant = _try_anthropic()
+        if ant is None:
+            raise RuntimeError("ANTHROPIC_API_KEY is not set")
+        return ant
+    if provider == "auto":
+        backends: list[Backend] = []
+        ant = _try_anthropic()
+        if ant is not None:
+            backends.append(Backend(name="anthropic", client=ant))
+        hf = _try_huggingface()
+        if hf is not None:
+            backends.append(
+                Backend(
+                    name="huggingface",
+                    client=hf,
+                    model_remap=_HF_MODEL_REMAP,
+                    default_model="meta-llama/Llama-3.3-70B-Instruct",
+                )
+            )
+        if not backends:
+            raise RuntimeError("no LLM provider configured; set ANTHROPIC_API_KEY and/or HF_TOKEN")
+        return FallbackLLMClient(backends=backends)
+    raise ValueError(f"unknown LLM provider: {provider!r}")
 
 
 def _role_models(

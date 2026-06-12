@@ -119,22 +119,36 @@ Streaming and tool-use add a small overhead. The `chatqec.guards.CostBudget`
 caps daily spend; the default is $5/day and is configurable via
 `CHATQEC_DAILY_BUDGET_USD`.
 
-**LLM provider is configurable.** Anthropic is the default and recommended for
-production quality, but you can swap to HuggingFace open-weights (Llama-3.1-8B
-for classifier/rewriter, Llama-3.3-70B for synthesizer + judge) when Anthropic
-credit is unavailable or for fully open-stack deployment:
+**LLM provider is configurable and falls back automatically.** The default
+config is `models.provider: "auto"` — calls go to Anthropic first; if your
+Anthropic credit is empty (or the key is missing, rate-limited, or 403s) the
+same call transparently falls through to HuggingFace open-weights (Llama-3.1-8B
+for classifier+rewriter, Llama-3.3-70B for synthesizer+judge). Every call logs
+which backend served it to stderr — there's no silent quality drop:
 
-```bash
-# in conf/config.yaml
-models:
-  provider: "huggingface"   # default is "anthropic"
+```
+$ chatqec ask "..."
+[chatqec] backend=anthropic unavailable (BadRequestError: credit balance too low) → trying next
+[chatqec] backend=huggingface model=meta-llama/Llama-3.3-70B-Instruct
+The surface code threshold under depolarizing noise is...
 ```
 
-Provide an `HF_TOKEN` (or `HUGGINGFACE_API_KEY`) instead of `ANTHROPIC_API_KEY`.
-Trade-offs: the `--mcp-server` tool-use loop and streaming require Anthropic;
-HuggingFace covers the four text-only roles (classifier, rewriter, synthesizer,
-eval judge). Expect a measurable quality drop on synthesis vs. Sonnet — eval
-should still be run against Anthropic for headline numbers.
+Three explicit values are available for `models.provider`:
+
+| Value | Behaviour |
+|---|---|
+| `auto` *(default)* | Try Anthropic → fall back to HuggingFace on credit/auth/quota errors. Non-recoverable errors (5xx, network) still raise. |
+| `anthropic` | Anthropic only. Fails hard if no credit / no key. |
+| `huggingface` | HuggingFace only. Useful for fully open-stack deploys. |
+
+Provide whichever keys you have: `ANTHROPIC_API_KEY` and/or `HF_TOKEN` (the
+fine-grained token needs the **"Make calls to Inference Providers"** scope).
+`auto` skips any backend whose key is missing — set just one and it works.
+
+The `--mcp-server` tool-use loop still requires Anthropic; HuggingFace covers
+the four text-only roles. Expect a measurable quality drop on synthesis when
+the fallback kicks in — eval headline numbers should still be run with
+`provider: anthropic` explicitly to avoid mixed-backend results.
 
 ---
 

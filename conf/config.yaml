@@ -6,7 +6,7 @@ project:
   version: "0.1.0-dev"
 
 models:
-  provider: "anthropic"           # "anthropic" | "huggingface"
+  provider: "auto"                  # "auto" | "anthropic" | "huggingface" — auto tries Anthropic first, falls back to HF on credit/auth errors
   rewriter: claude-haiku-4-5
   classifier: claude-haiku-4-5
   synthesizer: claude-sonnet-4-6
