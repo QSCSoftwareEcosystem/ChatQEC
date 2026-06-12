@@ -72,11 +72,24 @@ class _MessagesProxy:
                 "Use the anthropic provider when --mcp-server is enabled."
             )
         oai_messages = _anthropic_to_oai_messages(system=system, messages=messages or [])
-        resp = self._client._raw.chat.completions.create(
-            model=model,
-            messages=oai_messages,
-            max_tokens=max_tokens,
-        )
+        try:
+            resp = self._client._raw.chat.completions.create(
+                model=model,
+                messages=oai_messages,
+                max_tokens=max_tokens,
+            )
+        except Exception as e:
+            msg = str(e)
+            if "403" in msg or "Forbidden" in msg or "permissions" in msg:
+                raise RuntimeError(
+                    "HuggingFace returned 403. Your HF_TOKEN likely lacks the "
+                    "'Make calls to Inference Providers' permission, or you have "
+                    "exhausted the monthly free credit. "
+                    "Create a fine-grained token at "
+                    "https://huggingface.co/settings/tokens/new?tokenType=fineGrained "
+                    "with the Inference Providers scope ticked."
+                ) from e
+            raise
         text = resp.choices[0].message.content or ""
         usage = getattr(resp, "usage", None)
         return MessageResponse(
