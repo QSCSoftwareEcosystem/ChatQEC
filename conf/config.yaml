@@ -9,7 +9,7 @@ models:
   rewriter: claude-haiku-4-5
   classifier: claude-haiku-4-5
   synthesizer: claude-sonnet-4-6
-  embedder: text-embedding-004
+  embedder: gemini-embedding-001
   long_context_fallback: gemini-2.5-pro
   reranker: BAAI/bge-reranker-base
 
@@ -34,7 +34,7 @@ store:
 
 embedding:
   provider: "gemini"        # "gemini" | "local"
-  model: "text-embedding-004"
+  model: "gemini-embedding-001"  # text-embedding-004 was retired; gemini-embedding-001 is the GA replacement (3072-dim native, Matryoshka-truncatable to 768)
   batch_size: 96
   local_model: "nomic-ai/nomic-embed-text-v1.5"  # used when provider="local"
 

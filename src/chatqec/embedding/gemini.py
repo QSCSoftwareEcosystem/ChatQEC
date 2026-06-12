@@ -1,4 +1,10 @@
-"""Gemini text-embedding-004 embedder."""
+"""Gemini embedder.
+
+Uses ``gemini-embedding-001`` (GA) — the Matryoshka-truncatable replacement for
+the retired ``text-embedding-004``. We request ``output_dimensionality=768`` so
+the produced vectors match the project's Qdrant collection (vector_dim=768)
+unchanged.
+"""
 
 from __future__ import annotations
 
@@ -30,6 +36,7 @@ class GeminiEmbedder(Embedder):
                 model=f"models/{self.cfg.model}",
                 content=batch,
                 task_type="retrieval_document",
+                output_dimensionality=self.dim,
             )
             vectors = resp["embedding"] if isinstance(resp, dict) else resp.embedding
             out.extend(vectors)
