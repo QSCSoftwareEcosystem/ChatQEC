@@ -15,6 +15,7 @@ _PRICES_USD_PER_MTOK = {
     "claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cached_input": 0.30},
     "claude-haiku-4-5": {"input": 0.80, "output": 4.0, "cached_input": 0.08},
     "text-embedding-004": {"input": 0.025, "output": 0.0, "cached_input": 0.025},
+    "gemini-embedding-001": {"input": 0.150, "output": 0.0, "cached_input": 0.150},
 }
 
 

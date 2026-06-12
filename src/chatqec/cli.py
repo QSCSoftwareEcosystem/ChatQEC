@@ -700,7 +700,7 @@ def embed(
 
     emb_cfg = {
         "provider": provider,
-        "model": "text-embedding-004",
+        "model": "gemini-embedding-001",
         "batch_size": 96,
         "local_model": "nomic-ai/nomic-embed-text-v1.5",
     }
@@ -749,7 +749,7 @@ def retrieve(
 
     emb_cfg: dict[str, object] = {
         "provider": provider,
-        "model": "text-embedding-004",
+        "model": "gemini-embedding-001",
         "batch_size": 96,
         "local_model": "nomic-ai/nomic-embed-text-v1.5",
     }
