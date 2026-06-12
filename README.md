@@ -76,6 +76,25 @@ uv run chatqec ask --mcp-server chatqec-mcp-tools \
 The Stim tools (`stim_simulate`, `stim_diagram`) run in a subprocess sandbox
 with memory and wall-clock limits.
 
+### CLI commands at a glance
+
+```bash
+chatqec ask "..."         # one-shot question with citations
+chatqec chat              # interactive REPL (/quit, /clear)
+chatqec ingest --arxiv 2408.13687 --url https://...   # add a source
+chatqec embed --all-pending --provider gemini         # embed → flip to active
+chatqec sources list                                  # registry view
+chatqec retrieve --query "..."                        # debug: top-K chunks only (no LLM)
+chatqec canonical validate                            # check the canonical wiki
+chatqec watch refresh --apply                         # pull new arXiv/GitHub candidates
+chatqec eval run --output eval/results.json           # run the 50-pair eval set
+```
+
+> **Tip — verify retrieval without Anthropic credit.** `chatqec retrieve --query
+> "..."` exercises only Gemini embeddings + Qdrant + the BGE reranker, **no
+> Claude calls**. Use it to confirm the corpus is queryable before spending on
+> the LLM synthesis step.
+
 ---
 
 ## What to expect on your first run
