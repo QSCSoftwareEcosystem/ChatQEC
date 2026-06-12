@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from chatqec.api_types import Citation
 from chatqec.retrieval.hybrid import RetrievedChunk
 
 _FOOTNOTE_RE = re.compile(r"\[\^(\d+)\]")
+
+
+def _resolve_url(payload: dict[str, Any], source_id: str) -> str:
+    """Pick the best URL we can from a chunk's payload, deriving arXiv abs URLs."""
+    for key in ("url", "meta_url", "pdf_url", "meta_pdf_url"):
+        v = payload.get(key)
+        if v:
+            return str(v)
+    if source_id.startswith("arxiv:"):
+        return f"https://arxiv.org/abs/{source_id.removeprefix('arxiv:')}"
+    return ""
 
 
 def extract_citations(
@@ -29,7 +41,7 @@ def extract_citations(
                 source_id=c.source_id,
                 chunk_id=c.chunk_id,
                 title=c.title,
-                url=str(c.payload.get("url", "")),
+                url=_resolve_url(c.payload, c.source_id),
             )
         )
     return out

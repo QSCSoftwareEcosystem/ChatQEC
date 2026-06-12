@@ -40,3 +40,50 @@ def test_extract_ignores_out_of_range_footnotes():
 def test_extract_empty_for_answer_with_no_markers():
     citations = extract_citations("Plain answer no marker.", [_chunk(0)])
     assert citations == []
+
+
+def _chunk_with_payload(i: int, source_id: str, payload: dict | None = None) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=f"{source_id}#{i}",
+        source_id=source_id,
+        text="t",
+        title=f"Title {i}",
+        authority_tier="preprint",
+        score=0.5,
+        payload=payload or {},
+    )
+
+
+def test_extract_reads_url_from_meta_url_namespaced_key():
+    """Qdrant store namespaces chunk metadata as meta_<key>."""
+    chunks = [_chunk_with_payload(0, "url:abc", {"meta_url": "https://example.com/x"})]
+    cites = extract_citations("see [^1]", chunks)
+    assert cites[0].url == "https://example.com/x"
+
+
+def test_extract_prefers_plain_url_over_meta_url():
+    chunks = [
+        _chunk_with_payload(
+            0, "url:abc", {"url": "https://primary", "meta_url": "https://secondary"}
+        )
+    ]
+    cites = extract_citations("see [^1]", chunks)
+    assert cites[0].url == "https://primary"
+
+
+def test_extract_derives_arxiv_url_from_source_id_when_payload_missing():
+    chunks = [_chunk_with_payload(0, "arxiv:2408.13687", {})]
+    cites = extract_citations("see [^1]", chunks)
+    assert cites[0].url == "https://arxiv.org/abs/2408.13687"
+
+
+def test_extract_falls_back_to_pdf_url_when_no_abs_url():
+    chunks = [_chunk_with_payload(0, "url:abc", {"meta_pdf_url": "https://example.com/paper.pdf"})]
+    cites = extract_citations("see [^1]", chunks)
+    assert cites[0].url == "https://example.com/paper.pdf"
+
+
+def test_extract_returns_empty_url_for_unknown_source_type():
+    chunks = [_chunk_with_payload(0, "github:org/repo", {})]
+    cites = extract_citations("see [^1]", chunks)
+    assert cites[0].url == ""

@@ -142,7 +142,12 @@ def paper_to_chunks(
                 source_type="arxiv",
                 authority_tier="preprint",
                 anchor=f"#chunk-{i}",
-                metadata={"authors": md.authors, "year": md.year, "pdf_url": md.pdf_url},
+                metadata={
+                    "authors": md.authors,
+                    "year": md.year,
+                    "pdf_url": md.pdf_url,
+                    "url": f"https://arxiv.org/abs/{md.arxiv_id}",
+                },
             )
         )
     return chunks

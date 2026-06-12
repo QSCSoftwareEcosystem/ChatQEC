@@ -223,6 +223,8 @@ def ask(question: tuple[str, ...], mcp_server: str | None) -> None:
         click.echo("\nSources:")
         for c in answer.citations:
             click.echo(f"  - [{c.source_id}] {c.title}")
+            if c.url:
+                click.echo(f"    {c.url}")
     click.echo(f"\n(confidence: {answer.confidence})")
 
 
@@ -255,7 +257,11 @@ def chat(mcp_server: str | None) -> None:
         answer = bot.ask(line)
         click.echo(f"chatqec> {answer.text}")
         if answer.citations:
-            click.echo(f"  sources: {', '.join(c.source_id for c in answer.citations)}")
+            click.echo("  sources:")
+            for c in answer.citations:
+                click.echo(f"    - [{c.source_id}] {c.title}")
+                if c.url:
+                    click.echo(f"      {c.url}")
 
 
 @main.group()
