@@ -6,12 +6,20 @@ project:
   version: "0.1.0-dev"
 
 models:
+  provider: "anthropic"           # "anthropic" | "huggingface"
   rewriter: claude-haiku-4-5
   classifier: claude-haiku-4-5
   synthesizer: claude-sonnet-4-6
   embedder: gemini-embedding-001
   long_context_fallback: gemini-2.5-pro
   reranker: BAAI/bge-reranker-base
+  # Per-role overrides when provider="huggingface" (US-approved open-weights only).
+  hf:
+    classifier: "meta-llama/Llama-3.1-8B-Instruct"
+    rewriter: "meta-llama/Llama-3.1-8B-Instruct"
+    synthesizer: "meta-llama/Llama-3.3-70B-Instruct"
+    judge: "meta-llama/Llama-3.3-70B-Instruct"
+    serverless_provider: "auto"   # let huggingface_hub pick a routing partner
 
 retriever:
   top_k: 8

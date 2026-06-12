@@ -119,10 +119,22 @@ Streaming and tool-use add a small overhead. The `chatqec.guards.CostBudget`
 caps daily spend; the default is $5/day and is configurable via
 `CHATQEC_DAILY_BUDGET_USD`.
 
-**Anthropic is required.** There is no fully-local path. Gemini embeddings
-can be swapped for local BGE/Nomic (`embedding.provider=local`), but Haiku
-(classifier + rewriter) and Sonnet (synthesizer + judge) need an Anthropic
-key. A self-host-only-on-open-weights path is out of scope for v1.
+**LLM provider is configurable.** Anthropic is the default and recommended for
+production quality, but you can swap to HuggingFace open-weights (Llama-3.1-8B
+for classifier/rewriter, Llama-3.3-70B for synthesizer + judge) when Anthropic
+credit is unavailable or for fully open-stack deployment:
+
+```bash
+# in conf/config.yaml
+models:
+  provider: "huggingface"   # default is "anthropic"
+```
+
+Provide an `HF_TOKEN` (or `HUGGINGFACE_API_KEY`) instead of `ANTHROPIC_API_KEY`.
+Trade-offs: the `--mcp-server` tool-use loop and streaming require Anthropic;
+HuggingFace covers the four text-only roles (classifier, rewriter, synthesizer,
+eval judge). Expect a measurable quality drop on synthesis vs. Sonnet — eval
+should still be run against Anthropic for headline numbers.
 
 ---
 
@@ -189,8 +201,9 @@ Required environment:
 
 | Variable | Purpose |
 |---|---|
-| `ANTHROPIC_API_KEY` | Haiku (classifier/rewriter) + Sonnet (synthesizer + judge) |
-| `GEMINI_API_KEY` | `text-embedding-004` for dense vectors (or set `embedding.provider=local`) |
+| `ANTHROPIC_API_KEY` | Haiku (classifier/rewriter) + Sonnet (synthesizer + judge) — required when `models.provider=anthropic` (default) |
+| `HF_TOKEN` *or* `HUGGINGFACE_API_KEY` | Llama-3.1/3.3 via HuggingFace Inference API — required when `models.provider=huggingface` |
+| `GEMINI_API_KEY` | `gemini-embedding-001` for dense vectors (or set `embedding.provider=local`) |
 | `HCAPTCHA_SECRET` | Optional. Public Streamlit deploys; empty = captcha disabled |
 | `CHATQEC_DAILY_BUDGET_USD` | Optional. Daily USD cap for the budget guard |
 | `WATCHLIST_PUSH_TOKEN` | CI-only. GitLab token for the scheduled watchlist refresh MR |

@@ -16,6 +16,10 @@ _PRICES_USD_PER_MTOK = {
     "claude-haiku-4-5": {"input": 0.80, "output": 4.0, "cached_input": 0.08},
     "text-embedding-004": {"input": 0.025, "output": 0.0, "cached_input": 0.025},
     "gemini-embedding-001": {"input": 0.150, "output": 0.0, "cached_input": 0.150},
+    # HuggingFace open-weights — listed at $0 on the free serverless tier; if you
+    # exceed the free quota the routing partner bills directly, not here.
+    "meta-llama/Llama-3.1-8B-Instruct": {"input": 0.0, "output": 0.0, "cached_input": 0.0},
+    "meta-llama/Llama-3.3-70B-Instruct": {"input": 0.0, "output": 0.0, "cached_input": 0.0},
 }
 
 

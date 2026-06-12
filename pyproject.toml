@@ -86,6 +86,7 @@ ignore = ["E501", "PLR0913"]
 "src/chatqec/ingestion/fetchers/pdf.py" = ["PLC0415"]
 "src/chatqec/ingestion/fetchers/arxiv.py" = ["PLC0415"]
 "src/chatqec/ingestion/watchlist_refresh.py" = ["PLC0415"]
+"src/chatqec/providers/huggingface.py" = ["PLC0415"]
 
 [tool.mypy]
 python_version = "3.11"

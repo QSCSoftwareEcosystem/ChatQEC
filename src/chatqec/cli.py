@@ -49,6 +49,38 @@ def main() -> None:
     """ChatQEC — open-source QEC research assistant."""
 
 
+def _build_llm_client(provider: str) -> object:  # pragma: no cover
+    """Construct the LLM client backing classifier+rewriter+synthesizer."""
+    if provider == "huggingface":
+        from chatqec.providers.huggingface import HuggingFaceLLM
+
+        return HuggingFaceLLM()
+    if provider != "anthropic":
+        raise ValueError(f"unknown LLM provider: {provider!r}")
+    import anthropic
+
+    return anthropic.Anthropic()
+
+
+def _role_models(
+    models_cfg: dict[str, object], provider: str
+) -> dict[str, str]:  # pragma: no cover
+    """Resolve per-role model IDs for the selected provider."""
+    if provider == "huggingface":
+        hf = models_cfg.get("hf") or {}
+        assert isinstance(hf, dict), "models.hf must be a mapping"
+        return {
+            "classifier": str(hf.get("classifier", "meta-llama/Llama-3.1-8B-Instruct")),
+            "rewriter": str(hf.get("rewriter", "meta-llama/Llama-3.1-8B-Instruct")),
+            "synthesizer": str(hf.get("synthesizer", "meta-llama/Llama-3.3-70B-Instruct")),
+        }
+    return {
+        "classifier": str(models_cfg["classifier"]),
+        "rewriter": str(models_cfg["rewriter"]),
+        "synthesizer": str(models_cfg["synthesizer"]),
+    }
+
+
 def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cover
     """Build a ChatQEC instance from on-disk config. Overridable in tests.
 
@@ -57,7 +89,6 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
     """
     import os
 
-    import anthropic
     from hydra import compose, initialize_config_dir
     from omegaconf import OmegaConf
 
@@ -92,18 +123,23 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
         canonical_index=canonical_index,  # type: ignore[arg-type]
     )
 
-    client = anthropic.Anthropic()
     models = cfg_dict["models"]
-    synthesizer = Synthesizer(client=client, model=str(models["synthesizer"]))
+    provider = str(models.get("provider", "anthropic"))
+    client = _build_llm_client(provider)
+    role_models = _role_models(models, provider)
+
+    synthesizer = Synthesizer(client=client, model=role_models["synthesizer"])
     if mcp_server:
+        if provider != "anthropic":
+            raise ValueError(f"--mcp-server requires the anthropic provider; got {provider!r}")
         from chatqec.conversation.mcp_adapter import MCPAdapter
         from chatqec.conversation.mcp_stdio import StdioMCPClient
 
         synthesizer.mcp_adapter = MCPAdapter(client=StdioMCPClient(server_command=mcp_server))
 
     return ChatQEC(
-        classifier=OffTopicClassifier(client=client, model=str(models["classifier"])),
-        rewriter=QueryRewriter(client=client, model=str(models["rewriter"])),
+        classifier=OffTopicClassifier(client=client, model=role_models["classifier"]),
+        rewriter=QueryRewriter(client=client, model=role_models["rewriter"]),
         retriever=retriever,
         synthesizer=synthesizer,
         canonical_index=canonical_index,  # type: ignore[arg-type]
