@@ -196,7 +196,11 @@ question  ──▶ Haiku ──▶│  off-topic?  │── no ──▶ refus
        └────────────────┘         └─────────────────────┘
 ```
 
-Full design rationale lives in
+**Why each piece?** See [`docs/DESIGN_CHOICES.md`](docs/DESIGN_CHOICES.md) for a
+focused walkthrough of model selection (why Haiku for the classifier, Sonnet
+for the synthesizer, BGE for the reranker, etc.) and architectural picks (why
+hybrid retrieval, why Qdrant, why MCP for tool use, why a canonical wiki
+layer, why auto-fallback). Full design spec:
 [`docs/superpowers/specs/2026-05-29-chatqec-design.md`](docs/superpowers/specs/2026-05-29-chatqec-design.md).
 
 ---
