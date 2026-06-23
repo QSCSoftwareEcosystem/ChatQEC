@@ -133,6 +133,7 @@ ipython_config.py
 qdrant_storage/
 qdrant_data/
 .qdrant/
+.qdrant-initialized
 
 # SQLite (rate-limit DB, session DB)
 *.sqlite
@@ -151,6 +152,7 @@ embeddings_cache/
 data/raw/
 data/cache/
 data/downloads/
+data/chunks/
 sources/raw/
 sources/cache/
 sources/downloads/
