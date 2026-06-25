@@ -528,6 +528,13 @@ def _collect_watchlist_candidates(wl: Watchlist) -> list[tuple[str, str, list[st
     default=None,
     help="Expected publication year (helps disambiguate).",
 )
+@click.option(
+    "--full-text",
+    "full_text",
+    is_flag=True,
+    default=False,
+    help="Ingest the full LaTeX source (with --arxiv) instead of the abstract only.",
+)
 def ingest(
     chunks_dir: Path,
     registry_path: Path,
@@ -536,6 +543,7 @@ def ingest(
     title_keywords: str | None,
     authors_opt: tuple[str, ...],
     year: int | None,
+    full_text: bool,
 ) -> None:
     """Ingest one source. Writes chunks to disk and a pending_review record."""
     sink = ChunkSink(chunks_dir)
@@ -612,10 +620,28 @@ def ingest(
         )
         from chatqec.ingestion.fetchers.arxiv import fetch_arxiv_by_id
 
-        md_id = fetch_arxiv_by_id(arxiv_id_value)
-        chunks = arxiv_paper_to_chunks(
-            md_id, body_text=md_id.abstract, target_tokens=512, overlap_tokens=64
-        )
+        if full_text:
+            from chatqec.ingestion.fetchers import arxiv_source
+
+            try:
+                md_id, chunks = arxiv_source.fetch_arxiv_fulltext(
+                    arxiv_id_value, target_tokens=512, overlap_tokens=64
+                )
+                click.echo(f"  full-text LaTeX source → {len(chunks)} chunks", err=True)
+            except arxiv_source.SourceUnavailableError:
+                click.echo(
+                    "  no LaTeX source available — falling back to abstract only.",
+                    err=True,
+                )
+                md_id = fetch_arxiv_by_id(arxiv_id_value)
+                chunks = arxiv_paper_to_chunks(
+                    md_id, body_text=md_id.abstract, target_tokens=512, overlap_tokens=64
+                )
+        else:
+            md_id = fetch_arxiv_by_id(arxiv_id_value)
+            chunks = arxiv_paper_to_chunks(
+                md_id, body_text=md_id.abstract, target_tokens=512, overlap_tokens=64
+            )
         source_id = chunks[0].source_id
         sink.write_many(source_id, chunks)
         reg.append(
