@@ -8,6 +8,7 @@ unchanged.
 
 from __future__ import annotations
 
+import os
 import warnings
 from collections.abc import Sequence
 
@@ -26,6 +27,13 @@ class GeminiEmbedder(Embedder):
 
     def __init__(self, cfg: EmbedderConfig) -> None:
         self.cfg = cfg
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "No Gemini API key found. Set GEMINI_API_KEY (or GOOGLE_API_KEY) "
+                "in your environment or .env file."
+            )
+        genai.configure(api_key=api_key)
 
     def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
         out: list[list[float]] = []

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
@@ -47,6 +48,7 @@ from chatqec.ingestion.watchlist import Watchlist, load_watchlist
 @click.version_option(__version__, prog_name="chatqec")
 def main() -> None:
     """ChatQEC — open-source QEC research assistant."""
+    load_dotenv()
 
 
 _HF_MODEL_REMAP: dict[str, str] = {  # pragma: no cover
