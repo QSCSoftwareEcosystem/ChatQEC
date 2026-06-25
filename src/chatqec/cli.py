@@ -19,7 +19,7 @@ from chatqec.canonical.loader import (
     CanonicalLoadError,
     load_canonical_directory,
 )
-from chatqec.ingestion.chunk import ChunkSink
+from chatqec.ingestion.chunk import Chunk, ChunkSink
 from chatqec.ingestion.fetchers.arxiv import (
     ArxivMetadata,
 )
@@ -476,6 +476,49 @@ def _resolve_and_fetch_arxiv(
     return hit, result.summary
 
 
+def _arxiv_id_to_chunks(
+    arxiv_id_value: str, full_text: bool
+) -> tuple[ArxivMetadata, list[Chunk]]:  # pragma: no cover - network + subprocess
+    """Resolve an arXiv id to (metadata, chunks).
+
+    Default: abstract only. With ``full_text``: LaTeX source, then an isolated
+    Marker PDF extraction, then abstract — whichever succeeds first.
+    """
+    from chatqec.ingestion.fetchers.arxiv import fetch_arxiv_by_id
+
+    def _abstract() -> tuple[ArxivMetadata, list[Chunk]]:
+        md = fetch_arxiv_by_id(arxiv_id_value)
+        chunks = arxiv_paper_to_chunks(
+            md, body_text=md.abstract, target_tokens=512, overlap_tokens=64
+        )
+        return md, chunks
+
+    if not full_text:
+        return _abstract()
+
+    from chatqec.ingestion.fetchers import arxiv_source
+    from chatqec.ingestion.fetchers.pdf_marker import MarkerUnavailableError
+
+    try:
+        md_id, chunks = arxiv_source.fetch_arxiv_fulltext(
+            arxiv_id_value, target_tokens=512, overlap_tokens=64
+        )
+        click.echo(f"  full-text LaTeX source → {len(chunks)} chunks", err=True)
+        return md_id, chunks
+    except arxiv_source.SourceUnavailableError:
+        click.echo("  no LaTeX source — extracting the PDF with Marker (isolated)...", err=True)
+
+    try:
+        md_id, chunks = arxiv_source.fetch_arxiv_pdf_fulltext(
+            arxiv_id_value, target_tokens=512, overlap_tokens=64
+        )
+        click.echo(f"  Marker PDF extraction → {len(chunks)} chunks", err=True)
+        return md_id, chunks
+    except (MarkerUnavailableError, OSError) as e:
+        click.echo(f"  Marker unavailable ({e}) — falling back to abstract only.", err=True)
+        return _abstract()
+
+
 def _collect_watchlist_candidates(wl: Watchlist) -> list[tuple[str, str, list[str], int | None]]:
     """Return a list of (candidate_id, title, authors, year).
 
@@ -618,30 +661,7 @@ def ingest(
             "Per spec §7.4 prefer --resolve-by-title for LLM-suggested papers.",
             err=True,
         )
-        from chatqec.ingestion.fetchers.arxiv import fetch_arxiv_by_id
-
-        if full_text:
-            from chatqec.ingestion.fetchers import arxiv_source
-
-            try:
-                md_id, chunks = arxiv_source.fetch_arxiv_fulltext(
-                    arxiv_id_value, target_tokens=512, overlap_tokens=64
-                )
-                click.echo(f"  full-text LaTeX source → {len(chunks)} chunks", err=True)
-            except arxiv_source.SourceUnavailableError:
-                click.echo(
-                    "  no LaTeX source available — falling back to abstract only.",
-                    err=True,
-                )
-                md_id = fetch_arxiv_by_id(arxiv_id_value)
-                chunks = arxiv_paper_to_chunks(
-                    md_id, body_text=md_id.abstract, target_tokens=512, overlap_tokens=64
-                )
-        else:
-            md_id = fetch_arxiv_by_id(arxiv_id_value)
-            chunks = arxiv_paper_to_chunks(
-                md_id, body_text=md_id.abstract, target_tokens=512, overlap_tokens=64
-            )
+        md_id, chunks = _arxiv_id_to_chunks(arxiv_id_value, full_text)
         source_id = chunks[0].source_id
         sink.write_many(source_id, chunks)
         reg.append(

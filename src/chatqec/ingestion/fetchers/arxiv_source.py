@@ -114,5 +114,39 @@ def fetch_arxiv_fulltext(
     return md, chunks
 
 
+def fetch_arxiv_pdf_fulltext(
+    arxiv_id: str,
+    *,
+    target_tokens: int = 512,
+    overlap_tokens: int = 64,
+) -> tuple[ArxivMetadata, list[Chunk]]:  # pragma: no cover - network + subprocess
+    """Fallback for PDF-only papers: download the PDF, extract with isolated Marker.
+
+    Marker reconstructs equations to LaTeX and preserves code/tables, then the
+    Markdown flows through the same math-aware chunker.
+    """
+    import tempfile
+    from pathlib import Path
+
+    import requests
+
+    from chatqec.ingestion.fetchers.pdf_marker import run_marker_on_pdf
+
+    md = fetch_arxiv_by_id(arxiv_id)
+    bare_id = arxiv_id.split("v", maxsplit=1)[0] if "v" in arxiv_id else arxiv_id
+    url = f"https://arxiv.org/pdf/{bare_id}"
+    headers = {"User-Agent": "chatqec/0.1 (+https://errorcorrectionzoo.org)"}
+    resp = requests.get(url, headers=headers, timeout=120)
+    resp.raise_for_status()
+    with tempfile.TemporaryDirectory() as tmp:
+        pdf_path = Path(tmp) / f"{bare_id.replace('/', '_')}.pdf"
+        pdf_path.write_bytes(bytes(resp.content))
+        markdown = run_marker_on_pdf(pdf_path)
+    chunks = paper_to_chunks(
+        md, body_text=markdown, target_tokens=target_tokens, overlap_tokens=overlap_tokens
+    )
+    return md, chunks
+
+
 class SourceUnavailableError(RuntimeError):
     """Raised when an arXiv paper has no usable LaTeX source (need PDF fallback)."""
