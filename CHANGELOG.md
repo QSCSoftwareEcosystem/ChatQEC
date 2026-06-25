@@ -8,10 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Full-text arXiv ingestion via `chatqec ingest --arxiv <id> --full-text`:
+  - LaTeX-source path (`ingestion/latex.py`, `fetchers/arxiv_source.py`) — cleans
+    source while preserving math/code environments verbatim, keeps figure
+    captions, drops images; resolves `\input`/`\include`.
+  - Isolated-Marker PDF fallback (`fetchers/pdf_marker.py`) via `uvx` for
+    PDF-only papers, GPU-enabled with `TORCH_DEVICE=cuda`.
+  - `scripts/reingest_arxiv_fulltext.sh` for reproducible batch re-ingestion.
+- Auto-load of `.env` in the CLI and explicit Gemini API-key configuration.
 
 ### Changed
+- Re-ingested the 13 foundational arXiv papers as full text (≈711 chunks vs. 13
+  abstract chunks); corpus grew to ~820 embedded chunks.
 
 ### Removed
+- GitLab CI pipeline (`.gitlab-ci.yml`); quality gates run via local pre-commit.
 
 ## [0.1.0] - 2026-06-10
 

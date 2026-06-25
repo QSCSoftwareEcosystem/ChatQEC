@@ -81,7 +81,8 @@ with memory and wall-clock limits.
 ```bash
 chatqec ask "..."         # one-shot question with citations
 chatqec chat              # interactive REPL (/quit, /clear)
-chatqec ingest --arxiv 2408.13687 --url https://...   # add a source
+chatqec ingest --arxiv 2408.13687 --url https://...   # add a source (abstract only)
+chatqec ingest --arxiv 2408.13687 --full-text         # ingest the full paper (LaTeX source → Marker PDF fallback)
 chatqec embed --all-pending --provider gemini         # embed → flip to active
 chatqec sources list                                  # registry view
 chatqec retrieve --query "..."                        # debug: top-K chunks only (no LLM)
@@ -94,6 +95,27 @@ chatqec eval run --output eval/results.json           # run the 50-pair eval set
 > "..."` exercises only Gemini embeddings + Qdrant + the BGE reranker, **no
 > Claude calls**. Use it to confirm the corpus is queryable before spending on
 > the LLM synthesis step.
+
+### Full-text vs. abstract ingestion
+
+By default `chatqec ingest --arxiv <id>` stores only the **abstract** (one
+chunk) — cheap, high-signal coverage that's enough to *find and cite* a paper.
+Add `--full-text` to ingest the whole paper for depth on *how/why* questions:
+
+- **LaTeX source (primary).** arXiv ships the original LaTeX for most papers.
+  Equations (`$...$`, `\begin{equation}`) and code (`lstlisting`, `verbatim`)
+  are preserved verbatim; figure images are dropped but `\caption{}` text is
+  kept. This is the highest-fidelity path and needs no extra dependencies.
+- **Marker PDF fallback.** For the minority of papers arXiv serves as PDF-only,
+  the PDF is extracted with [Marker](https://github.com/datalab-to/marker) run
+  in an **isolated `uvx` environment** (it pins `transformers` 4.x; the main env
+  keeps 5.x), reconstructing equations to LaTeX. Set `TORCH_DEVICE=cuda` to use
+  a GPU. Models download on first run.
+- **Abstract (last resort)** if neither path yields usable text.
+
+Reserve `--full-text` for impactful papers — see
+[`scripts/reingest_arxiv_fulltext.sh`](scripts/reingest_arxiv_fulltext.sh) for a
+reproducible batch re-ingest of the foundational QEC set.
 
 ---
 
@@ -159,7 +181,7 @@ the fallback kicks in — eval headline numbers should still be run with
 | Canonical wiki | [`knowledge/canonical/`](knowledge/canonical/) | 5 P0 pages; 52-page roster in [`_roster.yaml`](knowledge/canonical/_roster.yaml) |
 | Source registry | [`sources/registry.jsonl`](sources/registry.jsonl) | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`) |
 | Watchlist | [`sources/watchlist.yaml`](sources/watchlist.yaml) | arXiv categories, GitHub repos, YouTube channels |
-| Ingestion | [`src/chatqec/ingestion/`](src/chatqec/ingestion/) | Fetchers (arXiv / GitHub / YouTube / URL / PDF), math-aware chunker, title-and-author resolver |
+| Ingestion | [`src/chatqec/ingestion/`](src/chatqec/ingestion/) | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub / YouTube / URL), math-aware chunker, title-and-author resolver |
 | Embedding | [`src/chatqec/embedding/`](src/chatqec/embedding/) | Gemini (default) or local BGE/Nomic; BM25 via fastembed |
 | Store | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py) | Hybrid dense + sparse search |
 | Retrieval | [`src/chatqec/retrieval/`](src/chatqec/retrieval/) | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection |
