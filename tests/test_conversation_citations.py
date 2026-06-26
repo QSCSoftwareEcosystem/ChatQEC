@@ -87,3 +87,23 @@ def test_extract_returns_empty_url_for_unknown_source_type():
     chunks = [_chunk_with_payload(0, "github:org/repo", {})]
     cites = extract_citations("see [^1]", chunks)
     assert cites[0].url == ""
+
+
+def test_strip_trailing_sources_removes_block_keeps_inline_markers():
+    from chatqec.conversation.citations import strip_trailing_sources
+
+    text = (
+        "The surface code detects errors [^1]. It is a CSS code [^2].\n\n"
+        "Sources:\n[^1]: [preprint - A - arxiv:1]\n[^2]: [blog - B - url:2]"
+    )
+    out = strip_trailing_sources(text)
+    assert out == "The surface code detects errors [^1]. It is a CSS code [^2]."
+    assert "Sources:" not in out
+    assert "[^1]" in out  # inline markers preserved
+
+
+def test_strip_trailing_sources_noop_without_block():
+    from chatqec.conversation.citations import strip_trailing_sources
+
+    text = "A plain answer with a marker [^1] and no trailing list."
+    assert strip_trailing_sources(text) == text

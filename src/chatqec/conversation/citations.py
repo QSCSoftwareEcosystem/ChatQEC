@@ -10,6 +10,23 @@ from chatqec.retrieval.hybrid import RetrievedChunk
 
 _FOOTNOTE_RE = re.compile(r"\[\^(\d+)\]")
 
+# A line that begins a model-written "Sources:" list (optionally markdown-wrapped).
+_SOURCES_LINE_RE = re.compile(r"^\s*(?:[#*]+\s*)*sources\s*:", re.IGNORECASE)
+
+
+def strip_trailing_sources(text: str) -> str:
+    """Remove a trailing model-written "Sources:" list, keeping inline [^n] markers.
+
+    The CLI/app renders its own linked source list from the extracted citations,
+    so the model's plain-text list is redundant. Inline footnote markers in the
+    body are left untouched.
+    """
+    lines = text.splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        if _SOURCES_LINE_RE.match(lines[i]):
+            return "\n".join(lines[:i]).rstrip()
+    return text
+
 
 def _resolve_url(payload: dict[str, Any], source_id: str) -> str:
     """Pick the best URL we can from a chunk's payload, deriving arXiv abs URLs."""

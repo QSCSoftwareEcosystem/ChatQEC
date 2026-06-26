@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chatqec.api_types import Citation
-from chatqec.conversation.citations import extract_citations
+from chatqec.conversation.citations import extract_citations, strip_trailing_sources
 from chatqec.conversation.mcp_adapter import MCPAdapter
 from chatqec.conversation.memory import Turn
 from chatqec.conversation.prompts import (
@@ -122,9 +122,12 @@ class Synthesizer:
             usage_out = getattr(usage, "output_tokens", 0) if usage else 0
 
         all_context = canonical_chunks + retrieved
+        # Extract citations from the full text (incl. any model "Sources:" list)
+        # to score confidence, then strip that list so the app renders only its
+        # own linked source block — no duplicate.
         citations = extract_citations(text, all_context)
         return SynthesisResult(
-            text=text,
+            text=strip_trailing_sources(text),
             citations=citations,
             confidence=_confidence_from_citations(len(citations), has_context=bool(all_context)),
             input_tokens=usage_in,
