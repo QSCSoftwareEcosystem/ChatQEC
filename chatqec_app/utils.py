@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import streamlit as st
+from dotenv import load_dotenv
 
 from chatqec.api import ChatQEC
 from chatqec.cli import _build_chatqec
@@ -16,6 +17,9 @@ from chatqec.guards.rate_limit import RateLimiter
 
 
 def _build_bot() -> ChatQEC:
+    # Streamlit doesn't go through the CLI's main(), so load .env here to pick up
+    # provider keys (GEMINI_API_KEY, ANTHROPIC_API_KEY, ...).
+    load_dotenv()
     # Reuse the CLI builder so the app shares `chatqec ask` wiring. Enable Stim
     # tools by setting CHATQEC_MCP_SERVER (e.g. "chatqec-mcp-tools"); off by
     # default so deployments without the MCP server keep working.
