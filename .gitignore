@@ -231,3 +231,6 @@ yarn-error.log*
 *.rej
 .directory
 .fuse_hidden*
+
+# Local-only API status helper (contains no secrets, but keep out of git)
+scripts/check_api_status.sh

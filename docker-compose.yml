@@ -6,6 +6,6 @@ services:
       - "6333:6333"  # REST
       - "6334:6334"  # gRPC
     volumes:
-      - ./.qdrant-data:/qdrant/storage
+      - ./qdrant_data/storage:/qdrant/storage
     environment:
       QDRANT__LOG_LEVEL: INFO

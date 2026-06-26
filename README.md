@@ -303,6 +303,10 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 - Build out the canonical wiki to the full 52-page roster
 - Publish baseline eval numbers and the methodology behind them
 - Hosted Streamlit demo
+- Distribute the prebuilt corpus as a Qdrant snapshot on a Hugging Face dataset
+  repo, so users restore an instant corpus instead of re-embedding. Dataset card
+  must pin the embedding model (`gemini-embedding-001`, 768-d), the Qdrant
+  version, and source licenses (provenance from `sources/registry.jsonl`).
 
 **v0.3 — tooling:**
 - PyMatching decoder tool
