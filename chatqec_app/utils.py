@@ -15,11 +15,17 @@ from chatqec.guards.cost_budget import CostBudget
 from chatqec.guards.rate_limit import RateLimiter
 
 
+def _build_bot() -> ChatQEC:
+    # Reuse the CLI builder so the app shares `chatqec ask` wiring. Enable Stim
+    # tools by setting CHATQEC_MCP_SERVER (e.g. "chatqec-mcp-tools"); off by
+    # default so deployments without the MCP server keep working.
+    mcp_server = os.environ.get("CHATQEC_MCP_SERVER") or None
+    return _build_chatqec(mcp_server=mcp_server)
+
+
 @st.cache_resource
 def get_chatqec() -> ChatQEC:
-    # ChatQEC.from_config() doesn't exist in this repo; reuse the CLI builder so
-    # the Streamlit app shares the same wiring as `chatqec ask`.
-    return _build_chatqec()
+    return _build_bot()
 
 
 @st.cache_resource

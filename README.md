@@ -58,10 +58,14 @@ uv run chatqec ask "What is the surface code threshold under depolarizing noise?
 
 ```bash
 uv run streamlit run chatqec_app/streamlit_app.py
+
+# …or with Stim tool use enabled (same as `ask --mcp-server`):
+CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_app.py
 ```
 
 Four pages: **Chat** (streaming Q&A with citation cards), **Sources**
-(filterable registry view), **Watchlist** (what we track), **About**.
+(filterable registry view), **Watchlist** (what we track), **About**. Set
+`CHATQEC_MCP_SERVER` to let the Chat page run Stim simulations (off by default).
 
 ### Enable Stim execution
 
