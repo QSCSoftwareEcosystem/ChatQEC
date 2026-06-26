@@ -33,7 +33,7 @@ def run_tool_loop(
     system: str,
     messages: list[dict[str, Any]],
     adapter: MCPAdapter,
-    max_iterations: int = 5,
+    max_iterations: int = 8,
     max_tokens: int = 4000,
 ) -> tuple[str, list[ToolInvocation]]:
     """Drive the Anthropic messages API through tool-use cycles.
@@ -92,7 +92,14 @@ def run_tool_loop(
             )
         convo.append({"role": "user", "content": tool_results})
 
-    return (
-        "(stopped after reaching tool-use iteration limit; " "partial results in tool_calls)",
-        invocations,
+    # Hit the iteration cap with the model still requesting tools. Force a final
+    # answer by calling once more WITHOUT tools, so it must synthesize from the
+    # tool results gathered so far instead of looping forever.
+    final = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=system,
+        messages=convo,
     )
+    text = "".join(b.text for b in final.content if getattr(b, "type", "") == "text")
+    return str(text), invocations

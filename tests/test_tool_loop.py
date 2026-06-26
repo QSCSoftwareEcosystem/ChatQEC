@@ -86,12 +86,22 @@ def test_loop_executes_tool_and_resumes():
     assert calls[0].output["ok"] is True
 
 
-def test_loop_enforces_max_iterations():
+def test_loop_caps_tool_rounds_then_forces_a_final_answer():
+    # A model that always wants the tool when tools are offered; the loop must
+    # cap tool rounds at max_iterations, then synthesize a real answer via one
+    # final tool-free call instead of looping forever or returning a placeholder.
     client = MagicMock()
-    client.messages.create.return_value = _msg(
-        [_tool_use_block("stim_simulate", {"circuit": "M 0\n", "shots": 1})],
-        stop_reason="tool_use",
-    )
+
+    def _create(*, model, max_tokens, system, messages, tools=None):
+        if tools:
+            return _msg(
+                [_tool_use_block("stim_simulate", {"circuit": "M 0\n", "shots": 1})],
+                stop_reason="tool_use",
+            )
+        return _msg([_text_block("synthesized after cap")], stop_reason="end_turn")
+
+    client.messages.create.side_effect = _create
+
     final, calls = run_tool_loop(
         client=client,
         model="claude-sonnet-4-6",
@@ -101,8 +111,9 @@ def test_loop_enforces_max_iterations():
         max_iterations=2,
         max_tokens=500,
     )
-    assert "limit" in final.lower() or "max" in final.lower()
-    assert len(calls) == 2
+    assert len(calls) == 2  # tool rounds capped at max_iterations
+    assert final == "synthesized after cap"
+    assert "stopped" not in final.lower()
 
 
 def test_loop_handles_unknown_tool_gracefully():
