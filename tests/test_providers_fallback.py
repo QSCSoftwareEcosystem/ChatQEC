@@ -202,6 +202,27 @@ def test_verbose_log_announces_backend(capsys):
     assert "huggingface" in err
 
 
+def test_tripped_backend_is_skipped_on_subsequent_calls():
+    # Once a backend fails with a recoverable error, it should be skipped on
+    # later calls instead of retried (and re-logged) every time.
+    primary = _client_raises(Exception("400 Your credit balance is too low"))
+    secondary = _client_ok("backup")
+    fb = FallbackLLMClient(
+        backends=[
+            Backend(name="primary", client=primary),
+            Backend(name="secondary", client=secondary),
+        ],
+        verbose=False,
+    )
+    msg = [{"role": "user", "content": "q"}]
+    fb.messages.create(model="m", max_tokens=10, messages=msg)
+    fb.messages.create(model="m", max_tokens=10, messages=msg)
+
+    # primary attempted only on the first call, then skipped.
+    assert primary.messages.create.call_count == 1
+    assert secondary.messages.create.call_count == 2
+
+
 def test_empty_backends_rejected():
     with pytest.raises(ValueError):
         FallbackLLMClient(backends=[])

@@ -74,6 +74,8 @@ class _FallbackMessages:
         last_err: BaseException | None = None
         attempted: list[str] = []
         for be in self._owner.backends:
+            if be.name in self._owner.tripped:
+                continue  # circuit breaker: skip backends already known-unavailable
             attempted.append(be.name)
             eff_model = be.model_remap.get(model) or be.default_model or model
             kwargs: dict[str, Any] = {
@@ -90,9 +92,10 @@ class _FallbackMessages:
                 if not _is_recoverable(e):
                     raise
                 last_err = e
+                self._owner.tripped.add(be.name)  # don't retry this backend again
                 self._log(
                     f"backend={be.name} unavailable ({type(e).__name__}: "
-                    f"{str(e)[:120].strip()}) → trying next"
+                    f"{str(e)[:120].strip()}) → trying next (skipping it from now on)"
                 )
                 continue
             self._log(f"backend={be.name} model={eff_model}")
@@ -110,4 +113,7 @@ class FallbackLLMClient:
             raise ValueError("FallbackLLMClient requires at least one backend")
         self.backends = backends
         self.verbose = verbose
+        # Names of backends that hit a recoverable error and are skipped from
+        # then on (circuit breaker) — avoids re-trying/re-logging every call.
+        self.tripped: set[str] = set()
         self.messages = _FallbackMessages(self)
