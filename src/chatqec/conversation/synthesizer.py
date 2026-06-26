@@ -143,14 +143,46 @@ class Synthesizer:
         canonical_chunks: list[RetrievedChunk],
         history: list[Turn],
     ) -> Iterator[str]:
-        """Yield text deltas as they arrive."""
+        """Yield text deltas as they arrive.
+
+        Tool use can't stream token-by-token, and some clients (the fallback
+        facade) don't implement ``stream`` at all — in both cases we produce the
+        full answer and yield it as a single chunk instead of crashing.
+        """
         messages = self._build_messages(
             question=question,
             retrieved=retrieved,
             canonical_chunks=canonical_chunks,
             history=history,
         )
-        with self.client.messages.stream(
+
+        # Tool-enabled answers run the (non-streaming) tool loop.
+        if self.mcp_adapter is not None:
+            text, _ = run_tool_loop(
+                client=self.client,
+                model=self.model,
+                system=SYNTHESIZER_SYSTEM_PROMPT,
+                messages=messages,
+                adapter=self.mcp_adapter,
+                max_tokens=self.max_tokens,
+            )
+            yield strip_trailing_sources(str(text))
+            return
+
+        # Clients without streaming support fall back to a single create().
+        stream_fn = getattr(self.client.messages, "stream", None)
+        if stream_fn is None:
+            msg = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=SYNTHESIZER_SYSTEM_PROMPT,
+                messages=messages,
+            )
+            text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+            yield strip_trailing_sources(str(text))
+            return
+
+        with stream_fn(
             model=self.model,
             max_tokens=self.max_tokens,
             system=SYNTHESIZER_SYSTEM_PROMPT,

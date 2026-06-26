@@ -128,3 +128,46 @@ def test_synthesize_with_adapter_runs_tool_loop():
     result = synth.synthesize(question="q", retrieved=[_ctx(0)], canonical_chunks=[], history=[])
     assert len(result.tool_invocations) == 1
     assert result.tool_invocations[0].name == "stim_simulate"
+
+
+def test_synthesize_stream_falls_back_to_create_when_client_cannot_stream():
+    # FallbackLLMClient exposes create() but not stream(); the stream path must
+    # not crash — it should yield the answer via a single create() call.
+    client = MagicMock()
+    msg = MagicMock()
+    msg.content = [MagicMock(type="text", text="fallback answer [^1]")]
+    messages = MagicMock(spec=["create"])  # no `stream` attribute
+    messages.create.return_value = msg
+    client.messages = messages
+
+    synth = Synthesizer(client=client, model="m")
+    out = "".join(
+        synth.synthesize_stream(question="q", retrieved=[_ctx(0)], canonical_chunks=[], history=[])
+    )
+    assert "fallback answer" in out
+
+
+def test_synthesize_stream_runs_tool_loop_when_adapter_set():
+    from chatqec.conversation.mcp_adapter import MCPAdapter, MCPToolDef
+
+    fake_mcp = MagicMock()
+    fake_mcp.list_tools.return_value = [
+        MCPToolDef(name="stim_simulate", description="run", input_schema={"type": "object"}),
+    ]
+    fake_mcp.call_tool.return_value = {"ok": True}
+
+    client = MagicMock()
+    m1 = MagicMock(stop_reason="tool_use")
+    b1 = MagicMock(type="tool_use", id="t1", input={})
+    b1.name = "stim_simulate"  # set after construction (name= is a MagicMock kwarg)
+    m1.content = [b1]
+    m2 = MagicMock(stop_reason="end_turn")
+    m2.content = [MagicMock(type="text", text="Simulated answer [^1]")]
+    client.messages.create.side_effect = [m1, m2]
+
+    synth = Synthesizer(client=client, model="m", mcp_adapter=MCPAdapter(client=fake_mcp))
+    out = "".join(
+        synth.synthesize_stream(question="q", retrieved=[_ctx(0)], canonical_chunks=[], history=[])
+    )
+    assert "Simulated answer" in out
+    fake_mcp.call_tool.assert_called_once()
