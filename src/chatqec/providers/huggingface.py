@@ -111,7 +111,9 @@ class _MessagesProxy:
         messages: list[dict[str, Any]] | None = None,
     ) -> Iterator[_StreamContext]:
         resp = self.create(model=model, max_tokens=max_tokens, system=system, messages=messages)
-        yield _StreamContext(text=resp.content[0].text if resp.content else "")
+        first = resp.content[0] if resp.content else None
+        text = first.text if isinstance(first, TextBlock) else ""
+        yield _StreamContext(text=text)
 
 
 class HuggingFaceLLM:

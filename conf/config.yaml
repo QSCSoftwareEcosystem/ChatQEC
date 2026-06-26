@@ -6,7 +6,7 @@ project:
   version: "0.1.0-dev"
 
 models:
-  provider: "auto"                  # "auto" | "anthropic" | "huggingface" — auto tries Anthropic first, falls back to HF on credit/auth errors
+  provider: "auto"                  # "auto" | "anthropic" | "gemini" | "huggingface" — auto tries Anthropic, then Gemini, then HF on credit/auth errors
   rewriter: claude-haiku-4-5
   classifier: claude-haiku-4-5
   synthesizer: claude-sonnet-4-6
@@ -20,6 +20,11 @@ models:
     synthesizer: "meta-llama/Llama-3.3-70B-Instruct"
     judge: "meta-llama/Llama-3.3-70B-Instruct"
     serverless_provider: "auto"   # let huggingface_hub pick a routing partner
+  # Per-role overrides when provider="gemini" (needs GEMINI_API_KEY or GOOGLE_API_KEY).
+  gemini:
+    classifier: "gemini-2.5-flash"
+    rewriter: "gemini-2.5-flash"
+    synthesizer: "gemini-2.5-pro"
 
 retriever:
   top_k: 8

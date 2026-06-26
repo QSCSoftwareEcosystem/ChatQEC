@@ -70,11 +70,20 @@ Install the sibling MCP server and point `--mcp-server` at it:
 ```bash
 uv tool install chatqec-mcp-tools
 uv run chatqec ask --mcp-server chatqec-mcp-tools \
-  "Run 'H 0 \n CNOT 0 1 \n M 0 1' for 1000 shots — what's the sample distribution?"
+  "Simulate a 3-qubit bit-flip repetition-code syndrome circuit in Stim for 2000 \
+   shots and report the syndrome distribution."
 ```
 
-The Stim tools (`stim_simulate`, `stim_diagram`) run in a subprocess sandbox
-with memory and wall-clock limits.
+The model **decides on its own** when a question needs simulation and calls the
+Stim tools (`stim_simulate`, `stim_diagram`), which run in a subprocess sandbox
+with memory and wall-clock limits. Reported numbers come from the tool's actual
+output, not the model's guess.
+
+**Provider:** tool use works with the `anthropic`, `gemini`, or `auto` provider
+(set `models.provider` in `conf/config.yaml`). Under `auto`, ChatQEC tries
+Anthropic first and **automatically fails over to Gemini** on credit/auth errors —
+so Stim answers keep working even when the Claude API is unavailable. (The
+`huggingface` provider has no tool-use support.)
 
 ### CLI commands at a glance
 
@@ -299,7 +308,7 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 - PyMatching decoder tool
 - qiskit-qec tool (in the MCP sibling)
 - Threshold-sweep helper
-- Async stdio MCP client (current `StdioMCPClient` is a stub)
+- ✅ Real stdio MCP client (Stim tool-use now works) + Claude→Gemini tool failover
 
 **v1.0 — production:**
 - Real `from_config()` deploy flow with secret management

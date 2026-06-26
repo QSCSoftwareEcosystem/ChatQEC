@@ -6,8 +6,28 @@ from chatqec.providers.base import TextBlock, ToolUseBlock
 from chatqec.providers.gemini import (
     GeminiLLM,
     _from_gemini_response,
+    _sanitize_schema,
     _to_gemini_contents,
 )
+
+
+def test_sanitize_schema_strips_keys_gemini_rejects():
+    schema = {
+        "type": "object",
+        "title": "StimSimulateInput",
+        "additionalProperties": False,
+        "properties": {
+            "circuit": {"type": "string", "title": "Circuit"},
+            "shots": {"type": "integer", "minimum": 1, "maximum": 1000000, "default": 1},
+        },
+        "required": ["circuit"],
+    }
+    out = _sanitize_schema(schema)
+    assert out["type"] == "object"
+    assert "title" not in out
+    assert "additionalProperties" not in out
+    assert out["properties"]["shots"] == {"type": "integer"}
+    assert out["required"] == ["circuit"]
 
 
 def _part(text=None, fn_name=None, fn_args=None):

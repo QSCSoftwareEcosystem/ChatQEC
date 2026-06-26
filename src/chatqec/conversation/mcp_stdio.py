@@ -1,17 +1,25 @@
-"""Stdio-based MCP client wrapper that satisfies the MCPClient protocol.
+"""Real stdio-based MCP client satisfying the MCPClient protocol.
 
-This is a placeholder for v1: the chatqec-mcp-tools server uses MCP's async
-stdio handshake, and a full async client lands as a follow-up patch. For now
-this stub exists so the CLI ``--mcp-server`` option type-checks and so the
-adapter API is unchanged. Real users wire the MCP server through Claude
-Desktop's standard config; v2 will add a proper async stdio implementation.
+Wraps the official ``mcp`` async ``ClientSession`` (stdio transport) behind the
+synchronous ``list_tools()`` / ``call_tool()`` interface the rest of ChatQEC
+expects. A single long-lived worker coroutine owns the async context on a
+dedicated event-loop thread — it both enters and exits the ``async with``
+blocks, avoiding anyio "cancel scope in a different task" errors. Per-call
+coroutines (list/call) are submitted onto that loop via
+``run_coroutine_threadsafe``.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
 import shlex
-import subprocess
+import threading
 from typing import Any
+
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from chatqec.conversation.mcp_adapter import MCPToolDef
 
@@ -19,18 +27,73 @@ from chatqec.conversation.mcp_adapter import MCPToolDef
 class StdioMCPClient:
     """Spawns the MCP server as a subprocess and talks to it over stdio."""
 
-    def __init__(self, *, server_command: str) -> None:
+    def __init__(self, *, server_command: str, ready_timeout: float = 30.0) -> None:
         argv = shlex.split(server_command)
-        self.proc = subprocess.Popen(  # pragma: no cover
-            argv,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+        self._thread.start()
 
-    def list_tools(self) -> list[MCPToolDef]:  # pragma: no cover
-        return []
+        self._ready = threading.Event()
+        self._stop: asyncio.Event | None = None
+        self._session: ClientSession | None = None
+        self._error: BaseException | None = None
 
-    def call_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+        self._worker_fut = asyncio.run_coroutine_threadsafe(self._worker(argv), self._loop)
+        if not self._ready.wait(timeout=ready_timeout):
+            raise RuntimeError(f"MCP server {argv!r} did not become ready in {ready_timeout}s")
+        if self._error is not None:
+            raise self._error
+        self._tools: list[MCPToolDef] = self._load_tools()
+
+    async def _worker(self, argv: list[str]) -> None:
+        self._stop = asyncio.Event()
+        params = StdioServerParameters(command=argv[0], args=argv[1:])
+        try:
+            # Nested (not combined): ClientSession needs the outer context's streams.
+            async with stdio_client(params) as (read, write):  # noqa: SIM117
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    self._session = session
+                    self._ready.set()
+                    await self._stop.wait()
+        except BaseException as exc:  # surfaced to the __init__ caller
+            self._error = exc
+            self._ready.set()
+
+    def _submit(self, coro: Any) -> Any:
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+
+    def _load_tools(self) -> list[MCPToolDef]:
+        assert self._session is not None
+        resp = self._submit(self._session.list_tools())
+        return [
+            MCPToolDef(
+                name=t.name,
+                description=t.description or "",
+                input_schema=t.inputSchema,
+            )
+            for t in resp.tools
+        ]
+
+    def list_tools(self) -> list[MCPToolDef]:
+        return list(self._tools)
+
+    def call_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        assert self._session is not None
+        result = self._submit(self._session.call_tool(name, args))
+        for block in result.content:
+            text = getattr(block, "text", None)
+            if text is not None:
+                parsed: dict[str, Any] = json.loads(text)
+                return parsed
         return {}
+
+    def close(self) -> None:
+        if self._stop is not None:
+            self._loop.call_soon_threadsafe(self._stop.set)
+        with contextlib.suppress(Exception):  # best-effort shutdown
+            self._worker_fut.result(timeout=10)
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(timeout=5)
+        if not self._loop.is_running():
+            self._loop.close()

@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     PDF-only papers, GPU-enabled with `TORCH_DEVICE=cuda`.
   - `scripts/reingest_arxiv_fulltext.sh` for reproducible batch re-ingestion.
 - Auto-load of `.env` in the CLI and explicit Gemini API-key configuration.
+- Working Stim tool use: real stdio MCP client (`conversation/mcp_stdio.py`,
+  replacing the stub) over the `mcp` SDK; the model decides when to call
+  `stim_simulate`/`stim_diagram` and reports the tool's real output.
+- Anthropic-shaped Gemini provider (`providers/gemini.py`) with tool-use
+  translation, added to the `auto` fallback chain — Stim answers fail over from
+  Claude to Gemini on credit/auth errors. `--mcp-server` now accepts the
+  `anthropic`, `gemini`, or `auto` provider.
 
 ### Changed
 - Re-ingested the 13 foundational arXiv papers as full text (≈711 chunks vs. 13

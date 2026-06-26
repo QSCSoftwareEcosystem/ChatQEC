@@ -56,6 +56,11 @@ _HF_MODEL_REMAP: dict[str, str] = {  # pragma: no cover
     "claude-sonnet-4-6": "meta-llama/Llama-3.3-70B-Instruct",
 }
 
+_GEMINI_MODEL_REMAP: dict[str, str] = {  # pragma: no cover
+    "claude-haiku-4-5": "gemini-2.5-flash",
+    "claude-sonnet-4-6": "gemini-2.5-pro",
+}
+
 
 def _try_anthropic() -> object | None:  # pragma: no cover
     """Construct an Anthropic client if a key is available; None otherwise."""
@@ -86,6 +91,20 @@ def _try_huggingface() -> object | None:  # pragma: no cover
         return None
 
 
+def _try_gemini() -> object | None:  # pragma: no cover
+    """Construct a Gemini client if an API key is available; None otherwise."""
+    import os
+
+    if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+        return None
+    try:
+        from chatqec.providers.gemini import GeminiLLM
+
+        return GeminiLLM()
+    except Exception:
+        return None
+
+
 def _build_llm_client(provider: str) -> object:  # pragma: no cover
     """Construct the LLM client backing classifier+rewriter+synthesizer."""
     from chatqec.providers.fallback import Backend, FallbackLLMClient
@@ -100,11 +119,26 @@ def _build_llm_client(provider: str) -> object:  # pragma: no cover
         if ant is None:
             raise RuntimeError("ANTHROPIC_API_KEY is not set")
         return ant
+    if provider == "gemini":
+        gem = _try_gemini()
+        if gem is None:
+            raise RuntimeError("GEMINI_API_KEY (or GOOGLE_API_KEY) is not set")
+        return gem
     if provider == "auto":
         backends: list[Backend] = []
         ant = _try_anthropic()
         if ant is not None:
             backends.append(Backend(name="anthropic", client=ant))
+        gem = _try_gemini()
+        if gem is not None:
+            backends.append(
+                Backend(
+                    name="gemini",
+                    client=gem,
+                    model_remap=_GEMINI_MODEL_REMAP,
+                    default_model="gemini-2.5-pro",
+                )
+            )
         hf = _try_huggingface()
         if hf is not None:
             backends.append(
@@ -116,7 +150,9 @@ def _build_llm_client(provider: str) -> object:  # pragma: no cover
                 )
             )
         if not backends:
-            raise RuntimeError("no LLM provider configured; set ANTHROPIC_API_KEY and/or HF_TOKEN")
+            raise RuntimeError(
+                "no LLM provider configured; set ANTHROPIC_API_KEY, GEMINI_API_KEY, and/or HF_TOKEN"
+            )
         return FallbackLLMClient(backends=backends)
     raise ValueError(f"unknown LLM provider: {provider!r}")
 
@@ -132,6 +168,14 @@ def _role_models(
             "classifier": str(hf.get("classifier", "meta-llama/Llama-3.1-8B-Instruct")),
             "rewriter": str(hf.get("rewriter", "meta-llama/Llama-3.1-8B-Instruct")),
             "synthesizer": str(hf.get("synthesizer", "meta-llama/Llama-3.3-70B-Instruct")),
+        }
+    if provider == "gemini":
+        gem = models_cfg.get("gemini") or {}
+        assert isinstance(gem, dict), "models.gemini must be a mapping"
+        return {
+            "classifier": str(gem.get("classifier", "gemini-2.5-flash")),
+            "rewriter": str(gem.get("rewriter", "gemini-2.5-flash")),
+            "synthesizer": str(gem.get("synthesizer", "gemini-2.5-pro")),
         }
     return {
         "classifier": str(models_cfg["classifier"]),
@@ -189,8 +233,11 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
 
     synthesizer = Synthesizer(client=client, model=role_models["synthesizer"])
     if mcp_server:
-        if provider != "anthropic":
-            raise ValueError(f"--mcp-server requires the anthropic provider; got {provider!r}")
+        if provider not in ("anthropic", "gemini", "auto"):
+            raise ValueError(
+                "--mcp-server requires the anthropic, gemini, or auto provider; "
+                f"got {provider!r} (huggingface has no tool-use support)"
+            )
         from chatqec.conversation.mcp_adapter import MCPAdapter
         from chatqec.conversation.mcp_stdio import StdioMCPClient
 

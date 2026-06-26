@@ -107,11 +107,35 @@ def _from_gemini_response(resp: Any) -> MessageResponse:
     )
 
 
+# JSON-schema keywords Gemini's FunctionDeclaration Schema proto rejects.
+_GEMINI_SCHEMA_DROP = frozenset(
+    {
+        "title",
+        "additionalProperties",
+        "$defs",
+        "$schema",
+        "default",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "const",
+        "examples",
+    }
+)
+
+
 def _sanitize_schema(schema: Any) -> Any:
     """Strip JSON-schema keys Gemini's function declarations reject."""
     if isinstance(schema, dict):
-        drop = {"title", "additionalProperties", "$defs", "$schema", "default"}
-        return {k: _sanitize_schema(v) for k, v in schema.items() if k not in drop}
+        return {k: _sanitize_schema(v) for k, v in schema.items() if k not in _GEMINI_SCHEMA_DROP}
     if isinstance(schema, list):
         return [_sanitize_schema(v) for v in schema]
     return schema
