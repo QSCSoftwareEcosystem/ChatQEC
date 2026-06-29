@@ -22,6 +22,7 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from chatqec.conversation.mcp_adapter import MCPToolDef
+from chatqec.trace import trace
 
 
 class StdioMCPClient:
@@ -29,6 +30,7 @@ class StdioMCPClient:
 
     def __init__(self, *, server_command: str, ready_timeout: float = 30.0) -> None:
         argv = shlex.split(server_command)
+        trace("mcp.spawn", server_command=server_command, argv=argv)
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
         self._thread.start()
@@ -66,7 +68,7 @@ class StdioMCPClient:
     def _load_tools(self) -> list[MCPToolDef]:
         assert self._session is not None
         resp = self._submit(self._session.list_tools())
-        return [
+        tools = [
             MCPToolDef(
                 name=t.name,
                 description=t.description or "",
@@ -74,18 +76,23 @@ class StdioMCPClient:
             )
             for t in resp.tools
         ]
+        trace("mcp.tools_loaded", tools=[t.name for t in tools])
+        return tools
 
     def list_tools(self) -> list[MCPToolDef]:
         return list(self._tools)
 
     def call_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         assert self._session is not None
+        trace("mcp.call_tool", name=name, args=args)
         result = self._submit(self._session.call_tool(name, args))
         for block in result.content:
             text = getattr(block, "text", None)
             if text is not None:
                 parsed: dict[str, Any] = json.loads(text)
+                trace("mcp.call_result", name=name, output=parsed)
                 return parsed
+        trace("mcp.call_result", name=name, output={})
         return {}
 
     def close(self) -> None:

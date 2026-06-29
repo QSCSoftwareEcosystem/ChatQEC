@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chatqec.providers.base import MessageResponse
+from chatqec.trace import is_enabled as trace_is_enabled
+from chatqec.trace import trace
 
 
 @dataclass(frozen=True)
@@ -58,7 +60,10 @@ class _FallbackMessages:
         self._owner = owner
 
     def _log(self, line: str) -> None:
-        if self._owner.verbose:
+        # When step tracing is on, the same provider events are captured as
+        # trace records (to the log file), so skip the stderr line to keep the
+        # terminal clean and avoid duplicates.
+        if self._owner.verbose and not trace_is_enabled():
             sys.stderr.write(f"[chatqec] {line}\n")
             sys.stderr.flush()
 
@@ -97,8 +102,16 @@ class _FallbackMessages:
                     f"backend={be.name} unavailable ({type(e).__name__}: "
                     f"{str(e)[:120].strip()}) → trying next (skipping it from now on)"
                 )
+                trace(
+                    "provider.backend_unavailable",
+                    backend=be.name,
+                    error=f"{type(e).__name__}: {str(e)[:120].strip()}",
+                )
                 continue
             self._log(f"backend={be.name} model={eff_model}")
+            trace(
+                "provider.backend_selected", backend=be.name, requested_model=model, model=eff_model
+            )
             return resp
         raise RuntimeError(
             f"all LLM backends failed (tried: {', '.join(attempted)}); " f"last error: {last_err}"

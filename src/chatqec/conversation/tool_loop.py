@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from chatqec.conversation.mcp_adapter import MCPAdapter
+from chatqec.trace import trace
 
 
 @dataclass(frozen=True)
@@ -43,8 +44,14 @@ def run_tool_loop(
     invocations: list[ToolInvocation] = []
     convo: list[dict[str, Any]] = list(messages)
     tool_schemas = adapter.tool_schemas_for_sdk()
+    trace(
+        "tool_loop.start",
+        model=model,
+        max_iterations=max_iterations,
+        tools=[t.get("name") for t in tool_schemas],
+    )
 
-    for _ in range(max_iterations):
+    for iteration in range(max_iterations):
         msg = client.messages.create(
             model=model,
             max_tokens=max_tokens,
@@ -52,9 +59,11 @@ def run_tool_loop(
             messages=convo,
             tools=tool_schemas,
         )
+        trace("tool_loop.iteration", iteration=iteration, stop_reason=msg.stop_reason)
 
         if msg.stop_reason != "tool_use":
             text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+            trace("tool_loop.final", iteration=iteration, n_tool_calls=len(invocations))
             return str(text), invocations
 
         convo.append(
@@ -78,10 +87,12 @@ def run_tool_loop(
         for b in msg.content:
             if getattr(b, "type", "") != "tool_use":
                 continue
+            trace("tool_loop.tool_use", name=b.name, input=dict(b.input))
             try:
                 result = adapter.invoke(b.name, b.input)
             except KeyError:
                 result = {"error": f"unknown tool: {b.name}"}
+            trace("tool_loop.tool_result", name=b.name, output=result)
             invocations.append(ToolInvocation(name=b.name, input=dict(b.input), output=result))
             tool_results.append(
                 {
@@ -95,6 +106,7 @@ def run_tool_loop(
     # Hit the iteration cap with the model still requesting tools. Force a final
     # answer by calling once more WITHOUT tools, so it must synthesize from the
     # tool results gathered so far instead of looping forever.
+    trace("tool_loop.forced_final", n_tool_calls=len(invocations), max_iterations=max_iterations)
     final = client.messages.create(
         model=model,
         max_tokens=max_tokens,

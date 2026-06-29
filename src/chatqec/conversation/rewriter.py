@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chatqec.conversation.memory import ConversationMemory
+from chatqec.trace import trace
 
 _SYS = """You are a query rewriter for a Quantum Error Correction Q&A assistant.
 
@@ -57,6 +58,7 @@ class QueryRewriter:
             f"Recent conversation:\n{history_block or '(none)'}\n\n"
             f"Most recent question: {query}\n\nReturn the JSON."
         )
+        trace("rewriter.call", model=self.model, query=query, history_turns=len(recent))
         msg = self.client.messages.create(
             model=self.model,
             max_tokens=400,
@@ -64,6 +66,7 @@ class QueryRewriter:
             messages=[{"role": "user", "content": user_payload}],
         )
         raw = str(msg.content[0].text).strip()
+        trace("rewriter.response", model=self.model, raw=raw)
         try:
             parsed = json.loads(raw)
             return RewriteResult(

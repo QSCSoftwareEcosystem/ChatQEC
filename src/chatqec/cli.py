@@ -252,6 +252,29 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
     )
 
 
+def _start_file_trace(verbose: bool, log_file: str | None) -> None:  # pragma: no cover
+    """Enable step tracing to a log file (keeps the terminal clean).
+
+    Prints a single pointer line to stderr so the answer on stdout stays
+    pipe-friendly. With no ``--log-file`` a timestamped file under ``logs/`` is
+    used.
+    """
+    if not verbose:
+        return
+    from chatqec.trace import enable_trace
+
+    path = log_file or f"logs/chatqec-trace-{datetime.now():%Y%m%d-%H%M%S}.log"
+    resolved = enable_trace(True, log_file=path, to_stderr=False)
+    click.echo(f"📝 verbose trace → {resolved}", err=True)
+
+
+_VERBOSE_HELP = (
+    "Trace every pipeline step (classify, rewrite, retrieve, synthesize, "
+    "model/provider, MCP tool calls) to a log file instead of the terminal."
+)
+_LOG_FILE_HELP = "Path for the verbose trace log (default: logs/chatqec-trace-<timestamp>.log)."
+
+
 @main.command()
 @click.argument("question", nargs=-1, required=True)
 @click.option(
@@ -259,10 +282,18 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
     default=None,
     help="Command to launch an MCP tool server (e.g. 'chatqec-mcp-tools').",
 )
-def ask(question: tuple[str, ...], mcp_server: str | None) -> None:
+@click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
+@click.option("--log-file", default=None, help=_LOG_FILE_HELP)
+def ask(
+    question: tuple[str, ...], mcp_server: str | None, verbose: bool, log_file: str | None
+) -> None:
     """Answer a single QEC question (one-shot)."""
+    from chatqec.trace import disable_trace
+
+    _start_file_trace(verbose, log_file)
     bot = _build_chatqec(mcp_server=mcp_server)
     answer = bot.ask(" ".join(question))
+    disable_trace()
     click.echo(answer.text)
     if answer.tool_calls:
         click.echo("\nTool calls:")
@@ -283,8 +314,13 @@ def ask(question: tuple[str, ...], mcp_server: str | None) -> None:
     default=None,
     help="Command to launch an MCP tool server (e.g. 'chatqec-mcp-tools').",
 )
-def chat(mcp_server: str | None) -> None:
+@click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
+@click.option("--log-file", default=None, help=_LOG_FILE_HELP)
+def chat(mcp_server: str | None, verbose: bool, log_file: str | None) -> None:
     """Interactive REPL chat. Type /quit to exit, /clear to wipe memory."""
+    from chatqec.trace import disable_trace
+
+    _start_file_trace(verbose, log_file)
     bot = _build_chatqec(mcp_server=mcp_server)
     click.echo("ChatQEC interactive chat. Type /quit to exit, /clear to reset memory.")
     while True:
@@ -292,12 +328,14 @@ def chat(mcp_server: str | None) -> None:
             line = click.prompt("you", prompt_suffix="> ", default="", show_default=False)
         except (click.exceptions.Abort, EOFError):
             click.echo("\nbye.")
+            disable_trace()
             return
         line = line.strip()
         if not line:
             continue
         if line == "/quit":
             click.echo("bye.")
+            disable_trace()
             return
         if line == "/clear":
             bot.memory.clear()

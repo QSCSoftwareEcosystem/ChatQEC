@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from chatqec.trace import trace
+
 _SYS = (
     "You are a strict classifier. Decide if the user's question is about "
     "Quantum Error Correction (QEC), fault-tolerant quantum computation, "
@@ -43,6 +45,7 @@ class OffTopicClassifier:
         self.model = model
 
     def classify(self, query: str) -> TopicVerdict:
+        trace("classifier.call", model=self.model, query=query)
         msg = self.client.messages.create(
             model=self.model,
             max_tokens=10,
@@ -50,6 +53,7 @@ class OffTopicClassifier:
             messages=[{"role": "user", "content": query}],
         )
         text = str(msg.content[0].text).strip().lower()
+        trace("classifier.response", model=self.model, raw=text)
         if text == "on_topic":
             return TopicVerdict(on_topic=True)
         return TopicVerdict(on_topic=False, refusal_message=_DEFAULT_REFUSAL)

@@ -19,6 +19,7 @@ from chatqec.conversation.prompts import (
 )
 from chatqec.conversation.tool_loop import ToolInvocation, run_tool_loop
 from chatqec.retrieval.hybrid import RetrievedChunk
+from chatqec.trace import trace
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,14 @@ class Synthesizer:
             )
         )
 
+        trace(
+            "synthesizer.call",
+            model=self.model,
+            mcp_enabled=self.mcp_adapter is not None,
+            n_retrieved=len(retrieved),
+            n_canonical=len(canonical_chunks),
+            n_history=len(history),
+        )
         invocations: list[ToolInvocation] = []
         if self.mcp_adapter is not None:
             text, invocations = run_tool_loop(
@@ -156,6 +165,14 @@ class Synthesizer:
             history=history,
         )
 
+        trace(
+            "synthesizer.stream_call",
+            model=self.model,
+            mcp_enabled=self.mcp_adapter is not None,
+            n_retrieved=len(retrieved),
+            n_canonical=len(canonical_chunks),
+            n_history=len(history),
+        )
         # Tool-enabled answers run the (non-streaming) tool loop.
         if self.mcp_adapter is not None:
             text, _ = run_tool_loop(

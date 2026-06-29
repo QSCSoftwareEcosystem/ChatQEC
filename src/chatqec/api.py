@@ -13,7 +13,8 @@ from chatqec.conversation.memory import ConversationMemory
 from chatqec.conversation.rewriter import QueryRewriter
 from chatqec.conversation.synthesizer import Synthesizer
 from chatqec.retrieval.canonical_injector import CanonicalIndex
-from chatqec.retrieval.hybrid import HybridRetriever
+from chatqec.retrieval.hybrid import HybridRetriever, RetrievalResult
+from chatqec.trace import trace
 
 __all__ = [
     "Answer",
@@ -24,6 +25,26 @@ __all__ = [
 ]
 
 _HISTORY_TURNS = 6
+
+
+def _trace_retrieval(retrieval: RetrievalResult) -> None:
+    """Emit a per-chunk trace of what retrieval surfaced (full chunk text)."""
+    trace(
+        "retrieval.result",
+        matched_topics=retrieval.matched_topics,
+        n_chunks=len(retrieval.chunks),
+        debug=retrieval.debug,
+    )
+    for i, c in enumerate(retrieval.chunks):
+        trace(
+            f"retrieval.chunk[{i}]",
+            chunk_id=c.chunk_id,
+            source_id=c.source_id,
+            title=c.title,
+            authority_tier=c.authority_tier,
+            score=round(c.score, 4),
+            text=c.text,
+        )
 
 
 class ChatQEC:
@@ -51,7 +72,9 @@ class ChatQEC:
         self.candidate_k = candidate_k
 
     def ask(self, question: str) -> Answer:
+        trace("ask.question", question=question, top_k=self.top_k, candidate_k=self.candidate_k)
         verdict = self.classifier.classify(question)
+        trace("classify.verdict", on_topic=verdict.on_topic, refusal=verdict.refusal_message)
         if not verdict.on_topic:
             self.memory.add_user(question)
             self.memory.add_assistant(verdict.refusal_message)
@@ -59,15 +82,32 @@ class ChatQEC:
 
         rewrite = self.rewriter.rewrite(question, memory=self.memory)
         queries = [rewrite.rewritten, *rewrite.variants]
+        trace(
+            "rewrite.result",
+            rewritten=rewrite.rewritten,
+            variants=rewrite.variants,
+            is_followup=rewrite.is_followup,
+            queries=queries,
+        )
 
         retrieval = self.retriever.retrieve(
             queries=queries, top_k=self.top_k, candidate_k=self.candidate_k
         )
+        _trace_retrieval(retrieval)
         result = self.synthesizer.synthesize(
             question=question,
             retrieved=retrieval.chunks,
             canonical_chunks=[],
             history=self.memory.recent(n=_HISTORY_TURNS),
+        )
+        trace(
+            "synthesize.result",
+            confidence=result.confidence,
+            n_citations=len(result.citations),
+            citations=[(c.source_id, c.title) for c in result.citations],
+            n_tool_calls=len(result.tool_invocations),
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
         )
 
         self.memory.add_user(question)
@@ -84,7 +124,9 @@ class ChatQEC:
         )
 
     def ask_stream(self, question: str) -> Iterator[StreamChunk]:
+        trace("ask_stream.question", question=question)
         verdict = self.classifier.classify(question)
+        trace("classify.verdict", on_topic=verdict.on_topic, refusal=verdict.refusal_message)
         if not verdict.on_topic:
             self.memory.add_user(question)
             self.memory.add_assistant(verdict.refusal_message)
@@ -93,9 +135,17 @@ class ChatQEC:
 
         rewrite = self.rewriter.rewrite(question, memory=self.memory)
         queries = [rewrite.rewritten, *rewrite.variants]
+        trace(
+            "rewrite.result",
+            rewritten=rewrite.rewritten,
+            variants=rewrite.variants,
+            is_followup=rewrite.is_followup,
+            queries=queries,
+        )
         retrieval = self.retriever.retrieve(
             queries=queries, top_k=self.top_k, candidate_k=self.candidate_k
         )
+        _trace_retrieval(retrieval)
         full_text = ""
         for delta in self.synthesizer.synthesize_stream(
             question=question,

@@ -20,6 +20,7 @@ from chatqec.retrieval.scoring import (
     score_candidates,
 )
 from chatqec.store.qdrant import ChatQecStore
+from chatqec.trace import trace
 
 
 class SparseEncoderProto(Protocol):
@@ -73,12 +74,20 @@ class HybridRetriever:
         now: datetime | None = None,
     ) -> RetrievalResult:
         now = now or datetime.now(tz=UTC)
+        trace(
+            "retriever.retrieve",
+            queries=queries,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            per_query_k=self.per_query_k,
+        )
         if not queries:
             return RetrievalResult(chunks=[], matched_topics=[])
 
         # 1) embed queries
         dense_q = self.embedder.embed_batch(queries)
         sparse_q = self.sparse_encoder.encode_batch(queries)
+        trace("retriever.embedded", n_dense=len(dense_q), n_sparse=len(sparse_q))
 
         # 2) per-query dense + sparse search → unioned hit map
         hits_by_chunk: dict[str, dict[str, object]] = {}
@@ -94,8 +103,15 @@ class HybridRetriever:
                 hits_by_chunk[h.chunk_id] = h.payload
                 bm25_scores[h.chunk_id] = max(bm25_scores.get(h.chunk_id, 0.0), h.score)
 
+        trace(
+            "retriever.searched",
+            dense_hits=len(dense_scores),
+            bm25_hits=len(bm25_scores),
+            unique_chunks=len(hits_by_chunk),
+        )
         if not hits_by_chunk:
             matched_topics = match_topics(" ".join(queries), self.canonical_index)
+            trace("retriever.no_hits", matched_topics=matched_topics)
             return RetrievalResult(chunks=[], matched_topics=matched_topics)
 
         # 3) normalize and score per §8.5
@@ -120,12 +136,19 @@ class HybridRetriever:
 
         # 4) take top candidate_k
         top_cands = scored[:candidate_k]
+        trace(
+            "retriever.scored",
+            n_candidates=len(candidates),
+            n_after_topk=len(top_cands),
+            top_scored=[(s.chunk_id, round(s.final_score, 4)) for s in top_cands[:top_k]],
+        )
 
         # 5) rerank → top_k (called ONCE over the union of all queries' candidates)
         texts = [str(hits_by_chunk[s.chunk_id].get("text", "")) for s in top_cands]
         # Use first query for reranking (caller can pass merged query)
         rerank_query = queries[0]
         top_idx = self.reranker.rerank(rerank_query, texts, top_k=top_k)
+        trace("retriever.reranked", rerank_query=rerank_query, top_idx=list(top_idx))
         retrieved = [
             RetrievedChunk(
                 chunk_id=top_cands[i].chunk_id,

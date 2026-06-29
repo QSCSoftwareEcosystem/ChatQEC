@@ -2,6 +2,7 @@
 
 import streamlit as st
 
+from chatqec.trace import disable_trace, enable_trace
 from chatqec_app.components import citation_card, tool_output
 from chatqec_app.utils import (
     client_ip,
@@ -13,6 +14,14 @@ from chatqec_app.utils import (
 )
 
 st.title("Chat")
+
+# --- verbose trace toggle ---
+verbose = st.sidebar.toggle(
+    "🔍 Verbose trace",
+    value=False,
+    help="Show every pipeline step (classify, rewrite, retrieve, synthesize, "
+    "model/provider, MCP tool calls) with full payloads.",
+)
 
 # --- session state ---
 if "messages" not in st.session_state:
@@ -70,6 +79,13 @@ if question:
     with st.chat_message("user"):
         st.markdown(question)
 
+    # Capture the execution trace into a buffer (not stderr) when verbose is on.
+    trace_buf: list[str] = []
+    if verbose:
+        enable_trace(sink=trace_buf.append, to_stderr=False)
+    else:
+        disable_trace()
+
     with st.chat_message("assistant"):
         placeholder = st.empty()
         full = ""
@@ -81,6 +97,11 @@ if question:
     # Get final structured Answer from a non-stream call to harvest citations/tools
     # (the streaming path doesn't return them yet; M9 stays explicit about this limit)
     answer = bot.ask(question)
+
+    if verbose:
+        disable_trace()
+        with st.expander("🔍 Execution trace", expanded=True):
+            st.code("\n".join(trace_buf) or "(no trace recorded)", language="text")
     st.session_state.messages.append(
         {
             "role": "assistant",
