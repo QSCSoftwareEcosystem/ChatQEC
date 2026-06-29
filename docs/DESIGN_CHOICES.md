@@ -48,7 +48,7 @@ Running the full 50-case eval with Haiku judge costs ~$0.25; with Sonnet judge ~
 
 We considered OpenAI `text-embedding-3-large` but Gemini's free tier + Matryoshka clinched it. Vendor diversity (Anthropic for LLM, Google for embeddings) also reduces single-account-failure blast radius.
 
-### Why BGE-reranker-base
+### Why mxbai-rerank-base-v1
 
 The bi-encoder retrieval (Qdrant + BM25) is recall-oriented — fast over large corpora but coarse. A cross-encoder reranker that *re-scores the top-K candidates jointly with the query* substantially improves precision-at-k. This is a well-known RAG pattern.
 
