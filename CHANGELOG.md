@@ -23,10 +23,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   translation, added to the `auto` fallback chain — Stim answers fail over from
   Claude to Gemini on credit/auth errors. `--mcp-server` now accepts the
   `anthropic`, `gemini`, or `auto` provider.
+- Switchable verbose pipeline tracing (`chatqec/trace.py`): records every step
+  (classify, rewrite, retrieve + per-chunk, synthesize, provider/model
+  selection, tool-loop and MCP calls) with full payloads. `chatqec ask -v` /
+  `chat -v` write a numbered, timestamped trace to
+  `logs/chatqec-trace-<ts>.log` (override with `--log-file`), keeping the
+  terminal to a single pointer line; the Streamlit app exposes a sidebar
+  "Verbose trace" toggle that renders the trace inline.
 
 ### Changed
 - Re-ingested the 13 foundational arXiv papers as full text (≈711 chunks vs. 13
   abstract chunks); corpus grew to ~820 embedded chunks.
+- Cross-encoder reranker default changed from `BAAI/bge-reranker-base` to
+  `mixedbread-ai/mxbai-rerank-base-v1` (Apache-2.0) to avoid China-origin
+  models; `models.reranker` in `conf/config.yaml` is now honored by
+  `_make_reranker()` (previously ignored).
 
 ### Removed
 - GitLab CI pipeline (`.gitlab-ci.yml`); quality gates run via local pre-commit.
