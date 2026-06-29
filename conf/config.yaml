@@ -12,7 +12,7 @@ models:
   synthesizer: claude-sonnet-4-6
   embedder: gemini-embedding-001
   long_context_fallback: gemini-2.5-pro
-  reranker: BAAI/bge-reranker-base
+  reranker: mixedbread-ai/mxbai-rerank-base-v1   # Mixedbread AI, Apache-2.0; avoids China-origin BAAI/bge rerankers
   # Per-role overrides when provider="huggingface" (US-approved open-weights only).
   hf:
     classifier: "meta-llama/Llama-3.1-8B-Instruct"

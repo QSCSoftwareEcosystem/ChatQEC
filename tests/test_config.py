@@ -26,7 +26,7 @@ def test_models_config_holds_model_ids():
         synthesizer="claude-sonnet-4-6",
         embedder="text-embedding-004",
         long_context_fallback="gemini-2.5-pro",
-        reranker="BAAI/bge-reranker-base",
+        reranker="mixedbread-ai/mxbai-rerank-base-v1",
     )
     assert cfg.synthesizer.startswith("claude-")
     assert cfg.embedder == "text-embedding-004"
@@ -41,7 +41,7 @@ def test_chatqec_config_aggregates_subconfigs():
             synthesizer="claude-sonnet-4-6",
             embedder="text-embedding-004",
             long_context_fallback="gemini-2.5-pro",
-            reranker="BAAI/bge-reranker-base",
+            reranker="mixedbread-ai/mxbai-rerank-base-v1",
         ),
         retriever=RetrieverConfig(
             top_k=8,

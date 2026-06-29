@@ -258,7 +258,7 @@ For each query variant: parallel Qdrant calls for vector (k=30) and BM25 (k=30).
 
 ### 8.3 Reranking
 
-**Local cross-encoder** (`BAAI/bge-reranker-base`) reranks the top 50 → top 8. Pure CPU, ~100–300 ms, free.
+**Local cross-encoder** (`mixedbread-ai/mxbai-rerank-base-v1`) reranks the top 50 → top 8. Pure CPU, ~100–300 ms, free. (Replaced `BAAI/bge-reranker-base` to avoid China-origin models.)
 
 ### 8.4 Canonical force-injection
 
@@ -290,7 +290,7 @@ All four coefficients live in `conf/retriever.yaml` and are tunable.
 |---|---|---|
 | Off-topic classification + query rewriting | Claude Haiku 4.5 | Fast, cheap |
 | Embeddings | Gemini `text-embedding-004` | Cheap, long input window |
-| Reranking | local `bge-reranker-base` | Free, fast on CPU |
+| Reranking | local `mxbai-rerank-base-v1` | Free, fast on CPU; non-China origin |
 | Synthesis | Claude Sonnet 4.6 | Strong reasoning, native tool-use, good citation discipline |
 | Long-context fallback (low-confidence path) | Gemini 2.5 Pro | 1M context for broader source slice when retrieval is sparse |
 | (Optional) self-grader | Claude Haiku 4.5 | "Does the answer actually use the cited evidence?" |

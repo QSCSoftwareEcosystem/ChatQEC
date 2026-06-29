@@ -214,7 +214,7 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
         str(cfg_dict["store"]["qdrant_url"]),
         str(cfg_dict["store"]["collection"]),
     )
-    reranker = _make_reranker()
+    reranker = _make_reranker(str(cfg_dict["models"].get("reranker") or "") or None)
     canonical_dir = Path(str(cfg_dict["paths"]["canonical_dir"]))
     canonical_index = _make_canonical_index(canonical_dir)
 
@@ -832,9 +832,11 @@ def _make_store(url: str, collection: str) -> object:
     )
 
 
-def _make_reranker() -> object:
+def _make_reranker(model_name: str | None = None) -> object:
     from chatqec.retrieval.reranker import CrossEncoderReranker
 
+    if model_name:
+        return CrossEncoderReranker(model_name=model_name)
     return CrossEncoderReranker()
 
 

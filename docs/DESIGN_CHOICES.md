@@ -15,7 +15,7 @@ For exhaustive context see
 | Synthesizer | `claude-sonnet-4-6` | `meta-llama/Llama-3.3-70B-Instruct` | Final cited answer — quality matters most |
 | Eval judge | `claude-haiku-4-5` | `meta-llama/Llama-3.3-70B-Instruct` | Yes/no faithfulness check; precision over creativity |
 | Dense embeddings | `gemini-embedding-001` | (none — local BGE/Nomic) | Strong retrieval, free tier, Matryoshka-truncatable |
-| Cross-encoder reranker | `BAAI/bge-reranker-base` | (local, no fallback) | Open-weights, strong MTEB scores, fast |
+| Cross-encoder reranker | `mixedbread-ai/mxbai-rerank-base-v1` | (local, no fallback) | Apache-2.0, strong BEIR scores; non-China origin (avoids BAAI/bge) |
 
 ### Why Haiku for the classifier and rewriter
 
@@ -52,8 +52,9 @@ We considered OpenAI `text-embedding-3-large` but Gemini's free tier + Matryoshk
 
 The bi-encoder retrieval (Qdrant + BM25) is recall-oriented — fast over large corpora but coarse. A cross-encoder reranker that *re-scores the top-K candidates jointly with the query* substantially improves precision-at-k. This is a well-known RAG pattern.
 
-- **BAAI/bge-reranker-base** is open-weights, no API key, runs locally.
-- We picked `-base` (~440 MB) over `-large` (~1.3 GB) because base runs ~10× faster on CPU and the quality drop is small for short QEC contexts.
+- **mixedbread-ai/mxbai-rerank-base-v1** is open-weights (Apache-2.0), no API key, runs locally. It replaces `BAAI/bge-reranker-base` to avoid China-origin models; mxbai-rerank-v1 is DeBERTa-v3 based and a like-for-like upgrade (stronger BEIR scores).
+- We picked `-base` (~280 MB) over `-large` (~1.5 GB) because base is much faster and the quality drop is small for short QEC contexts. Only the **v1** line is used — mxbai-rerank-**v2** is built on a Qwen base.
+- The model is configurable via `models.reranker` in `conf/config.yaml`.
 
 ### HuggingFace fallback model choices
 

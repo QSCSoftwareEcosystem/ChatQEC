@@ -1,8 +1,13 @@
-"""Cross-encoder reranker wrapper (BAAI/bge-reranker-base by default).
+"""Cross-encoder reranker wrapper (mixedbread-ai/mxbai-rerank-base-v1 by default).
 
-The model is loaded lazily — the first call to `.rerank()` triggers the
-~400MB download. In tests we mock the underlying CrossEncoder class so the
-download never happens.
+The default is an Apache-2.0 cross-encoder (Mixedbread AI, DeBERTa-v3 based)
+chosen to avoid China-origin models such as ``BAAI/bge-reranker-*``. Note: only
+the **v1** mxbai-rerank line is DeBERTa-based; mxbai-rerank-**v2** is built on a
+Qwen base, so it is intentionally not used here.
+
+The model is loaded lazily — the first call to ``.rerank()`` triggers the
+~280MB download. In tests we mock the underlying CrossEncoder class so the
+download never happens. The model name is configurable via ``models.reranker``.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ from sentence_transformers import CrossEncoder
 class CrossEncoderReranker:
     """Returns the indices of the top_k most relevant candidates given a query."""
 
-    def __init__(self, model_name: str = "BAAI/bge-reranker-base") -> None:
+    def __init__(self, model_name: str = "mixedbread-ai/mxbai-rerank-base-v1") -> None:
         self.model_name = model_name
         self._model: CrossEncoder | None = None
 
