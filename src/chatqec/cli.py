@@ -1009,10 +1009,14 @@ def retrieve(
 
 
 def _make_judge_client() -> object:  # pragma: no cover
-    """Build an Anthropic client used as the LLM judge in eval runs."""
-    import anthropic
+    """Build the LLM-judge client used in eval runs.
 
-    return anthropic.Anthropic()
+    Reuses the ``auto`` fallback chain so the judge fails over from Anthropic to
+    Gemini/HF on credit/auth errors — same robustness as the answer path. The
+    judge model (e.g. ``claude-haiku-4-5``) is remapped per backend by the
+    fallback client.
+    """
+    return _build_llm_client("auto")
 
 
 @main.group("eval")
