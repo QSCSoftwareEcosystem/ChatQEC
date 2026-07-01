@@ -65,7 +65,17 @@ def _to_gemini_contents(
         else:
             for b in content:
                 btype = b.get("type")
-                if btype == "text":
+                if btype == "image":
+                    src = b.get("source", {})
+                    parts.append(
+                        {
+                            "inline_data": {
+                                "mime_type": src.get("media_type", ""),
+                                "data": src.get("data", ""),
+                            }
+                        }
+                    )
+                elif btype == "text":
                     parts.append({"text": b.get("text", "")})
                 elif btype == "tool_use":
                     parts.append(
