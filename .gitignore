@@ -236,3 +236,9 @@ yarn-error.log*
 
 # Local-only API status helper (contains no secrets, but keep out of git)
 scripts/check_api_status.sh
+
+# Local book PDFs (copyrighted personal copies — never commit)
+Raw/
+
+# Generated corpus statistics
+data/corpus_stats.json
