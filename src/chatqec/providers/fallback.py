@@ -31,6 +31,8 @@ class Backend:
     model_remap: Mapping[str, str] = field(default_factory=dict)
     # Used when ``model_remap`` doesn't have an entry for the requested model.
     default_model: str | None = None
+    # Model to use when the request carries image content (vision-capable).
+    vision_model: str | None = None
 
 
 def _is_recoverable(exc: BaseException) -> bool:
@@ -76,13 +78,19 @@ class _FallbackMessages:
         messages: list[dict[str, Any]] | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> MessageResponse:
+        from chatqec.providers.huggingface import has_image_content
+
+        image_req = has_image_content(messages or [])
         last_err: BaseException | None = None
         attempted: list[str] = []
         for be in self._owner.backends:
             if be.name in self._owner.tripped:
                 continue  # circuit breaker: skip backends already known-unavailable
             attempted.append(be.name)
-            eff_model = be.model_remap.get(model) or be.default_model or model
+            if image_req and be.vision_model:
+                eff_model = be.vision_model
+            else:
+                eff_model = be.model_remap.get(model) or be.default_model or model
             kwargs: dict[str, Any] = {
                 "model": eff_model,
                 "max_tokens": max_tokens,
