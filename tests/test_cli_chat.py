@@ -17,7 +17,7 @@ def test_ask_uses_real_pipeline(monkeypatch):
     result = runner.invoke(main, ["ask", "What is the surface code?"])
     assert result.exit_code == 0
     assert "Surface code intro." in result.output
-    bot.ask.assert_called_once_with("What is the surface code?")
+    bot.ask.assert_called_once_with("What is the surface code?", images=[])
 
 
 def test_chat_repl_handles_single_turn(monkeypatch):

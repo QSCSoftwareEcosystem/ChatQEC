@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chatqec.providers.base import MessageResponse
+from chatqec.providers.huggingface import has_image_content
 from chatqec.trace import is_enabled as trace_is_enabled
 from chatqec.trace import trace
 
@@ -78,8 +79,6 @@ class _FallbackMessages:
         messages: list[dict[str, Any]] | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> MessageResponse:
-        from chatqec.providers.huggingface import has_image_content
-
         image_req = has_image_content(messages or [])
         last_err: BaseException | None = None
         attempted: list[str] = []
