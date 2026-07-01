@@ -9,8 +9,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from chatqec.api_types import Citation
+from chatqec.api_types import Citation, ImageAttachment
 from chatqec.conversation.citations import extract_citations, strip_trailing_sources
+from chatqec.conversation.image_blocks import anthropic_image_block
 from chatqec.conversation.mcp_adapter import MCPAdapter
 from chatqec.conversation.memory import Turn
 from chatqec.conversation.prompts import (
@@ -69,15 +70,17 @@ class Synthesizer:
         retrieved: list[RetrievedChunk],
         canonical_chunks: list[RetrievedChunk],
         history: list[Turn],
-    ) -> list[dict[str, str]]:
-        messages: list[dict[str, str]] = [{"role": t.role, "content": t.content} for t in history]
+        images: list[ImageAttachment] | None = None,
+    ) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = [{"role": t.role, "content": t.content} for t in history]
         context = assemble_context_block(retrieved, canonical_chunks=canonical_chunks)
-        messages.append(
-            {
-                "role": "user",
-                "content": f"{context}\n\nQuestion: {question}",
-            }
-        )
+        text = f"{context}\n\nQuestion: {question}"
+        if images:
+            content: list[dict[str, Any]] = [anthropic_image_block(i) for i in images]
+            content.append({"type": "text", "text": text})
+            messages.append({"role": "user", "content": content})
+        else:
+            messages.append({"role": "user", "content": text})
         return messages
 
     def synthesize(
@@ -87,6 +90,7 @@ class Synthesizer:
         retrieved: list[RetrievedChunk],
         canonical_chunks: list[RetrievedChunk],
         history: list[Turn],
+        images: list[ImageAttachment] | None = None,
     ) -> SynthesisResult:
         messages: list[dict[str, Any]] = list(
             self._build_messages(
@@ -94,6 +98,7 @@ class Synthesizer:
                 retrieved=retrieved,
                 canonical_chunks=canonical_chunks,
                 history=history,
+                images=images,
             )
         )
 
@@ -125,7 +130,9 @@ class Synthesizer:
                 system=SYNTHESIZER_SYSTEM_PROMPT,
                 messages=messages,
             )
-            text = str(msg.content[0].text)
+            # Join all text blocks; tolerate a response with no text content
+            # (some providers return an empty content list) instead of crashing.
+            text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
             usage = getattr(msg, "usage", None)
             usage_in = getattr(usage, "input_tokens", 0) if usage else 0
             usage_out = getattr(usage, "output_tokens", 0) if usage else 0
@@ -151,6 +158,7 @@ class Synthesizer:
         retrieved: list[RetrievedChunk],
         canonical_chunks: list[RetrievedChunk],
         history: list[Turn],
+        images: list[ImageAttachment] | None = None,
     ) -> Iterator[str]:
         """Yield text deltas as they arrive.
 
@@ -163,6 +171,7 @@ class Synthesizer:
             retrieved=retrieved,
             canonical_chunks=canonical_chunks,
             history=history,
+            images=images,
         )
 
         trace(
