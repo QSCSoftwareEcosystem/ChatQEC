@@ -12,8 +12,9 @@ from chatqec.conversation.classifier import OffTopicClassifier
 from chatqec.conversation.memory import ConversationMemory
 from chatqec.conversation.rewriter import QueryRewriter
 from chatqec.conversation.synthesizer import Synthesizer
+from chatqec.ingestion.ids import canonical_wiki_id
 from chatqec.retrieval.canonical_injector import CanonicalIndex
-from chatqec.retrieval.hybrid import HybridRetriever, RetrievalResult
+from chatqec.retrieval.hybrid import HybridRetriever, RetrievalResult, RetrievedChunk
 from chatqec.trace import trace
 
 __all__ = [
@@ -71,6 +72,33 @@ class ChatQEC:
         self.top_k = top_k
         self.candidate_k = candidate_k
 
+    def _canonical_chunks(self, matched_topics: list[str]) -> list[RetrievedChunk]:
+        """Build force-injected canonical chunks for the matched topic slugs.
+
+        Curated canonical pages bypass retrieval ranking: when a query mentions a
+        canonical topic, its page is prepended to the synthesizer context so the
+        answer can cite ``canonical:<slug>`` (spec §5.2/§8.4).
+        """
+        by_slug = {p.frontmatter.topic_slug: p for p in self.canonical_index.pages}
+        chunks: list[RetrievedChunk] = []
+        for slug in matched_topics:
+            page = by_slug.get(slug)
+            if page is None:
+                continue
+            source_id = canonical_wiki_id(slug)
+            chunks.append(
+                RetrievedChunk(
+                    chunk_id=f"{source_id}#page",
+                    source_id=source_id,
+                    text=page.body.strip(),
+                    title=page.frontmatter.title,
+                    authority_tier="canonical",
+                    score=1.0,
+                    payload={"url": ""},
+                )
+            )
+        return chunks
+
     def ask(self, question: str) -> Answer:
         trace("ask.question", question=question, top_k=self.top_k, candidate_k=self.candidate_k)
         verdict = self.classifier.classify(question)
@@ -94,10 +122,16 @@ class ChatQEC:
             queries=queries, top_k=self.top_k, candidate_k=self.candidate_k
         )
         _trace_retrieval(retrieval)
+        canonical_chunks = self._canonical_chunks(retrieval.matched_topics)
+        trace(
+            "canonical.injected",
+            matched_topics=retrieval.matched_topics,
+            injected=[c.source_id for c in canonical_chunks],
+        )
         result = self.synthesizer.synthesize(
             question=question,
             retrieved=retrieval.chunks,
-            canonical_chunks=[],
+            canonical_chunks=canonical_chunks,
             history=self.memory.recent(n=_HISTORY_TURNS),
         )
         trace(
@@ -146,11 +180,17 @@ class ChatQEC:
             queries=queries, top_k=self.top_k, candidate_k=self.candidate_k
         )
         _trace_retrieval(retrieval)
+        canonical_chunks = self._canonical_chunks(retrieval.matched_topics)
+        trace(
+            "canonical.injected",
+            matched_topics=retrieval.matched_topics,
+            injected=[c.source_id for c in canonical_chunks],
+        )
         full_text = ""
         for delta in self.synthesizer.synthesize_stream(
             question=question,
             retrieved=retrieval.chunks,
-            canonical_chunks=[],
+            canonical_chunks=canonical_chunks,
             history=self.memory.recent(n=_HISTORY_TURNS),
         ):
             full_text += delta
