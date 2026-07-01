@@ -15,6 +15,7 @@ from chatqec import __version__
 
 if TYPE_CHECKING:
     from chatqec.api import ChatQEC
+    from chatqec.api_types import ImageAttachment
 from chatqec.canonical.loader import (
     CanonicalLoadError,
     load_canonical_directory,
@@ -60,6 +61,9 @@ _GEMINI_MODEL_REMAP: dict[str, str] = {  # pragma: no cover
     "claude-haiku-4-5": "gemini-2.5-flash",
     "claude-sonnet-4-6": "gemini-2.5-pro",
 }
+
+# Vision-capable HF model used when a request carries image content.
+_HF_VISION_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 
 
 def _try_anthropic() -> object | None:  # pragma: no cover
@@ -147,6 +151,7 @@ def _build_llm_client(provider: str) -> object:  # pragma: no cover
                     client=hf,
                     model_remap=_HF_MODEL_REMAP,
                     default_model="meta-llama/Llama-3.3-70B-Instruct",
+                    vision_model=_HF_VISION_MODEL,
                 )
             )
         if not backends:
@@ -274,6 +279,25 @@ _VERBOSE_HELP = (
 )
 _LOG_FILE_HELP = "Path for the verbose trace log (default: logs/chatqec-trace-<timestamp>.log)."
 
+_IMG_EXT_TO_MEDIA = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+
+def _read_image_files(paths: tuple[str, ...]) -> list[ImageAttachment]:
+    """Load + validate CLI --image paths into ImageAttachments (≤3, guardrailed)."""
+    from chatqec.ingestion.images import prepare_images
+
+    raw: list[tuple[bytes, str, str]] = []
+    for p in paths:
+        path = Path(p)
+        media = _IMG_EXT_TO_MEDIA.get(path.suffix.lower(), "image/png")
+        raw.append((path.read_bytes(), media, path.name))
+    return prepare_images(raw)
+
 
 @main.command()
 @click.argument("question", nargs=-1, required=True)
@@ -284,15 +308,26 @@ _LOG_FILE_HELP = "Path for the verbose trace log (default: logs/chatqec-trace-<t
 )
 @click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
 @click.option("--log-file", default=None, help=_LOG_FILE_HELP)
+@click.option(
+    "--image",
+    "image_paths",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Attach an image (repeatable, ≤3) — asks about the figure.",
+)
 def ask(
-    question: tuple[str, ...], mcp_server: str | None, verbose: bool, log_file: str | None
+    question: tuple[str, ...],
+    mcp_server: str | None,
+    verbose: bool,
+    log_file: str | None,
+    image_paths: tuple[str, ...],
 ) -> None:
     """Answer a single QEC question (one-shot)."""
     from chatqec.trace import disable_trace
 
     _start_file_trace(verbose, log_file)
     bot = _build_chatqec(mcp_server=mcp_server)
-    answer = bot.ask(" ".join(question))
+    answer = bot.ask(" ".join(question), images=_read_image_files(image_paths))
     disable_trace()
     click.echo(answer.text)
     if answer.tool_calls:

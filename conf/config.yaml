@@ -19,6 +19,7 @@ models:
     rewriter: "meta-llama/Llama-3.1-8B-Instruct"
     synthesizer: "meta-llama/Llama-3.3-70B-Instruct"
     judge: "meta-llama/Llama-3.3-70B-Instruct"
+    vision: "meta-llama/Llama-4-Scout-17B-16E-Instruct"  # multimodal; used for image prompts
     serverless_provider: "auto"   # let huggingface_hub pick a routing partner
   # Per-role overrides when provider="gemini" (needs GEMINI_API_KEY or GOOGLE_API_KEY).
   gemini:
