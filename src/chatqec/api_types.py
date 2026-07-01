@@ -36,3 +36,10 @@ class Answer:
 @dataclass(frozen=True)
 class StreamChunk:
     delta: str
+
+
+@dataclass(frozen=True)
+class ImageAttachment:
+    data: bytes
+    media_type: str
+    filename: str = ""
