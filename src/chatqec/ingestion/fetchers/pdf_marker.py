@@ -28,9 +28,16 @@ class MarkerUnavailableError(RuntimeError):
     """Raised when Marker produced no Markdown (failed or not installed)."""
 
 
-def build_marker_command(pdf_path: Path, out_dir: Path) -> list[str]:
-    """Build the isolated ``uvx`` command that runs Marker on a single PDF."""
-    return [
+def build_marker_command(
+    pdf_path: Path, out_dir: Path, *, page_range: str | None = None
+) -> list[str]:
+    """Build the isolated ``uvx`` command that runs Marker on a single PDF.
+
+    ``page_range`` is Marker's 0-indexed page selector (e.g. ``"423-498"`` or
+    ``"0,5-10"``); when given, only those PDF pages are converted — used to
+    ingest a single book chapter instead of the whole volume.
+    """
+    cmd = [
         "uvx",
         "--from",
         _MARKER_PACKAGE,
@@ -41,6 +48,9 @@ def build_marker_command(pdf_path: Path, out_dir: Path) -> list[str]:
         "--output_format",
         "markdown",
     ]
+    if page_range:
+        cmd += ["--page_range", page_range]
+    return cmd
 
 
 def find_marker_markdown(out_dir: Path) -> Path | None:
@@ -50,11 +60,12 @@ def find_marker_markdown(out_dir: Path) -> Path | None:
 
 
 def run_marker_on_pdf(
-    pdf_path: Path, *, timeout: int = 1200
+    pdf_path: Path, *, timeout: int = 1200, page_range: str | None = None
 ) -> str:  # pragma: no cover - subprocess + models
     """Run Marker on ``pdf_path`` in isolation and return the extracted Markdown.
 
-    Uses the GPU via ``TORCH_DEVICE=cuda`` when available. Raises
+    Uses the GPU via ``TORCH_DEVICE=cuda`` when available. ``page_range`` limits
+    conversion to specific 0-indexed PDF pages (e.g. a single chapter). Raises
     ``MarkerUnavailableError`` if Marker fails or produces no output.
     """
     env = {**os.environ, "TORCH_DEVICE": os.environ.get("TORCH_DEVICE", "cuda")}
@@ -62,7 +73,7 @@ def run_marker_on_pdf(
         out_dir = Path(tmp)
         try:
             subprocess.run(
-                build_marker_command(pdf_path, out_dir),
+                build_marker_command(pdf_path, out_dir, page_range=page_range),
                 env=env,
                 check=True,
                 capture_output=True,

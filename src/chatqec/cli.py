@@ -615,6 +615,75 @@ def _collect_watchlist_candidates(wl: Watchlist) -> list[tuple[str, str, list[st
     return [(c.source_id, c.title, c.authors, c.year) for c in refresh_all(wl, now=now)]
 
 
+def _marker_page_range(pages: str | None) -> tuple[str | None, str]:
+    """Convert a 1-based printed page range to Marker's 0-based range + id suffix.
+
+    ``"425-499"`` → (``"424-498"``, ``":pp425-499"``). Returns ``(None, "")`` for
+    a whole-file ingest.
+    """
+    if not pages:
+        return None, ""
+    start_str, _, end_str = pages.partition("-")
+    start = int(start_str)
+    end = int(end_str) if end_str else start
+    return f"{start - 1}-{end - 1}", f":pp{pages}"
+
+
+def _ingest_pdf(  # pragma: no cover - drives Marker subprocess + disk I/O
+    pdf_path: Path,
+    *,
+    sink: ChunkSink,
+    reg: Registry,
+    now: datetime,
+    pages: str | None,
+    title: str | None,
+    author: str | None,
+    year: int | None,
+    tier: str,
+    license_str: str | None,
+    chunks_dir: Path,
+) -> None:
+    from chatqec.ingestion.fetchers.pdf import build_pdf_metadata, text_to_chunks
+    from chatqec.ingestion.fetchers.pdf_marker import run_marker_on_pdf
+
+    page_range, suffix = _marker_page_range(pages)
+    click.echo(f"extracting {pdf_path.name} (pages={pages or 'all'}) via Marker…", err=True)
+    body = run_marker_on_pdf(pdf_path, page_range=page_range)
+    md = build_pdf_metadata(
+        pdf_path,
+        title=title or pdf_path.stem,
+        author=author or "",
+        year=year or 0,
+    )
+    chunks = text_to_chunks(md, body_text=body, tier=tier, source_id_suffix=suffix)
+    if not chunks:
+        click.echo(f"no chunks produced from {pdf_path} — extraction empty", err=True)
+        raise SystemExit(1)
+    source_id = chunks[0].source_id
+    sink.write_many(source_id, chunks)
+    reg.append(
+        SourceRecord(
+            id=source_id,
+            type=SourceType.PDF,
+            url="",
+            title=md.title,
+            authors=[author] if author else [],
+            year=year,
+            content_sha256=md.content_sha256,
+            license=license_str,
+            authority_tier=tier,
+            ingested_at=now,
+            last_checked_at=now,
+            status=SourceStatus.PENDING_REVIEW,
+            chunk_count=len(chunks),
+            chunk_ids=[c.chunk_id for c in chunks],
+            verified=True,
+            notes=f"pdf={pdf_path.name} pages={pages or 'all'}",
+        )
+    )
+    click.echo(f"ingested {source_id}: {len(chunks)} chunks → {chunks_dir}")
+
+
 @main.command("ingest")
 @click.option(
     "--chunks-dir",
@@ -663,6 +732,31 @@ def _collect_watchlist_candidates(wl: Watchlist) -> list[tuple[str, str, list[st
     default=False,
     help="Ingest the full LaTeX source (with --arxiv) instead of the abstract only.",
 )
+@click.option(
+    "--pdf",
+    "pdf_path_value",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    default=None,
+    help="Ingest a local PDF (e.g. a book chapter) via Marker.",
+)
+@click.option(
+    "--pages",
+    "pages_value",
+    default=None,
+    help="1-based PDF page range for --pdf, e.g. '425-499' (a single chapter).",
+)
+@click.option("--title", "title_value", default=None, help="Title for --pdf source.")
+@click.option("--pdf-author", "pdf_author_value", default=None, help="Author(s) for --pdf source.")
+@click.option(
+    "--tier",
+    "tier_value",
+    default="peer_reviewed",
+    show_default=True,
+    help="Authority tier for --pdf (canonical|peer_reviewed|preprint|blog|video).",
+)
+@click.option(
+    "--source-license", "license_value", default=None, help="License/notes for --pdf provenance."
+)
 def ingest(
     chunks_dir: Path,
     registry_path: Path,
@@ -672,11 +766,33 @@ def ingest(
     authors_opt: tuple[str, ...],
     year: int | None,
     full_text: bool,
+    pdf_path_value: Path | None,
+    pages_value: str | None,
+    title_value: str | None,
+    pdf_author_value: str | None,
+    tier_value: str,
+    license_value: str | None,
 ) -> None:
     """Ingest one source. Writes chunks to disk and a pending_review record."""
     sink = ChunkSink(chunks_dir)
     reg = Registry(registry_path)
     now = datetime.now(tz=UTC)
+
+    if pdf_path_value:
+        _ingest_pdf(
+            pdf_path_value,
+            sink=sink,
+            reg=reg,
+            now=now,
+            pages=pages_value,
+            title=title_value,
+            author=pdf_author_value,
+            year=year,
+            tier=tier_value,
+            license_str=license_value,
+            chunks_dir=chunks_dir,
+        )
+        return
 
     if url_value:
         title, md_text, publish_date = _fetch_url_as_markdown(url_value)
@@ -1081,6 +1197,49 @@ def eval_run(cases_path: Path, output_path: Path, judge_model: str) -> None:
         f"faithfulness={report.overall_faithfulness:.2f}"
     )
     click.echo(f"report: {output_path}")
+
+
+@main.command("corpus-stats")
+@click.option(
+    "--chunks-dir",
+    type=click.Path(path_type=Path),
+    default=Path("data/chunks"),
+    show_default=True,
+    help="Directory of JSONL chunk files to summarize.",
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(path_type=Path),
+    default=Path("data/corpus_stats.json"),
+    show_default=True,
+    help="Where to write the full JSON stats report.",
+)
+def corpus_stats(chunks_dir: Path, output_path: Path) -> None:
+    """Summarize the ingested corpus (chunk/token statistics) for reporting."""
+    import json
+
+    from chatqec.stats import compute_corpus_stats, load_chunks
+
+    chunks = load_chunks(chunks_dir)
+    stats = compute_corpus_stats(chunks)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
+
+    tok = stats["tokens"]
+    click.echo(f"sources={stats['n_sources']}  chunks={stats['n_chunks']}")
+    click.echo(
+        f"tokens/chunk (~chars/4): total={tok['total']} min={tok['min']} "
+        f"max={tok['max']} mean={tok['mean']} median={tok['median']} p95={tok['p95']}"
+    )
+    cps = stats["chunks_per_source"]
+    click.echo(f"chunks/source: min={cps['min']} max={cps['max']} mean={cps['mean']}")
+    lc = stats["largest_chunk"]
+    if lc:
+        click.echo(f"largest chunk: {lc['tokens']} tok  [{lc['source_id']}] {lc['chunk_id']}")
+    click.echo(f"by source_type: {stats['by_source_type']}")
+    click.echo(f"by tier: {stats['by_tier']}")
+    click.echo(f"full report → {output_path}")
 
 
 if __name__ == "__main__":

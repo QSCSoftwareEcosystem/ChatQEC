@@ -55,8 +55,17 @@ def text_to_chunks(
     body_text: str,
     target_tokens: int = 512,
     overlap_tokens: int = 64,
+    tier: str = "preprint",
+    source_id_suffix: str = "",
 ) -> list[Chunk]:
-    source_id = pdf_id(md.content_sha256)
+    """Chunk extracted PDF text.
+
+    ``tier`` sets the authority tier (books use ``peer_reviewed``).
+    ``source_id_suffix`` disambiguates multiple chapters extracted from the same
+    PDF file (identical content hash) — e.g. ``":pp425-499"`` — so per-chapter
+    ingests don't collide on a single ``pdf:<sha>`` id.
+    """
+    source_id = pdf_id(md.content_sha256) + source_id_suffix
     pieces = chunk_text(body_text, target_tokens=target_tokens, overlap_tokens=overlap_tokens)
     return [
         Chunk(
@@ -66,7 +75,7 @@ def text_to_chunks(
             text=p,
             title=md.title,
             source_type="pdf",
-            authority_tier="preprint",
+            authority_tier=tier,
             anchor=f"#chunk-{i}",
             metadata={"author": md.author, "year": md.year, "source_path": md.source_path},
         )

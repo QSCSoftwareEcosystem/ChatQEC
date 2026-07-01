@@ -33,3 +33,30 @@ def test_find_marker_markdown_picks_nested_md(tmp_path):
 
 def test_find_marker_markdown_returns_none_when_absent(tmp_path):
     assert find_marker_markdown(tmp_path) is None
+
+
+def test_build_marker_command_includes_page_range():
+    from pathlib import Path
+
+    from chatqec.ingestion.fetchers.pdf_marker import build_marker_command
+
+    cmd = build_marker_command(Path("book.pdf"), Path("/out"), page_range="424-498")
+    assert "--page_range" in cmd
+    assert cmd[cmd.index("--page_range") + 1] == "424-498"
+
+
+def test_build_marker_command_omits_page_range_when_none():
+    from pathlib import Path
+
+    from chatqec.ingestion.fetchers.pdf_marker import build_marker_command
+
+    cmd = build_marker_command(Path("book.pdf"), Path("/out"))
+    assert "--page_range" not in cmd
+
+
+def test_marker_page_range_converts_1based_to_0based():
+    from chatqec.cli import _marker_page_range
+
+    assert _marker_page_range("425-499") == ("424-498", ":pp425-499")
+    assert _marker_page_range(None) == (None, "")
+    assert _marker_page_range("50") == ("49-49", ":pp50")
