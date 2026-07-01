@@ -54,9 +54,15 @@ for msg in st.session_state.messages:
         for t in msg.get("tool_calls", []):
             tool_output.render(t)
 
-# --- accept new question ---
-question = st.chat_input("Ask a QEC question…")
-if question:
+# --- accept new question (optionally with attached images) ---
+submission = st.chat_input(
+    "Ask a QEC question…",
+    accept_file="multiple",
+    file_type=["png", "jpg", "jpeg", "webp"],
+)
+question = submission.text if submission else None
+uploaded = submission.files if submission else []
+if submission and (question or uploaded):
     bot = get_chatqec()
     rl = get_rate_limiter()
     budget = get_cost_budget()
@@ -64,6 +70,7 @@ if question:
     now = utc_now()
 
     from chatqec.guards.rate_limit import LimitExceeded
+    from chatqec.ingestion.images import ImageError, prepare_images
 
     try:
         rl.check_and_record(ip, action="ask", now=now)
@@ -75,9 +82,19 @@ if question:
         st.error("Daily budget exhausted. Service degraded — try self-host instructions.")
         st.stop()
 
-    st.session_state.messages.append({"role": "user", "text": question})
+    images = []
+    if uploaded:
+        try:
+            images = prepare_images([(f.getvalue(), f.type, f.name) for f in uploaded])
+        except ImageError as e:
+            st.error(str(e))
+            st.stop()
+
+    st.session_state.messages.append({"role": "user", "text": question or ""})
     with st.chat_message("user"):
-        st.markdown(question)
+        st.markdown(question or "")
+        for im in images:
+            st.image(im.data, width=240)
 
     # Capture the execution trace into a buffer (not stderr) when verbose is on.
     trace_buf: list[str] = []
@@ -89,14 +106,16 @@ if question:
     with st.chat_message("assistant"):
         placeholder = st.empty()
         full = ""
-        for chunk in bot.ask_stream(question):
+        for chunk in bot.ask_stream(question or "", images=images):
             full += chunk.delta
             placeholder.markdown(full + "▌")
         placeholder.markdown(full)
 
     # Get final structured Answer from a non-stream call to harvest citations/tools
     # (the streaming path doesn't return them yet; M9 stays explicit about this limit)
-    answer = bot.ask(question)
+    answer = bot.ask(question or "", images=images)
+    if images:
+        budget.charge(amount_usd=0.01 * len(images), now=now)
 
     if verbose:
         disable_trace()
