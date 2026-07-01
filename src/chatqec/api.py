@@ -7,11 +7,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from chatqec.api_types import Answer, Citation, StreamChunk, ToolCall
+from chatqec.api_types import Answer, Citation, ImageAttachment, StreamChunk, ToolCall
 from chatqec.conversation.classifier import OffTopicClassifier
 from chatqec.conversation.memory import ConversationMemory
 from chatqec.conversation.rewriter import QueryRewriter
 from chatqec.conversation.synthesizer import Synthesizer
+from chatqec.conversation.vision import describe_image
 from chatqec.ingestion.ids import canonical_wiki_id
 from chatqec.retrieval.canonical_injector import CanonicalIndex
 from chatqec.retrieval.hybrid import HybridRetriever, RetrievalResult, RetrievedChunk
@@ -99,9 +100,19 @@ class ChatQEC:
             )
         return chunks
 
-    def ask(self, question: str) -> Answer:
+    def _caption(self, images: list[ImageAttachment]) -> str:
+        """Describe attached images for retrieval (empty string if none)."""
+        if not images:
+            return ""
+        return describe_image(client=self.rewriter.client, model=self.rewriter.model, images=images)
+
+    def ask(self, question: str, images: list[ImageAttachment] | None = None) -> Answer:
+        images = images or []
         trace("ask.question", question=question, top_k=self.top_k, candidate_k=self.candidate_k)
-        verdict = self.classifier.classify(question)
+        caption = self._caption(images)
+        trace("image.caption", n_images=len(images), caption=caption)
+        classify_text = f"{question}\n{caption}".strip() if caption else question
+        verdict = self.classifier.classify(classify_text)
         trace("classify.verdict", on_topic=verdict.on_topic, refusal=verdict.refusal_message)
         if not verdict.on_topic:
             self.memory.add_user(question)
@@ -110,6 +121,8 @@ class ChatQEC:
 
         rewrite = self.rewriter.rewrite(question, memory=self.memory)
         queries = [rewrite.rewritten, *rewrite.variants]
+        if caption:
+            queries.append(caption)
         trace(
             "rewrite.result",
             rewritten=rewrite.rewritten,
@@ -133,6 +146,7 @@ class ChatQEC:
             retrieved=retrieval.chunks,
             canonical_chunks=canonical_chunks,
             history=self.memory.recent(n=_HISTORY_TURNS),
+            images=images,
         )
         trace(
             "synthesize.result",
@@ -157,9 +171,15 @@ class ChatQEC:
             confidence=result.confidence,
         )
 
-    def ask_stream(self, question: str) -> Iterator[StreamChunk]:
+    def ask_stream(
+        self, question: str, images: list[ImageAttachment] | None = None
+    ) -> Iterator[StreamChunk]:
+        images = images or []
         trace("ask_stream.question", question=question)
-        verdict = self.classifier.classify(question)
+        caption = self._caption(images)
+        trace("image.caption", n_images=len(images), caption=caption)
+        classify_text = f"{question}\n{caption}".strip() if caption else question
+        verdict = self.classifier.classify(classify_text)
         trace("classify.verdict", on_topic=verdict.on_topic, refusal=verdict.refusal_message)
         if not verdict.on_topic:
             self.memory.add_user(question)
@@ -169,6 +189,8 @@ class ChatQEC:
 
         rewrite = self.rewriter.rewrite(question, memory=self.memory)
         queries = [rewrite.rewritten, *rewrite.variants]
+        if caption:
+            queries.append(caption)
         trace(
             "rewrite.result",
             rewritten=rewrite.rewritten,
@@ -192,6 +214,7 @@ class ChatQEC:
             retrieved=retrieval.chunks,
             canonical_chunks=canonical_chunks,
             history=self.memory.recent(n=_HISTORY_TURNS),
+            images=images,
         ):
             full_text += delta
             yield StreamChunk(delta=delta)
