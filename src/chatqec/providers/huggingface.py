@@ -23,11 +23,25 @@ from typing import Any
 from chatqec.providers.base import MessageResponse, TextBlock, Usage
 
 
+def has_image_content(messages: list[dict[str, Any]]) -> bool:
+    """True if any message carries an image content block."""
+    for m in messages:
+        c = m.get("content")
+        if isinstance(c, list) and any(isinstance(b, dict) and b.get("type") == "image" for b in c):
+            return True
+    return False
+
+
 def _anthropic_to_oai_messages(
     *, system: str | None, messages: list[dict[str, Any]]
-) -> list[dict[str, str]]:
-    """Translate Anthropic-style call args into OpenAI-style chat messages."""
-    out: list[dict[str, str]] = []
+) -> list[dict[str, Any]]:
+    """Translate Anthropic-style call args into OpenAI-style chat messages.
+
+    Text-only messages keep a plain string ``content``. Messages carrying image
+    blocks become a list of OpenAI multimodal parts (``text`` + ``image_url``)
+    for vision models (e.g. Llama 4).
+    """
+    out: list[dict[str, Any]] = []
     if system:
         out.append({"role": "system", "content": system})
     for m in messages:
@@ -35,6 +49,16 @@ def _anthropic_to_oai_messages(
         content = m["content"]
         if isinstance(content, str):
             out.append({"role": role, "content": content})
+        elif any(isinstance(b, dict) and b.get("type") == "image" for b in content):
+            parts: list[dict[str, Any]] = []
+            for b in content:
+                if b.get("type") == "text":
+                    parts.append({"type": "text", "text": str(b.get("text", ""))})
+                elif b.get("type") == "image":
+                    src = b.get("source", {})
+                    url = f"data:{src.get('media_type', 'image/png')};base64,{src.get('data', '')}"
+                    parts.append({"type": "image_url", "image_url": {"url": url}})
+            out.append({"role": role, "content": parts})
         else:
             text_parts = [str(b.get("text", "")) for b in content if b.get("type") == "text"]
             out.append({"role": role, "content": "\n".join(text_parts)})

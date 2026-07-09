@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   translation, added to the `auto` fallback chain — Stim answers fail over from
   Claude to Gemini on credit/auth errors. `--mcp-server` now accepts the
   `anthropic`, `gemini`, or `auto` provider.
+- Image input (multimodal prompts): attach up to 3 images in the Streamlit chat
+  (`st.chat_input` file attach) or `chatqec ask --image <path>`; the answering VLM
+  sees the figure and a Gemini-Flash caption augments retrieval. Fallback chain
+  Anthropic→Gemini→Llama-4 (HF) all carry images; images are transient (never
+  persisted). New `ImageAttachment`, `conversation/vision.py`, `ingestion/images.py`.
+- Force-injection of matched canonical pages into the synthesizer context
+  (`api.py`): definition/comparison queries now cite `canonical:<slug>` pages
+  (previously `canonical_chunks=[]` meant they were matched but never used).
 - Switchable verbose pipeline tracing (`chatqec/trace.py`): records every step
   (classify, rewrite, retrieve + per-chunk, synthesize, provider/model
   selection, tool-loop and MCP calls) with full payloads. `chatqec ask -v` /

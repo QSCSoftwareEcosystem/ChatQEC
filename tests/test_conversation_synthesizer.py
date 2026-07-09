@@ -22,7 +22,7 @@ def _ctx(i: int) -> RetrievedChunk:
 def _client_with_text(text: str):
     client = MagicMock()
     msg = MagicMock()
-    msg.content = [MagicMock(text=text)]
+    msg.content = [MagicMock(type="text", text=text)]
     msg.usage = MagicMock(input_tokens=100, output_tokens=50)
     client.messages.create.return_value = msg
     return client
@@ -171,3 +171,29 @@ def test_synthesize_stream_runs_tool_loop_when_adapter_set():
     )
     assert "Simulated answer" in out
     fake_mcp.call_tool.assert_called_once()
+
+
+def test_build_messages_embeds_images_as_blocks():
+    from chatqec.api_types import ImageAttachment
+    from chatqec.conversation.synthesizer import Synthesizer
+
+    synth = Synthesizer(client=object(), model="m")
+    msgs = synth._build_messages(
+        question="What is this?",
+        retrieved=[],
+        canonical_chunks=[],
+        history=[],
+        images=[ImageAttachment(data=b"x", media_type="image/png")],
+    )
+    content = msgs[-1]["content"]
+    assert isinstance(content, list)
+    assert any(b.get("type") == "image" for b in content)
+    assert any(b.get("type") == "text" for b in content)
+
+
+def test_build_messages_plain_string_without_images():
+    from chatqec.conversation.synthesizer import Synthesizer
+
+    synth = Synthesizer(client=object(), model="m")
+    msgs = synth._build_messages(question="q", retrieved=[], canonical_chunks=[], history=[])
+    assert isinstance(msgs[-1]["content"], str)
