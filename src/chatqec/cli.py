@@ -557,6 +557,82 @@ def canonical_validate(canonical_dir: Path) -> None:
     click.echo(f"ok — {len(pages)} pages parsed and cross-references resolve")
 
 
+@canonical.command("embed")
+@click.option(
+    "--chunks-dir",
+    type=click.Path(path_type=Path),
+    default=Path("data/chunks"),
+    show_default=True,
+)
+@click.option(
+    "--registry",
+    "registry_path",
+    type=click.Path(path_type=Path),
+    default=Path("sources/registry.jsonl"),
+    show_default=True,
+)
+@click.option(
+    "--stage-only",
+    is_flag=True,
+    default=False,
+    help="Write chunk files + register sources, but skip embedding into Qdrant.",
+)
+@click.option("--qdrant-url", default="http://localhost:6333", show_default=True)
+@click.option("--collection", default="chatqec_chunks", show_default=True)
+@click.option(
+    "--provider",
+    default="gemini",
+    show_default=True,
+    type=click.Choice(["gemini", "local"]),
+)
+@click.pass_obj
+def canonical_embed(
+    canonical_dir: Path,
+    chunks_dir: Path,
+    registry_path: Path,
+    stage_only: bool,
+    qdrant_url: str,
+    collection: str,
+    provider: str,
+) -> None:
+    """Chunk canonical pages, register them, and embed into Qdrant for hybrid retrieval."""
+    from datetime import UTC, datetime
+
+    from chatqec.canonical.embed import stage_canonical_directory
+    from chatqec.ingestion.pipeline import EmbeddingPipeline
+
+    registry = Registry(registry_path)
+    staged = stage_canonical_directory(
+        canonical_dir,
+        chunks_dir=chunks_dir,
+        registry=registry,
+        now=datetime.now(tz=UTC),
+    )
+    click.echo(f"staged {len(staged)} canonical pages → {chunks_dir}")
+    if stage_only:
+        click.echo("stage-only: skipped embedding (run `chatqec embed --all-pending` to vectorize)")
+        return
+
+    emb_cfg = {
+        "provider": provider,
+        "model": "gemini-embedding-001",
+        "batch_size": 96,
+        "local_model": "nomic-ai/nomic-embed-text-v1.5",
+    }
+    pipe = EmbeddingPipeline(
+        chunks_dir=chunks_dir,
+        registry=registry,
+        embedder=_make_embedder(emb_cfg),  # type: ignore[arg-type]
+        sparse_encoder=_make_sparse(),  # type: ignore[arg-type]
+        store=_make_store(qdrant_url, collection),  # type: ignore[arg-type]
+    )
+    total = 0
+    for source_id in staged:
+        result = pipe.embed_source(source_id)
+        total += result.chunks_embedded
+    click.echo(f"embedded {len(staged)} pages, {total} chunks → {collection}")
+
+
 def _fetch_url_as_markdown(url: str) -> tuple[str, str, str]:
     """Default URL fetcher: HTTP GET + trafilatura → markdown. Overridable in tests."""
     import requests

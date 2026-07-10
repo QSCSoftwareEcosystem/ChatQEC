@@ -52,3 +52,33 @@ def test_canonical_validate_reports_broken_cross_ref(tmp_path: Path):
     result = runner.invoke(main, ["canonical", "--dir", str(tmp_path), "validate"])
     assert result.exit_code != 0
     assert "nonexistent" in result.output.lower()
+
+
+def test_canonical_embed_stage_only_writes_chunks_and_registry(tmp_path: Path):
+    canon = tmp_path / "canonical"
+    canon.mkdir()
+    _write(canon / "a.md", "a")
+    _write(canon / "b.md", "b")
+    chunks_dir = tmp_path / "chunks"
+    registry = tmp_path / "registry.jsonl"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "canonical",
+            "--dir",
+            str(canon),
+            "embed",
+            "--stage-only",
+            "--chunks-dir",
+            str(chunks_dir),
+            "--registry",
+            str(registry),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "staged 2 canonical pages" in result.output
+    assert (chunks_dir / "canonical_a.jsonl").exists()
+    assert (chunks_dir / "canonical_b.jsonl").exists()
+    assert '"type":"canonical_wiki"' in registry.read_text()
