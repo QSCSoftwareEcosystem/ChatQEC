@@ -14,9 +14,14 @@ logic is unit-tested; the subprocess call itself is a thin wrapper.
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+# Marker embeds extracted figures as ``![](name.jpeg)`` siblings of the .md file.
+_IMG_REF_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 
 # Marker's single-file CLI, run in an ephemeral uvx environment so its
 # transformers 4.x never touches the main environment.
@@ -53,6 +58,42 @@ def build_marker_command(
     return cmd
 
 
+def persist_marker_images(md_text: str, src_dir: Path, dest_dir: Path) -> str:
+    """Copy Marker-extracted figures into a durable folder and fix their links.
+
+    Marker writes each figure as an image file next to the Markdown and refers
+    to it with a bare-filename ``![](_page_9_Picture_2.jpeg)`` link. That file
+    lives in Marker's temp directory, so once the run is torn down the link is
+    dangling. This copies every referenced image that exists in ``src_dir`` into
+    ``dest_dir`` and rewrites its link to the (repo-root-relative) persistent
+    path, returning the rewritten Markdown.
+
+    Local-only image references (bare filenames) are handled; external URLs or
+    already-rewritten paths are left untouched, and a reference whose source
+    file is missing is left as-is rather than raising — image persistence must
+    never break text ingestion.
+    """
+    replacements: dict[str, str] = {}
+    for name in dict.fromkeys(_IMG_REF_RE.findall(md_text)):  # unique, order-preserving
+        # Only handle bare local filenames Marker emits; skip URLs / nested paths.
+        if "/" in name or "\\" in name or ":" in name:
+            continue
+        source = src_dir / name
+        if not source.is_file():
+            continue
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, dest_dir / name)
+        replacements[name] = f"{dest_dir.as_posix()}/{name}"
+
+    def _sub(m: re.Match[str]) -> str:
+        name = m.group(1)
+        if name in replacements:
+            return m.group(0).replace(f"({name})", f"({replacements[name]})")
+        return m.group(0)
+
+    return _IMG_REF_RE.sub(_sub, md_text)
+
+
 def find_marker_markdown(out_dir: Path) -> Path | None:
     """Locate the Markdown file Marker wrote under ``out_dir`` (nested per doc)."""
     candidates = sorted(out_dir.rglob("*.md"))
@@ -60,12 +101,19 @@ def find_marker_markdown(out_dir: Path) -> Path | None:
 
 
 def run_marker_on_pdf(
-    pdf_path: Path, *, timeout: int = 1200, page_range: str | None = None
+    pdf_path: Path,
+    *,
+    timeout: int = 1200,
+    page_range: str | None = None,
+    images_dir: Path | None = None,
 ) -> str:  # pragma: no cover - subprocess + models
     """Run Marker on ``pdf_path`` in isolation and return the extracted Markdown.
 
     Uses the GPU via ``TORCH_DEVICE=cuda`` when available. ``page_range`` limits
-    conversion to specific 0-indexed PDF pages (e.g. a single chapter). Raises
+    conversion to specific 0-indexed PDF pages (e.g. a single chapter). When
+    ``images_dir`` is given, Marker-extracted figures are copied there (before
+    the temp dir is torn down) and their Markdown links are rewritten to point
+    at that durable folder, so figure references survive ingestion. Raises
     ``MarkerUnavailableError`` if Marker fails or produces no output.
     """
     env = {**os.environ, "TORCH_DEVICE": os.environ.get("TORCH_DEVICE", "cuda")}
@@ -85,4 +133,7 @@ def run_marker_on_pdf(
         md_path = find_marker_markdown(out_dir)
         if md_path is None:
             raise MarkerUnavailableError(f"marker produced no markdown for {pdf_path}")
-        return md_path.read_text(encoding="utf-8")
+        md_text = md_path.read_text(encoding="utf-8")
+        if images_dir is not None:
+            md_text = persist_marker_images(md_text, md_path.parent, images_dir)
+        return md_text

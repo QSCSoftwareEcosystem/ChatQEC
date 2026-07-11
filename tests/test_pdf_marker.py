@@ -3,7 +3,60 @@
 from chatqec.ingestion.fetchers.pdf_marker import (
     build_marker_command,
     find_marker_markdown,
+    persist_marker_images,
 )
+
+
+def test_persist_marker_images_copies_and_rewrites_links(tmp_path):
+    src = tmp_path / "marker_out"
+    src.mkdir()
+    (src / "doc.md").write_text("x")  # sibling of the images
+    (src / "_page_1_Picture_0.jpeg").write_bytes(b"\xff\xd8imgdata")
+    dest = tmp_path / "figures" / "pdf_abc123"
+
+    md = "See ![](_page_1_Picture_0.jpeg) below."
+    out = persist_marker_images(md, src, dest)
+
+    # image copied out of the temp dir into the persistent folder
+    assert (dest / "_page_1_Picture_0.jpeg").read_bytes() == b"\xff\xd8imgdata"
+    # link rewritten to point at the persistent location (repo-root relative)
+    assert "](_page_1_Picture_0.jpeg)" not in out
+    assert f"]({dest.as_posix()}/_page_1_Picture_0.jpeg)" in out
+
+
+def test_persist_marker_images_handles_repeats_and_multiple(tmp_path):
+    src = tmp_path / "m"
+    src.mkdir()
+    for name in ("a.png", "b.jpeg"):
+        (src / name).write_bytes(b"data-" + name.encode())
+    dest = tmp_path / "figs"
+
+    md = "![](a.png) then ![](b.jpeg) then ![](a.png) again"
+    out = persist_marker_images(md, src, dest)
+
+    assert (dest / "a.png").exists() and (dest / "b.jpeg").exists()
+    assert out.count(f"]({dest.as_posix()}/a.png)") == 2
+    assert out.count(f"]({dest.as_posix()}/b.jpeg)") == 1
+
+
+def test_persist_marker_images_leaves_missing_refs_untouched(tmp_path):
+    src = tmp_path / "m"
+    src.mkdir()
+    dest = tmp_path / "figs"
+
+    md = "![](gone.jpeg) stays as-is"
+    out = persist_marker_images(md, src, dest)
+
+    # Nothing to copy; broken ref is left unchanged rather than crashing.
+    assert out == md
+    assert not dest.exists() or not any(dest.iterdir())
+
+
+def test_persist_marker_images_no_refs_returns_text_unchanged(tmp_path):
+    src = tmp_path / "m"
+    src.mkdir()
+    md = "# Title\n\nJust prose, no figures."
+    assert persist_marker_images(md, src, tmp_path / "figs") == md
 
 
 def test_build_marker_command_runs_isolated_with_pdf_and_outdir(tmp_path):
