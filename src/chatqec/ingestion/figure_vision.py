@@ -59,6 +59,9 @@ class LlamaVisionDescriber:
         prompt = self._processor.apply_chat_template(messages, add_generation_prompt=True)
         inputs = self._processor(image, prompt, return_tensors="pt").to(self._model.device)
         out = self._model.generate(**inputs, max_new_tokens=self.max_new_tokens)
-        text = self._processor.decode(out[0], skip_special_tokens=True)
-        # Keep only the assistant's continuation after the prompt echo.
-        return text.split(FIGURE_PROMPT)[-1].strip()  # type: ignore[no-any-return]
+        # Decode ONLY the newly generated tokens (everything after the prompt),
+        # which is echo-proof — slicing on the prompt text left the chat
+        # template's "assistant" role header in the output.
+        prompt_len = inputs["input_ids"].shape[1]
+        generated = out[0][prompt_len:]
+        return self._processor.decode(generated, skip_special_tokens=True).strip()  # type: ignore[no-any-return]
