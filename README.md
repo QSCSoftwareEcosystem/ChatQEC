@@ -96,6 +96,7 @@ chatqec ask "..."         # one-shot question with citations
 chatqec chat              # interactive REPL (/quit, /clear)
 chatqec ingest --arxiv 2408.13687 --url https://...   # add a source (abstract only)
 chatqec ingest --arxiv 2408.13687 --full-text         # ingest the full paper (LaTeX source → Marker PDF fallback)
+chatqec ingest --pdf Raw/book.pdf --pages 46-77 --title "..." --describe-figures  # book chapter + figure vision
 chatqec embed --all-pending --provider gemini         # embed → flip to active
 chatqec sources list                                  # registry view
 chatqec retrieve --query "..."                        # debug: top-K chunks only (no LLM)
@@ -131,6 +132,37 @@ Add `--full-text` to ingest the whole paper for depth on *how/why* questions:
 Reserve `--full-text` for impactful papers — see
 [`scripts/reingest_arxiv_fulltext.sh`](scripts/reingest_arxiv_fulltext.sh) for a
 reproducible batch re-ingest of the foundational QEC set.
+
+### PDF ingestion with figures (`chatqec ingest --pdf`)
+
+`chatqec ingest --pdf` extracts a book chapter or paper PDF via Marker and, by
+default, also persists every figure it finds to `data/figures/<source_id>/`,
+describes each one with a **local Llama-3.2-11B-Vision-Instruct** model
+(US-origin, runs on your own GPU — zero API cost), and injects the
+description into the chunk text as a `> **Figure (auto-described):** …`
+callout so figures become semantically searchable and get cited like any
+other evidence. The figure path is recorded in the chunk's metadata and
+surfaced back to the user at answer time (the CLI prints a `Figures:` block;
+Streamlit renders the images inline).
+
+```bash
+chatqec ingest --pdf Raw/book.pdf --pages 46-77 --title "Introduction to QEC" \
+  --describe-figures        # default; use --no-describe-figures to skip
+```
+
+Vision description requires the optional `vision` extra and a one-time
+Hugging Face login (Llama-3.2-Vision weights are **gated** — accept the
+license on the model page first):
+
+```bash
+uv sync --extra vision                # or: pip install -e '.[vision]'
+huggingface-cli login                  # needed once, before first use
+```
+
+Without the extra installed (or with `--no-describe-figures`), PDF ingestion
+still works exactly as before — figures just won't be described or made
+searchable. `data/figures/` is a build artifact and is gitignored, same as
+`data/chunks/`.
 
 ---
 
@@ -197,7 +229,7 @@ the fallback kicks in — eval headline numbers should still be run with
 | Canonical wiki | [`knowledge/canonical/`](knowledge/canonical/) | 56 pages (full v1 roster in [`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed` |
 | Source registry | [`sources/registry.jsonl`](sources/registry.jsonl) | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`) |
 | Watchlist | [`sources/watchlist.yaml`](sources/watchlist.yaml) | arXiv categories, GitHub repos, YouTube channels |
-| Ingestion | [`src/chatqec/ingestion/`](src/chatqec/ingestion/) | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub / YouTube / URL), math-aware chunker, title-and-author resolver |
+| Ingestion | [`src/chatqec/ingestion/`](src/chatqec/ingestion/) | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`) |
 | Embedding | [`src/chatqec/embedding/`](src/chatqec/embedding/) | Gemini (default) or local BGE/Nomic; BM25 via fastembed |
 | Store | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py) | Hybrid dense + sparse search |
 | Retrieval | [`src/chatqec/retrieval/`](src/chatqec/retrieval/) | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection |
@@ -302,6 +334,7 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 - ✅ Canonical wiki layer — full 56-page v1 roster, chunked + embedded into Qdrant (`chatqec canonical embed`)
 - ✅ Multimodal image input (`chatqec ask --image` + Streamlit attach) with Gemini-Flash captioning for retrieval
 - ✅ PDF book-chapter ingestion (`chatqec ingest --pdf`) + `chatqec corpus-stats`
+- ✅ Figure ingestion: persisted images, local Llama-3.2-Vision descriptions, searchable + shown at answer time
 - ✅ Sandboxed Stim execution via MCP sibling repo
 - ✅ Streamlit app with per-IP rate limit, daily budget, hCaptcha
 - ✅ 50-pair eval set + `chatqec eval run`

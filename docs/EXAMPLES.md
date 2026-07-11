@@ -126,6 +126,79 @@ Idempotent. `--stage-only` writes chunk files + registry without touching Qdrant
 .venv/bin/chatqec sources list            # registry table
 ```
 
+### 9. Figures — vision-described PDF figures, searchable and shown at answer time
+
+`chatqec ingest --pdf` now persists every extracted figure to
+`data/figures/<source_id>/`, describes each real figure with a local
+**Llama-3.2-11B-Vision-Instruct** model (US-origin, runs on local GPUs, zero
+API cost), and injects a `> **Figure (auto-described):** …` block into the
+chunk text so the figure is semantically searchable. The figure path is
+carried in chunk metadata; at answer time the CLI prints a `Figures:` block
+and Streamlit renders the images inline.
+
+Requires the optional `vision` extra and a one-time Hugging Face login (the
+Llama-3.2-Vision weights are gated):
+
+```bash
+uv sync --extra vision                # or: pip install -e '.[vision]'
+huggingface-cli login                  # accept the model license first
+```
+
+Ingest a book chapter with figure description (default ON — use
+`--no-describe-figures` to skip):
+
+```bash
+.venv/bin/chatqec ingest --pdf Raw/book.pdf --pages 46-77 \
+  --title "Introduction to Quantum Error Correction" --describe-figures
+```
+
+Then ask for a figure by description — retrieval matches on the injected
+figure caption, not just the surrounding prose:
+
+```bash
+.venv/bin/chatqec ask "show me the surface-code lattice figure"
+```
+
+#### Re-ingesting the 6 existing PDF sources to gain figures
+
+These 6 book-chapter sources were ingested **before** this feature shipped,
+so they have no figures yet. The source PDFs still exist under `Raw/`; run
+these to re-ingest with figure vision enabled (titles/pages taken from the
+existing registry records):
+
+```bash
+.venv/bin/chatqec ingest --pdf \
+  "Raw/cambridge-core_quantum-error-correction_1Jul2026/08.1_pp_163_180_Operator_quantum_error_correction.pdf" \
+  --title "Lidar & Brun — Operator Quantum Error Correction" --describe-figures   # pdf:af1f0de8, pages=all
+
+.venv/bin/chatqec ingest --pdf \
+  "Raw/quantum-computation-and-quantum-information-nielsen-chuang.pdf" \
+  --pages 459-533 \
+  --title "Nielsen & Chuang — Ch.10 Quantum Error-Correction" --describe-figures  # pdf:fd245cf9:pp459-533
+
+.venv/bin/chatqec ingest --pdf \
+  "Raw/cambridge-core_quantum-error-correction_1Jul2026/07.2_pp_46_77_Introduction_to_quantum_error_correction.pdf" \
+  --title "Lidar & Brun — Introduction to Quantum Error Correction" --describe-figures   # pdf:02f9b2bd, pages=all
+
+.venv/bin/chatqec ingest --pdf \
+  "Raw/cambridge-core_quantum-error-correction_1Jul2026/07.5_pp_126_160_Introduction_to_quantum_fault_tolerance.pdf" \
+  --title "Lidar & Brun — Introduction to Quantum Fault Tolerance" --describe-figures   # pdf:e31e248a, pages=all
+
+.venv/bin/chatqec ingest --pdf \
+  "Raw/cambridge-core_quantum-error-correction_1Jul2026/08.2_pp_181_200_Entanglement-assisted_quantum_error-correcting_codes.pdf" \
+  --title "Lidar & Brun — Entanglement-Assisted Quantum Error-Correcting Codes" --describe-figures   # pdf:08e4aa0f, pages=all
+
+.venv/bin/chatqec ingest --pdf "Raw/pqs.pdf" --pages 566-660 \
+  --title "Picturing Quantum Software — Ch.12 Fault-Tolerant Quantum Computation (ZX)" --describe-figures  # pdf:97a2013c:pp566-660
+```
+
+Each re-ingest command produces a **new** `pending_review` record (a fresh
+`pdf:` source id derived from content hash) — it does not overwrite the
+original text-only source in place. Use `chatqec sources list` to see both
+side by side, and `chatqec sources mark-retracted <id>` on the old
+text-only record once you've confirmed the figure-enabled re-ingest looks
+good, so retrieval doesn't surface duplicate chunks for the same chapter.
+
 ---
 
 ## Regenerate these statistics
