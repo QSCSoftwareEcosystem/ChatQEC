@@ -22,7 +22,7 @@ each feature. Regenerate the stats with the snippet at the bottom.
 
 ---
 
-## Statistics (last updated 2026-07-10)
+## Statistics (last updated 2026-07-11)
 
 ### Canonical wiki
 
@@ -40,10 +40,14 @@ each feature. Regenerate the stats with the snippet at the bottom.
 
 | Metric | Value |
 |---|---|
-| Total points | **1789** |
-| Canonical points | 294 |
-| Non-canonical (corpus) points | 1495 |
+| Total points | **1728** |
+| Canonical (`canonical`) | 294 |
+| Book chapters (`peer_reviewed`) | 247 |
+| arXiv papers (`preprint`) | 1078 |
+| Blogs (`blog`) | 109 |
 | Collection status | green |
+
+Embedding model: **`gemini-embedding-001`** (768-d dense) + BM25 sparse, one collection.
 
 ### Source registry (`sources/registry.jsonl`)
 
@@ -54,6 +58,40 @@ each feature. Regenerate the stats with the snippet at the bottom.
 | pdf (book chapters) | 6 |
 | blog | 5 |
 | **Total** (all `active`) | **84** |
+
+### PDF book chapters & figure vision (re-ingested 2026-07-11)
+
+The 6 book-chapter PDFs were re-ingested with figure vision. Each PDF flows
+through a **three-model pipeline**:
+
+| Stage | Model / tool | Role | Where it runs |
+|---|---|---|---|
+| Extract | **Marker** (`marker-pdf`, `marker_single`) | PDF → Markdown (equations→LaTeX, figures → `data/figures/<id>/`) | local GPU, isolated `uvx` env |
+| Describe | **Llama-3.2-11B-Vision-Instruct** (Meta, US-origin) | per-figure description injected as `> **Figure (auto-described):**` | local GPU, bf16, `max_new_tokens=220` |
+| Embed | **gemini-embedding-001** (768-d) | chunk text (incl. figure descriptions) → Qdrant | Gemini API |
+
+Per-book results:
+
+| Source id | Chapter | Chunks | Figures (files) | Descriptions injected¹ | Chunk words (min/med/max)² |
+|---|---|---:|---:|---:|---|
+| `pdf:fd245cf9:pp459-533` | Nielsen & Chuang — Ch.10 QEC | 89 | 31 | 44 | 185 / 339 / 9417 |
+| `pdf:02f9b2bd` | Lidar & Brun — Intro to QEC | 54 | 7 | 7 | 53 / 354 / 818 |
+| `pdf:08e4aa0f` | Lidar & Brun — Entanglement-Assisted codes | 36 | 3 | 3 | 79 / 343 / 467 |
+| `pdf:af1f0de8` | Lidar & Brun — Operator QEC | 32 | 4 | 4 | 214 / 346 / 412 |
+| `pdf:97a2013c:pp566-660` | Picturing Quantum Software — Ch.12 (ZX) | 25 | 110 | 101 | 68 / 270 / 19798 |
+| `pdf:e31e248a` | Lidar & Brun — Intro to Fault Tolerance | 11 | 11 | 11 | 136 / 358 / 5522 |
+| **Total** | | **247** | **166** | **170** | |
+
+¹ Descriptions are injected per **image-reference occurrence** (Marker repeats a
+figure link across pages), so this can exceed unique files (Nielsen & Chuang) or
+fall below them when decorative images are filtered out (PQS: 110 files, 9 skipped
+as decorative). ² "words" ≈ whitespace tokens, not model tokens.
+
+> ⚠️ **Data-quality caveats to revisit:** a few chunks are pathologically large
+> (PQS max ≈ 19.8k words, Nielsen ≈ 9.4k) — Marker emitted big tables/appendices
+> the math-aware chunker didn't split, which risks embedding truncation. Worth a
+> follow-up on chunk-size capping. Figure-description quality is good and QEC-aware
+> (correctly names Steane circuits, Shor's 9-qubit code, stabilizer generators).
 
 ---
 
