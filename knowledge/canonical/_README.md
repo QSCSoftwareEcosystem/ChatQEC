@@ -39,5 +39,5 @@ Run `chatqec canonical validate` to check the entire directory. CI runs this on 
 
 ## Roster
 
-The full v1 roster of 52 pages (P0/P1/P2 priority) is in `_roster.yaml`. Files starting
+The full v1 roster of 56 pages (P0/P1/P2 priority) is in `_roster.yaml`. Files starting
 with `_` are not loaded as pages — they are documentation / configuration.

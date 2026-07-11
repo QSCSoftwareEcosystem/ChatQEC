@@ -9,8 +9,8 @@ a sandbox. Use it as a Python library, a CLI, or a Streamlit web app.
 [Stim]: https://github.com/quantumlib/Stim
 
 > **Status: v0.1.0 — first public release.** The pipeline is end-to-end and
-> testable; the public corpus is intentionally seeded with 5 canonical wiki
-> pages and grows via the watchlist refresh job. See [Roadmap](#roadmap).
+> testable; it ships with the full 56-page canonical wiki (chunked and embedded
+> into Qdrant) and grows via the watchlist refresh job. See [Roadmap](#roadmap).
 
 ---
 
@@ -100,6 +100,8 @@ chatqec embed --all-pending --provider gemini         # embed → flip to active
 chatqec sources list                                  # registry view
 chatqec retrieve --query "..."                        # debug: top-K chunks only (no LLM)
 chatqec canonical validate                            # check the canonical wiki
+chatqec canonical embed                               # chunk + embed canonical pages into Qdrant
+chatqec ask "..." --image fig.png                     # multimodal: attach an image to the question
 chatqec watch refresh --apply                         # pull new arXiv/GitHub candidates
 chatqec eval run --output eval/results.json           # run the 50-pair eval set
 ```
@@ -134,9 +136,10 @@ reproducible batch re-ingest of the foundational QEC set.
 
 ## What to expect on your first run
 
-**The corpus is intentionally small at v0.1.0.** The source registry ships
-empty; only the 5 canonical wiki pages are pre-loaded. Definitional questions
-on these topics will return cited answers immediately:
+**The corpus is intentionally small at v0.1.0.** Beyond a small seed corpus, the
+56-page canonical wiki is pre-loaded and embedded into Qdrant; the registry grows
+from there via the watchlist. Definitional questions on these topics return cited
+answers immediately:
 
 - Surface code
 - Stabilizer formalism
@@ -191,7 +194,7 @@ the fallback kicks in — eval headline numbers should still be run with
 
 | Layer | Module | Notes |
 |---|---|---|
-| Canonical wiki | [`knowledge/canonical/`](knowledge/canonical/) | 5 P0 pages; 52-page roster in [`_roster.yaml`](knowledge/canonical/_roster.yaml) |
+| Canonical wiki | [`knowledge/canonical/`](knowledge/canonical/) | 56 pages (full v1 roster in [`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed` |
 | Source registry | [`sources/registry.jsonl`](sources/registry.jsonl) | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`) |
 | Watchlist | [`sources/watchlist.yaml`](sources/watchlist.yaml) | arXiv categories, GitHub repos, YouTube channels |
 | Ingestion | [`src/chatqec/ingestion/`](src/chatqec/ingestion/) | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub / YouTube / URL), math-aware chunker, title-and-author resolver |
@@ -296,7 +299,9 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 
 **v0.1.0 (this release):**
 - ✅ End-to-end pipeline: classifier → rewriter → hybrid retrieval → synthesizer
-- ✅ Canonical wiki layer (5 P0 pages; 52-page roster planned)
+- ✅ Canonical wiki layer — full 56-page v1 roster, chunked + embedded into Qdrant (`chatqec canonical embed`)
+- ✅ Multimodal image input (`chatqec ask --image` + Streamlit attach) with Gemini-Flash captioning for retrieval
+- ✅ PDF book-chapter ingestion (`chatqec ingest --pdf`) + `chatqec corpus-stats`
 - ✅ Sandboxed Stim execution via MCP sibling repo
 - ✅ Streamlit app with per-IP rate limit, daily budget, hCaptcha
 - ✅ 50-pair eval set + `chatqec eval run`
@@ -304,7 +309,7 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 
 **v0.2 — content & quality:**
 - Populate the source registry to ~500 documents (seed via watchlist + bulk arXiv)
-- Build out the canonical wiki to the full 52-page roster
+- ✅ Build out the canonical wiki to the full v1 roster (56 pages)
 - Publish baseline eval numbers and the methodology behind them
 - Hosted Streamlit demo
 - Distribute the prebuilt corpus as a Qdrant snapshot on a Hugging Face dataset
