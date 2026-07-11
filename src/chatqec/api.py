@@ -15,6 +15,7 @@ from chatqec.conversation.synthesizer import Synthesizer
 from chatqec.conversation.vision import describe_image
 from chatqec.ingestion.ids import canonical_wiki_id
 from chatqec.retrieval.canonical_injector import CanonicalIndex
+from chatqec.retrieval.figure_loader import load_chunk_figures
 from chatqec.retrieval.hybrid import HybridRetriever, RetrievalResult, RetrievedChunk
 from chatqec.trace import trace
 
@@ -141,12 +142,13 @@ class ChatQEC:
             matched_topics=retrieval.matched_topics,
             injected=[c.source_id for c in canonical_chunks],
         )
+        figure_images = images or load_chunk_figures(retrieval.chunks)
         result = self.synthesizer.synthesize(
             question=question,
             retrieved=retrieval.chunks,
             canonical_chunks=canonical_chunks,
             history=self.memory.recent(n=_HISTORY_TURNS),
-            images=images,
+            images=figure_images,
         )
         trace(
             "synthesize.result",
@@ -208,13 +210,14 @@ class ChatQEC:
             matched_topics=retrieval.matched_topics,
             injected=[c.source_id for c in canonical_chunks],
         )
+        figure_images = images or load_chunk_figures(retrieval.chunks)
         full_text = ""
         for delta in self.synthesizer.synthesize_stream(
             question=question,
             retrieved=retrieval.chunks,
             canonical_chunks=canonical_chunks,
             history=self.memory.recent(n=_HISTORY_TURNS),
-            images=images,
+            images=figure_images,
         ):
             full_text += delta
             yield StreamChunk(delta=delta)

@@ -113,6 +113,48 @@ def test_ask_stream_yields_text_chunks():
     assert "surface" in "".join(c.delta for c in chunks)
 
 
+def test_ask_attaches_retrieved_figures_to_synthesizer(tmp_path):
+    from PIL import Image
+
+    img_path = tmp_path / "fig.png"
+    Image.new("RGB", (4, 4), color="white").save(img_path)
+
+    classifier = MagicMock()
+    classifier.classify.return_value = TopicVerdict(on_topic=True)
+    rewriter = MagicMock()
+    rewriter.rewrite.return_value = RewriteResult(rewritten="q", variants=[])
+    retriever = MagicMock()
+    chunk = RetrievedChunk(
+        chunk_id="x#0",
+        source_id="x",
+        text="c0",
+        title="T0",
+        authority_tier="preprint",
+        score=0.5,
+        payload={"url": "https://example.com", "figures": [str(img_path)]},
+    )
+    retriever.retrieve.return_value = RetrievalResult(chunks=[chunk], matched_topics=[])
+    canonical_index = MagicMock()
+    canonical_index.pages = []
+    synthesizer = MagicMock()
+    synthesizer.synthesize.return_value = SynthesisResult(
+        text="Answer.", citations=[], confidence="medium"
+    )
+
+    bot = ChatQEC(
+        classifier=classifier,
+        rewriter=rewriter,
+        retriever=retriever,
+        synthesizer=synthesizer,
+        canonical_index=canonical_index,
+        memory=ConversationMemory(),
+    )
+    bot.ask("What is the surface code?")
+
+    _, kwargs = synthesizer.synthesize.call_args
+    assert len(kwargs["images"]) == 1
+
+
 def test_ask_surfaces_tool_calls_when_synthesizer_invoked_tool():
     from chatqec.conversation.synthesizer import SynthesisResult
     from chatqec.conversation.tool_loop import ToolInvocation
