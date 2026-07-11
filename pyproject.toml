@@ -45,6 +45,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+vision = ["transformers>=4.49", "accelerate>=0.34", "torch>=2.2", "pillow>=10"]
 dev = [
   "pytest>=8.0",
   "pytest-cov>=5.0",
@@ -88,6 +89,7 @@ ignore = ["E501", "PLR0913"]
 "src/chatqec/ingestion/fetchers/arxiv.py" = ["PLC0415"]
 "src/chatqec/ingestion/fetchers/arxiv_source.py" = ["PLC0415"]
 "src/chatqec/ingestion/watchlist_refresh.py" = ["PLC0415"]
+"src/chatqec/ingestion/figure_vision.py" = ["PLC0415"]
 "src/chatqec/providers/huggingface.py" = ["PLC0415"]
 "src/chatqec/providers/gemini.py" = ["PLC0415"]
 
