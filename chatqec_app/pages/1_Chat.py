@@ -1,5 +1,7 @@
 """Chat page — streaming Q&A with cited evidence and tool output rendering."""
 
+from pathlib import Path
+
 import streamlit as st
 
 from chatqec.trace import disable_trace, enable_trace
@@ -45,7 +47,15 @@ if captcha.enabled and not st.session_state.captcha_verified:
         st.rerun()
     st.stop()
 
+
 # --- render history ---
+def _render_figures(paths: list[str]) -> None:
+    """Render retrieved figure images whose files still exist on disk."""
+    for path in paths:
+        if Path(path).is_file():
+            st.image(path, caption=path)
+
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["text"])
@@ -53,6 +63,7 @@ for msg in st.session_state.messages:
             citation_card.render(c)
         for t in msg.get("tool_calls", []):
             tool_output.render(t)
+        _render_figures(msg.get("figures", []))
 
 # --- accept new question (optionally with attached images) ---
 submission = st.chat_input(
@@ -127,12 +138,14 @@ if submission and (question or uploaded):
             "text": answer.text,
             "citations": answer.citations,
             "tool_calls": answer.tool_calls,
+            "figures": answer.figure_paths,
         }
     )
     for c in answer.citations:
         citation_card.render(c)
     for t in answer.tool_calls:
         tool_output.render(t)
+    _render_figures(answer.figure_paths)
 
 # --- footer: usage transparency ---
 ip = client_ip()

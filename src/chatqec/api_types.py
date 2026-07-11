@@ -31,6 +31,7 @@ class Answer:
     citations: list[Citation] = field(default_factory=list)
     tool_calls: list[ToolCall] = field(default_factory=list)
     confidence: str = "low"
+    figure_paths: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

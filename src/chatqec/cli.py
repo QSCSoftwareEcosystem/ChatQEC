@@ -340,6 +340,10 @@ def ask(
             click.echo(f"  - [{c.source_id}] {c.title}")
             if c.url:
                 click.echo(f"    {c.url}")
+    if answer.figure_paths:
+        click.echo("\nFigures:")
+        for p in answer.figure_paths:
+            click.echo(f"  {p}")
     click.echo(f"\n(confidence: {answer.confidence})")
 
 

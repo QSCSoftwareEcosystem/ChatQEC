@@ -30,6 +30,28 @@ __all__ = [
 _HISTORY_TURNS = 6
 
 
+def _chunk_figure_paths(chunks: list[RetrievedChunk], *, max_figures: int = 3) -> list[str]:
+    """De-duplicated figure paths referenced by ``chunks``, capped at ``max_figures``.
+
+    Mirrors the dedup/precedence order used by ``load_chunk_figures`` so the
+    figures surfaced to the user match the ones the synthesizer could see.
+    """
+    paths: list[str] = []
+    seen: set[str] = set()
+    for c in chunks:
+        figs = c.payload.get("figures", [])
+        if not isinstance(figs, list):
+            continue
+        for rel in figs:
+            if rel in seen:
+                continue
+            seen.add(rel)
+            paths.append(rel)
+            if len(paths) >= max_figures:
+                return paths
+    return paths
+
+
 def _trace_retrieval(retrieval: RetrievalResult) -> None:
     """Emit a per-chunk trace of what retrieval surfaced (full chunk text)."""
     trace(
@@ -143,6 +165,7 @@ class ChatQEC:
             injected=[c.source_id for c in canonical_chunks],
         )
         figure_images = images or load_chunk_figures(retrieval.chunks)
+        figure_paths = [] if images else _chunk_figure_paths(retrieval.chunks)
         result = self.synthesizer.synthesize(
             question=question,
             retrieved=retrieval.chunks,
@@ -171,6 +194,7 @@ class ChatQEC:
                 for t in result.tool_invocations
             ],
             confidence=result.confidence,
+            figure_paths=figure_paths,
         )
 
     def ask_stream(
