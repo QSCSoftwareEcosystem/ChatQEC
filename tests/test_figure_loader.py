@@ -26,3 +26,18 @@ def test_loads_existing_figures_capped(tmp_path):
 def test_skips_missing_files(tmp_path):
     imgs = load_chunk_figures([_chunk(["gone.png"])], base_dir=tmp_path)
     assert imgs == []
+
+
+def test_loads_figures_from_meta_prefixed_payload(tmp_path):
+    Image.new("RGB", (100, 100), (1, 2, 3)).save(tmp_path / "fig.png")
+    chunk = RetrievedChunk(
+        chunk_id="c",
+        source_id="pdf:x",
+        text="t",
+        title="T",
+        authority_tier="peer_reviewed",
+        score=1.0,
+        payload={"meta_figures": ["fig.png"]},
+    )
+    imgs = load_chunk_figures([chunk], base_dir=tmp_path)
+    assert len(imgs) == 1

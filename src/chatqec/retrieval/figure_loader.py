@@ -21,7 +21,7 @@ def load_chunk_figures(
     raw: list[tuple[bytes, str, str]] = []
     seen: set[str] = set()
     for c in chunks:
-        figs = c.payload.get("figures", [])
+        figs = c.payload.get("meta_figures") or c.payload.get("figures", [])
         if not isinstance(figs, list):
             figs = []
         for rel in figs:

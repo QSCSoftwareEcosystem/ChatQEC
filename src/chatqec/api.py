@@ -6,6 +6,7 @@ End-to-end: classifier -> rewriter -> retriever -> synthesizer.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 from chatqec.api_types import Answer, Citation, ImageAttachment, StreamChunk, ToolCall
 from chatqec.conversation.classifier import OffTopicClassifier
@@ -30,22 +31,28 @@ __all__ = [
 _HISTORY_TURNS = 6
 
 
-def _chunk_figure_paths(chunks: list[RetrievedChunk], *, max_figures: int = 3) -> list[str]:
+def _chunk_figure_paths(
+    chunks: list[RetrievedChunk], *, base_dir: Path = Path("."), max_figures: int = 3
+) -> list[str]:
     """De-duplicated figure paths referenced by ``chunks``, capped at ``max_figures``.
 
     Mirrors the dedup/precedence order used by ``load_chunk_figures`` so the
     figures surfaced to the user match the ones the synthesizer could see.
+    Only paths that exist under ``base_dir`` are included, so this list stays
+    in sync with what ``load_chunk_figures`` actually loads.
     """
     paths: list[str] = []
     seen: set[str] = set()
     for c in chunks:
-        figs = c.payload.get("figures", [])
+        figs = c.payload.get("meta_figures") or c.payload.get("figures", [])
         if not isinstance(figs, list):
             continue
         for rel in figs:
             if rel in seen:
                 continue
             seen.add(rel)
+            if not (base_dir / rel).is_file():
+                continue
             paths.append(rel)
             if len(paths) >= max_figures:
                 return paths

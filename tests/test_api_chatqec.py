@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from chatqec.api import Answer, ChatQEC
+from chatqec.api import Answer, ChatQEC, _chunk_figure_paths
 from chatqec.conversation.classifier import TopicVerdict
 from chatqec.conversation.memory import ConversationMemory
 from chatqec.conversation.rewriter import RewriteResult
@@ -175,3 +175,29 @@ def test_ask_surfaces_tool_calls_when_synthesizer_invoked_tool():
     answer = bot.ask("Run M 0 once.")
     assert len(answer.tool_calls) == 1
     assert answer.tool_calls[0].name == "stim_simulate"
+
+
+def _chunk_with_payload(payload: dict) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id="x#0",
+        source_id="x",
+        text="c0",
+        title="T0",
+        authority_tier="preprint",
+        score=0.5,
+        payload=payload,
+    )
+
+
+def test_chunk_figure_paths_reads_meta_prefixed_key(tmp_path):
+    fig = tmp_path / "fig.png"
+    fig.write_bytes(b"fake-png-bytes")
+    chunk = _chunk_with_payload({"meta_figures": ["fig.png"]})
+    paths = _chunk_figure_paths([chunk], base_dir=tmp_path)
+    assert paths == ["fig.png"]
+
+
+def test_chunk_figure_paths_skips_missing_files(tmp_path):
+    chunk = _chunk_with_payload({"meta_figures": ["missing.png"]})
+    paths = _chunk_figure_paths([chunk], base_dir=tmp_path)
+    assert paths == []
