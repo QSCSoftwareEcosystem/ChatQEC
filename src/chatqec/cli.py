@@ -753,19 +753,29 @@ def _ingest_pdf(  # pragma: no cover - drives Marker subprocess + disk I/O
     tier: str,
     license_str: str | None,
     chunks_dir: Path,
+    describe_figures: bool = True,
 ) -> None:
     from chatqec.ingestion.fetchers.pdf import build_pdf_metadata, text_to_chunks
     from chatqec.ingestion.fetchers.pdf_marker import run_marker_on_pdf
+    from chatqec.ingestion.figures import annotate_figures
+    from chatqec.ingestion.ids import pdf_id
 
     page_range, suffix = _marker_page_range(pages)
-    click.echo(f"extracting {pdf_path.name} (pages={pages or 'all'}) via Marker…", err=True)
-    body = run_marker_on_pdf(pdf_path, page_range=page_range)
     md = build_pdf_metadata(
         pdf_path,
         title=title or pdf_path.stem,
         author=author or "",
         year=year or 0,
     )
+    source_id = pdf_id(md.content_sha256) + suffix
+    images_dir = Path("data/figures") / source_id.replace(":", "_").replace("/", "_")
+    click.echo(f"extracting {pdf_path.name} (pages={pages or 'all'}) via Marker…", err=True)
+    body = run_marker_on_pdf(pdf_path, page_range=page_range, images_dir=images_dir)
+    if describe_figures:
+        from chatqec.ingestion.figure_vision import LlamaVisionDescriber
+
+        click.echo("describing figures…", err=True)
+        body, _figs = annotate_figures(body, describer=LlamaVisionDescriber())
     chunks = text_to_chunks(md, body_text=body, tier=tier, source_id_suffix=suffix)
     if not chunks:
         click.echo(f"no chunks produced from {pdf_path} — extraction empty", err=True)
@@ -868,6 +878,11 @@ def _ingest_pdf(  # pragma: no cover - drives Marker subprocess + disk I/O
 @click.option(
     "--source-license", "license_value", default=None, help="License/notes for --pdf provenance."
 )
+@click.option(
+    "--describe-figures/--no-describe-figures",
+    default=True,
+    help="Run the local vision model to describe extracted figures.",
+)
 def ingest(
     chunks_dir: Path,
     registry_path: Path,
@@ -883,6 +898,7 @@ def ingest(
     pdf_author_value: str | None,
     tier_value: str,
     license_value: str | None,
+    describe_figures: bool,
 ) -> None:
     """Ingest one source. Writes chunks to disk and a pending_review record."""
     sink = ChunkSink(chunks_dir)
@@ -902,6 +918,7 @@ def ingest(
             tier=tier_value,
             license_str=license_value,
             chunks_dir=chunks_dir,
+            describe_figures=describe_figures,
         )
         return
 

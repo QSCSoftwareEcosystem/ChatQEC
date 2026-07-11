@@ -7,6 +7,7 @@ it can be tested without an actual PDF.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +15,9 @@ from chatqec.ingestion.chunk import Chunk
 from chatqec.ingestion.chunkers.math_aware import chunk_text
 from chatqec.ingestion.hashing import sha256_file
 from chatqec.ingestion.ids import pdf_id
+
+# Matches Markdown image references, e.g. ``![](data/figures/pdf_xxx/f1.png)``.
+_CHUNK_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 
 
 @dataclass(frozen=True)
@@ -77,7 +81,12 @@ def text_to_chunks(
             source_type="pdf",
             authority_tier=tier,
             anchor=f"#chunk-{i}",
-            metadata={"author": md.author, "year": md.year, "source_path": md.source_path},
+            metadata={
+                "author": md.author,
+                "year": md.year,
+                "source_path": md.source_path,
+                "figures": _CHUNK_IMG_RE.findall(p),
+            },
         )
         for i, p in enumerate(pieces)
     ]

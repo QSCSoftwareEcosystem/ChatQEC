@@ -33,3 +33,11 @@ def test_text_to_chunks_protects_math():
     for c in chunks:
         if r"\begin{align}" in c.text:
             assert r"\end{align}" in c.text
+
+
+def test_text_to_chunks_records_figure_paths_in_metadata():
+    md = PDFMetadata(content_sha256="a" * 64, title="T", author="A", year=2020, source_path="x.pdf")
+    body = "Prose ![](data/figures/pdf_aaaaaaaa/f1.png) more prose."
+    chunks = text_to_chunks(md, body_text=body)
+    figs = [f for c in chunks for f in c.metadata.get("figures", [])]
+    assert "data/figures/pdf_aaaaaaaa/f1.png" in figs
