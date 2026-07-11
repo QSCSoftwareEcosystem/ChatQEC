@@ -13,12 +13,15 @@ logic is unit-tested; the subprocess call itself is a thin wrapper.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Marker embeds extracted figures as ``![](name.jpeg)`` siblings of the .md file.
 _IMG_REF_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
@@ -81,9 +84,13 @@ def persist_marker_images(md_text: str, src_dir: Path, dest_dir: Path) -> str:
         source = src_dir / name
         if not source.is_file():
             continue
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, dest_dir / name)
-        replacements[name] = f"{dest_dir.as_posix()}/{name}"
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, dest_dir / name)
+            replacements[name] = f"{dest_dir.as_posix()}/{name}"
+        except OSError as e:
+            logger.warning("failed to persist figure %s: %s", name, e)
+            continue
 
     def _sub(m: re.Match[str]) -> str:
         name = m.group(1)

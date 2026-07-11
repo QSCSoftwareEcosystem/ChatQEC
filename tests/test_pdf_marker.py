@@ -113,3 +113,43 @@ def test_marker_page_range_converts_1based_to_0based():
     assert _marker_page_range("425-499") == ("424-498", ":pp425-499")
     assert _marker_page_range(None) == (None, "")
     assert _marker_page_range("50") == ("49-49", ":pp50")
+
+
+def test_persist_marker_images_survives_copy_failure(tmp_path, monkeypatch):
+    """Verify that copy failures (permissions, disk full, etc.) don't abort ingestion."""
+    src = tmp_path / "marker_out"
+    src.mkdir()
+    (src / "_page_1_Picture_0.jpeg").write_bytes(b"\xff\xd8imgdata")
+    dest = tmp_path / "figures" / "pdf_abc123"
+
+    md = "See ![](_page_1_Picture_0.jpeg) below."
+
+    # Simulate copy failure (disk full, permissions, etc.)
+    def raiser(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("chatqec.ingestion.fetchers.pdf_marker.shutil.copyfile", raiser)
+
+    # Should NOT raise; should return original markdown unchanged
+    out = persist_marker_images(md, src, dest)
+    assert out == md  # link stays unchanged; image not added to replacements
+
+
+def test_persist_marker_images_mkdir_failure_is_caught(tmp_path, monkeypatch):
+    """Verify that mkdir failures are also caught and logged."""
+    src = tmp_path / "marker_out"
+    src.mkdir()
+    (src / "_page_1_Picture_0.jpeg").write_bytes(b"\xff\xd8imgdata")
+    dest = tmp_path / "figures" / "pdf_abc123"
+
+    md = "See ![](_page_1_Picture_0.jpeg) below."
+
+    # Simulate mkdir failure (permissions, etc.)
+    def raiser(*args, **kwargs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr("chatqec.ingestion.fetchers.pdf_marker.Path.mkdir", raiser)
+
+    # Should NOT raise; should return original markdown unchanged
+    out = persist_marker_images(md, src, dest)
+    assert out == md
