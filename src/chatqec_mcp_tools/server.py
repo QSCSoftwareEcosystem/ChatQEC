@@ -10,6 +10,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from chatqec_mcp_tools.tools.code_params import (
+    CodeParamsInput,
+    code_params,
+)
 from chatqec_mcp_tools.tools.pymatching_decode import (
     PymatchingDecodeInput,
     pymatching_decode,
@@ -50,6 +54,10 @@ def _pymatching_decode_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _threshold_sweep_handler(args: dict[str, Any]) -> dict[str, Any]:
     return threshold_sweep(ThresholdSweepInput.model_validate(args)).model_dump()
+
+
+def _code_params_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return code_params(CodeParamsInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -96,6 +104,16 @@ _TOOLS = [
         ),
         input_schema=ThresholdSweepInput.model_json_schema(),
         handler=_threshold_sweep_handler,
+    ),
+    ToolSpec(
+        name="code_params",
+        description=(
+            "Report a named QEC code's parameters — [[n, k]], stabilizer-generator "
+            "count, and the Stim-computed code distance — for a family "
+            "(surface_code_rotated, repetition_code, color_code) at a given distance."
+        ),
+        input_schema=CodeParamsInput.model_json_schema(),
+        handler=_code_params_handler,
     ),
 ]
 

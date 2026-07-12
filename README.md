@@ -7,10 +7,12 @@ Tools:
 - `stim_diagram` — render a Stim circuit as an SVG
 - `pymatching_decode` — MWPM-decode a Stim circuit; return the logical error rate
 - `threshold_sweep` — sweep p × distance for a code family; return a table + threshold plot (SVG)
+- `code_params` — report a code's [[n,k]] + stabilizer count and a Stim-computed distance
 
-Deferred: `qiskit_qec_run` (code construction + [[n,k,d]]) — blocked on qiskit-qec packaging
-(not on PyPI; GitHub-only, pre-1.0, Python 3.7–3.10). Future: `stabilizer_check`,
-`code_search`, `logical_error_curve`, `decode_compare`, `monte_carlo_estimate`.
+Superseded: `qiskit_qec_run` (code construction via qiskit-qec) — replaced by the
+Stim-based `code_params`, since qiskit-qec is unshippable (not on PyPI; abandoned,
+broken against modern Qiskit). Future: `stabilizer_check`, `code_search`,
+`logical_error_curve`, `decode_compare`, `monte_carlo_estimate`.
 
 ## Install
 
