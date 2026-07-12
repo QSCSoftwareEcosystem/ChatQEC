@@ -8,15 +8,40 @@ _MAX_INLINE_CHARS = 2000
 
 
 def render(call: ToolCall) -> None:
+    import ast
+
     st.markdown(f"**Tool:** `{call.name}`")
     st.code(str(call.input), language="json")
     out = call.output
-    # The output is a stringified dict from ChatQEC; try to render structured pieces
+
     if call.name == "stim_diagram" and "<svg" in out:
         start = out.find("<svg")
         end = out.rfind("</svg>") + len("</svg>")
         st.components.v1.html(out[start:end], height=300)
-    else:
-        st.code(out[:_MAX_INLINE_CHARS], language="json")
-        if len(out) > _MAX_INLINE_CHARS:
-            st.caption(f"(truncated; {len(out)} chars)")
+        return
+
+    if call.name == "threshold_sweep":
+        try:
+            data = ast.literal_eval(out)
+        except (ValueError, SyntaxError):
+            data = None
+        if isinstance(data, dict):
+            if data.get("rows"):
+                st.dataframe(data["rows"])
+            svg = data.get("plot_svg") or ""
+            if "<svg" in svg:
+                st.components.v1.html(svg, height=380)
+            return
+
+    if call.name == "pymatching_decode":
+        try:
+            data = ast.literal_eval(out)
+        except (ValueError, SyntaxError):
+            data = None
+        if isinstance(data, dict):
+            st.json(data)
+            return
+
+    st.code(out[:_MAX_INLINE_CHARS], language="json")
+    if len(out) > _MAX_INLINE_CHARS:
+        st.caption(f"(truncated; {len(out)} chars)")
