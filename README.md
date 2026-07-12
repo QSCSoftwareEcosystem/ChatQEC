@@ -2,11 +2,15 @@
 
 MCP server exposing sandboxed Quantum Error Correction tools.
 
-Tools (v1):
+Tools:
 - `stim_simulate` — run a Stim circuit; return measurement samples and detection events
 - `stim_diagram` — render a Stim circuit as an SVG
+- `pymatching_decode` — MWPM-decode a Stim circuit; return the logical error rate
+- `threshold_sweep` — sweep p × distance for a code family; return a table + threshold plot (SVG)
 
-Future (v2): `pymatching_decode`, `qiskit_qec_run`, `threshold_sweep`, `stabilizer_check`, `code_search`, `logical_error_curve`, `decode_compare`, `monte_carlo_estimate`.
+Deferred: `qiskit_qec_run` (code construction + [[n,k,d]]) — blocked on qiskit-qec packaging
+(not on PyPI; GitHub-only, pre-1.0, Python 3.7–3.10). Future: `stabilizer_check`,
+`code_search`, `logical_error_curve`, `decode_compare`, `monte_carlo_estimate`.
 
 ## Install
 

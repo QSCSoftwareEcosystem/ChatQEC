@@ -14,3 +14,21 @@ def test_tool_handlers_are_invokable():
     server = build_server()
     out = server.invoke_tool("stim_simulate", {"circuit": "M 0\n", "shots": 1})
     assert out["ok"] is True
+
+
+def test_build_server_registers_new_qec_tools():
+    server = build_server()
+    tool_names = {t.name for t in server.list_tools()}
+    assert {"pymatching_decode", "threshold_sweep"} <= tool_names
+
+
+def test_threshold_sweep_handler_round_trips():
+    server = build_server()
+    out = server.invoke_tool("threshold_sweep", {
+        "code_family": "repetition_code",
+        "distances": [3],
+        "p_values": [0.1],
+        "shots": 50,
+    })
+    assert out["ok"] is True
+    assert len(out["rows"]) == 1
