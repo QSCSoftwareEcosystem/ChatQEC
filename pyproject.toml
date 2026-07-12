@@ -17,6 +17,7 @@ dependencies = [
   "stim>=1.13",
   "matplotlib>=3.8",
   "pydantic>=2.8",
+  "pymatching>=2.0",
 ]
 
 [project.optional-dependencies]
