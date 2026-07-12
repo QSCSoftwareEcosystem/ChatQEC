@@ -142,8 +142,7 @@ Chunk words min/med/max: all 59 / 311 / 2509; figure chunks 59 / 154 / 202.
 ### QEC MCP tools — `chatqec-mcp-tools` sibling (added 2026-07-12)
 
 The MCP sibling exposes sandboxed QEC compute tools the assistant calls instead of
-guessing numbers. Two new tools shipped this round (Stim + PyMatching); a third
-(`qiskit_qec_run`) was **deferred** — see note below.
+guessing numbers. Three new tools shipped this round (all Stim-backed).
 
 | Registered tool | Purpose | Backend |
 |---|---|---|
@@ -151,13 +150,14 @@ guessing numbers. Two new tools shipped this round (Stim + PyMatching); a third
 | `stim_diagram` | render a Stim circuit → SVG | stim 1.16.0 |
 | **`pymatching_decode`** | MWPM-decode a Stim circuit → logical error rate | stim + pymatching 2.4.0 |
 | **`threshold_sweep`** | sweep p × distance for a code family → table + log-log SVG plot | stim + pymatching + matplotlib 3.10.9 |
+| **`code_params`** | report a code's [[n,k]] + stabilizer count and a Stim-computed distance | stim 1.16.0 |
 
-**Test check-run (2026-07-12):** full sibling suite **26 passed** (`uv run pytest -q`),
+**Test check-run (2026-07-12):** full sibling suite **30 passed** (`uv run pytest -q`),
 ruff + mypy strict clean. Per file: `test_decoding` 2 · `test_pymatching_decode` 5 ·
-`test_threshold_sweep` 5 (incl. `color_code` regression) · `test_server` 4.
+`test_threshold_sweep` 5 (incl. `color_code` regression) · `test_code_params` 4 · `test_server` 4.
 Main-app wiring (prompt advertises the tools + Streamlit renders their output): 4 passed.
 
-**Functional smoke-run** (repetition code, 2000 shots each):
+**Functional smoke-run:**
 
 ```text
 pymatching_decode: ok=True  ler=0.0350  errors=70/2000  dets=8  obs=1
@@ -165,12 +165,18 @@ threshold_sweep:   ok=True  rows=6  svg_bytes=34009
    d=3 p=0.02 ler=0.0110    d=5 p=0.02 ler=0.0010   # below threshold: larger d wins
    d=3 p=0.05 ler=0.0665    d=5 p=0.05 ler=0.0450
    d=3 p=0.10 ler=0.1895    d=5 p=0.10 ler=0.2220   # above threshold: larger d loses
+code_params surface_code_rotated d=5: [[n=25, k=1]]  num_stabilizers=24  stim_distance=5
+code_params color_code d=3:           [[n=7,  k=1]]  num_stabilizers=6   stim_distance=2
+   # color-code stim_distance is the GRAPHLIKE distance (lower bound); true d=3
 ```
 
-> **`qiskit_qec_run` deferred:** `qiskit-qec` is not on PyPI (GitHub-only, pre-1.0,
-> Python 3.7–3.10) and its C++/cmake extension fails to build on this repo's Python
-> 3.11, so it can't be installed. The tool is intentionally not built/registered until
-> qiskit-qec is packaged for 3.11. Plan/spec: `docs/superpowers/{plans,specs}/2026-07-12-qec-tools*`.
+> **`code_params` supersedes the planned `qiskit_qec_run`.** `qiskit-qec` is unshippable
+> — not on PyPI (GitHub-only, abandoned, mid-refactor at HEAD, broken against modern
+> Qiskit; installable only by freezing a 2023 Qiskit-0.x stack in a separate 3.10 env
+> plus source patches). Rather than carry that maintenance burden, `code_params` derives
+> [[n,k]] + stabilizer count from each family's standard formula and computes the code
+> distance directly with **Stim** (`shortest_graphlike_error`) — no qiskit-qec dependency.
+> Plan/spec: `docs/superpowers/plans/2026-07-12-code-params-tool.md`.
 
 ## Feature examples
 
