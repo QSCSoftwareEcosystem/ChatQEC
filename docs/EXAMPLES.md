@@ -139,6 +139,39 @@ Chunk words min/med/max: all 59 / 311 / 2509; figure chunks 59 / 154 / 202.
 
 ---
 
+### QEC MCP tools — `chatqec-mcp-tools` sibling (added 2026-07-12)
+
+The MCP sibling exposes sandboxed QEC compute tools the assistant calls instead of
+guessing numbers. Two new tools shipped this round (Stim + PyMatching); a third
+(`qiskit_qec_run`) was **deferred** — see note below.
+
+| Registered tool | Purpose | Backend |
+|---|---|---|
+| `stim_simulate` | run a Stim circuit → measurement samples | stim 1.16.0 |
+| `stim_diagram` | render a Stim circuit → SVG | stim 1.16.0 |
+| **`pymatching_decode`** | MWPM-decode a Stim circuit → logical error rate | stim + pymatching 2.4.0 |
+| **`threshold_sweep`** | sweep p × distance for a code family → table + log-log SVG plot | stim + pymatching + matplotlib 3.10.9 |
+
+**Test check-run (2026-07-12):** full sibling suite **26 passed** (`uv run pytest -q`),
+ruff + mypy strict clean. Per file: `test_decoding` 2 · `test_pymatching_decode` 5 ·
+`test_threshold_sweep` 5 (incl. `color_code` regression) · `test_server` 4.
+Main-app wiring (prompt advertises the tools + Streamlit renders their output): 4 passed.
+
+**Functional smoke-run** (repetition code, 2000 shots each):
+
+```text
+pymatching_decode: ok=True  ler=0.0350  errors=70/2000  dets=8  obs=1
+threshold_sweep:   ok=True  rows=6  svg_bytes=34009
+   d=3 p=0.02 ler=0.0110    d=5 p=0.02 ler=0.0010   # below threshold: larger d wins
+   d=3 p=0.05 ler=0.0665    d=5 p=0.05 ler=0.0450
+   d=3 p=0.10 ler=0.1895    d=5 p=0.10 ler=0.2220   # above threshold: larger d loses
+```
+
+> **`qiskit_qec_run` deferred:** `qiskit-qec` is not on PyPI (GitHub-only, pre-1.0,
+> Python 3.7–3.10) and its C++/cmake extension fails to build on this repo's Python
+> 3.11, so it can't be installed. The tool is intentionally not built/registered until
+> qiskit-qec is packaged for 3.11. Plan/spec: `docs/superpowers/{plans,specs}/2026-07-12-qec-tools*`.
+
 ## Feature examples
 
 ### 1. Semantic retrieval — paraphrase with zero keyword overlap
