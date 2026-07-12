@@ -42,7 +42,7 @@ def pymatching_decode(inp: PymatchingDecodeInput) -> PymatchingDecodeOutput:
 
         circuit = stim.Circuit(inp.circuit)
         stats = decode_circuit(circuit, inp.shots)
-    except ValueError as e:
+    except (ValueError, RuntimeError) as e:
         return PymatchingDecodeOutput(ok=False, error_message=f"decode error: {e}")
 
     return PymatchingDecodeOutput(

@@ -41,3 +41,9 @@ def test_decode_reports_error_for_invalid_circuit():
     out = pymatching_decode(PymatchingDecodeInput(circuit="NOT_A_GATE 0\n", shots=4))
     assert out.ok is False
     assert out.error_message != ""
+
+
+def test_decode_caps_shots():
+    out = pymatching_decode(PymatchingDecodeInput(circuit=_REP, shots=10_000_000))
+    assert out.ok is False
+    assert "shots" in out.error_message.lower()
