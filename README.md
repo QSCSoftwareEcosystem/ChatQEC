@@ -129,6 +129,19 @@ Add `--full-text` to ingest the whole paper for depth on *how/why* questions:
   a GPU. Models download on first run.
 - **Abstract (last resort)** if neither path yields usable text.
 
+Add `--describe-figures` to also harvest **figures** from a full-text arXiv
+paper (**hybrid ingest**): the LaTeX chunks stay authoritative for text and
+equations, while the paper's PDF is fetched purely to persist its figure images,
+which are then vision-described and appended as searchable figure chunks — the
+same figure pipeline as `--pdf` below. Requires the `vision` extra + a GPU; on a
+host without one the harvest is skipped automatically and text ingestion is
+unaffected. The arXiv publication **year is filled in automatically** from the
+resolved paper metadata, so figure and text chunks share the same recency score.
+
+```bash
+chatqec ingest --arxiv 2408.13687 --full-text --describe-figures
+```
+
 Reserve `--full-text` for impactful papers — see
 [`scripts/reingest_arxiv_fulltext.sh`](scripts/reingest_arxiv_fulltext.sh) for a
 reproducible batch re-ingest of the foundational QEC set.
@@ -146,9 +159,19 @@ surfaced back to the user at answer time (the CLI prints a `Figures:` block;
 Streamlit renders the images inline).
 
 ```bash
-chatqec ingest --pdf Raw/book.pdf --pages 46-77 --title "Introduction to QEC" \
-  --describe-figures        # default; use --no-describe-figures to skip
+# --year drives recency scoring (see below); --describe-figures is the default
+# (pass --no-describe-figures to skip figure vision).
+chatqec ingest --pdf Raw/book.pdf --pages 46-77 \
+  --title "Introduction to QEC" --year 2013 --describe-figures
 ```
+
+> **Always pass `--year <publication-year>` for `--pdf` ingests.** Retrieval
+> scores each chunk partly by recency (a 5-year time decay), and figures inherit
+> their source's year. arXiv ingests fill the year in automatically, but a PDF
+> has no reliable year metadata — omit `--year` and the whole source (text *and*
+> figures) is scored **neutral** (0.5) instead of by its real age. If you forgot
+> it, you can patch `sources/registry.jsonl` and the store payload after the fact
+> (`meta_year`), but setting it at ingest time is the clean path.
 
 Vision description requires the optional `vision` extra and a one-time
 Hugging Face login (Llama-3.2-Vision weights are **gated** — accept the

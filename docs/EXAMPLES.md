@@ -22,7 +22,12 @@ each feature. Regenerate the stats with the snippet at the bottom.
 
 ---
 
-## Statistics (last updated 2026-07-11)
+## Statistics (last updated 2026-07-12)
+
+> **Recency backfill (2026-07-12):** publication years were backfilled onto every
+> arXiv figure chunk (275) and all 6 book PDFs (both `sources/registry.jsonl` and
+> the `meta_year` payload — 247 book chunks). Only canonical (294) and blog (109)
+> chunks remain year-less, by design (no publication year). See feature example 11.
 
 ### Canonical wiki
 
@@ -222,11 +227,20 @@ huggingface-cli login                  # accept the model license first
 ```
 
 Ingest a book chapter with figure description (default ON — use
-`--no-describe-figures` to skip):
+`--no-describe-figures` to skip). **Pass `--year`** so recency scoring and the
+figure chunks get the right publication year (see section 11):
 
 ```bash
 .venv/bin/chatqec ingest --pdf Raw/book.pdf --pages 46-77 \
-  --title "Introduction to Quantum Error Correction" --describe-figures
+  --title "Introduction to Quantum Error Correction" --year 2013 --describe-figures
+```
+
+**Full arXiv ingest _with_ figures (hybrid):** keep the high-fidelity LaTeX
+text/equations *and* harvest the paper's figures from its PDF. The year is
+filled in automatically from arXiv metadata:
+
+```bash
+.venv/bin/chatqec ingest --arxiv 2408.13687 --full-text --describe-figures
 ```
 
 Then ask for a figure by description — retrieval matches on the injected
@@ -234,6 +248,14 @@ figure caption, not just the surrounding prose:
 
 ```bash
 .venv/bin/chatqec ask "show me the surface-code lattice figure"
+```
+
+Verify figures actually came back with the answer (the CLI prints a `Figures:`
+block listing `data/figures/...` paths):
+
+```bash
+.venv/bin/chatqec ask "show me the surface-code lattice figure" 2>/dev/null \
+  | grep -iA3 "figures:"
 ```
 
 #### Re-ingesting the 6 existing PDF sources to gain figures
@@ -275,6 +297,59 @@ original text-only source in place. Use `chatqec sources list` to see both
 side by side, and `chatqec sources mark-retracted <id>` on the old
 text-only record once you've confirmed the figure-enabled re-ingest looks
 good, so retrieval doesn't surface duplicate chunks for the same chapter.
+
+### 10. Full arXiv ingest with figures — the hybrid path end to end
+
+The same figure vision pipeline works for arXiv papers, without giving up LaTeX
+text fidelity. `--full-text` keeps the LaTeX chunks (equations verbatim);
+`--describe-figures` additionally fetches the PDF, persists its figures, and
+appends vision-described figure chunks. Needs the `vision` extra + a GPU; on a
+CPU-only host the figure harvest is skipped and text ingest still succeeds.
+
+```bash
+.venv/bin/chatqec ingest --arxiv 2408.13687 --full-text --describe-figures
+# then confirm figure chunks landed for that source:
+.venv/bin/chatqec ask "describe the main architecture figure from arXiv 2408.13687" 2>/dev/null \
+  | grep -iA3 "figures:"
+```
+
+### 11. Recency — recent work ranked by a 5-year time decay
+
+Retrieval blends dense + sparse similarity with an authority-tier weight **and a
+recency term**: `compute_recency` maps a chunk's publication `year` through a
+5-year linear decay (this year → 1.0, ≥5 years old → 0.0, **unknown year →
+neutral 0.5**). Figures inherit their source's year, so a paper's figures and
+text rank consistently.
+
+Check that a source carries a year in the store (drives its recency):
+
+```bash
+python3 - <<'PY'
+from qdrant_client import QdrantClient
+c = QdrantClient(url="http://localhost:6333")
+pts,_ = c.scroll("chatqec_chunks", limit=3, with_payload=True,
+    scroll_filter={"must":[{"key":"source_id","match":{"value":"arxiv:2408.13687"}}]})
+for p in pts:
+    print(p.payload["source_id"], "year=", p.payload.get("meta_year"))
+PY
+```
+
+See the decay curve the scorer applies (given the current year):
+
+```bash
+python3 - <<'PY'
+from datetime import datetime, UTC
+from chatqec.retrieval.scoring import compute_recency
+now = datetime.now(tz=UTC)
+for y in (now.year, now.year-2, now.year-5, None):
+    print(f"year={str(y):>5} -> recency={compute_recency(year=y, now=now):.2f}")
+PY
+```
+
+> **Recency is alignment, not a blanket boost.** A 2024 figure now scores the
+> same as its paper's 2024 text; a 1997 figure scores the same (low) as its
+> 1997 text. If you ingest a PDF **without `--year`**, its whole source sits at
+> the neutral 0.5 — fine, but it won't benefit from (or be penalised by) age.
 
 ---
 
