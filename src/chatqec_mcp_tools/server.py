@@ -10,6 +10,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from chatqec_mcp_tools.tools.pymatching_decode import (
+    PymatchingDecodeInput,
+    pymatching_decode,
+)
 from chatqec_mcp_tools.tools.stim_diagram import (
     StimDiagramInput,
     stim_diagram,
@@ -34,6 +38,10 @@ def _stim_simulate_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _stim_diagram_handler(args: dict[str, Any]) -> dict[str, Any]:
     return stim_diagram(StimDiagramInput.model_validate(args)).model_dump()
+
+
+def _pymatching_decode_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return pymatching_decode(PymatchingDecodeInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -61,6 +69,15 @@ _TOOLS = [
         description="Render a Stim circuit as an SVG diagram.",
         input_schema=StimDiagramInput.model_json_schema(),
         handler=_stim_diagram_handler,
+    ),
+    ToolSpec(
+        name="pymatching_decode",
+        description=(
+            "MWPM-decode a Stim circuit (with detectors + observables) and return "
+            "the logical error rate over N shots."
+        ),
+        input_schema=PymatchingDecodeInput.model_json_schema(),
+        handler=_pymatching_decode_handler,
     ),
 ]
 
