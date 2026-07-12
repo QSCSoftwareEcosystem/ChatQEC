@@ -40,10 +40,10 @@ each feature. Regenerate the stats with the snippet at the bottom.
 
 | Metric | Value |
 |---|---|
-| Total points | **1728** |
+| Total points | **2004** |
 | Canonical (`canonical`) | 294 |
 | Book chapters (`peer_reviewed`) | 247 |
-| arXiv papers (`preprint`) | 1078 |
+| arXiv papers (`preprint`) | 1354 |
 | Blogs (`blog`) | 109 |
 | Collection status | green |
 
@@ -92,6 +92,45 @@ as decorative). ² "words" ≈ whitespace tokens, not model tokens.
 > the math-aware chunker didn't split, which risks embedding truncation. Worth a
 > follow-up on chunk-size capping. Figure-description quality is good and QEC-aware
 > (correctly names Steane circuits, Shor's 9-qubit code, stabilizer generators).
+
+### arXiv papers & hybrid figure vision (re-ingested 2026-07-11)
+
+All 17 arXiv papers were re-ingested with the **hybrid** path: the high-fidelity
+**LaTeX** text is kept (equations/code preserved) and the paper's **PDF** figures
+are additionally harvested, described, and appended as dedicated figure chunks —
+so `arxiv:<id>` provenance is preserved and equations aren't degraded.
+
+| Stage | Model / tool | Role |
+|---|---|---|
+| Text | **LaTeX source** (arXiv tarball) → math-aware chunker | equation/code-faithful body chunks |
+| Figures | **Marker** (PDF) → **Llama-3.2-11B-Vision-Instruct** | persist to `data/figures/<id>/` + describe each figure |
+| Embed | **gemini-embedding-001** (768-d) | all chunks → Qdrant |
+
+Totals: **17 papers · 1354 chunks · 275 figure chunks · 279 figures persisted.**
+Chunk words min/med/max: all 59 / 311 / 2509; figure chunks 59 / 154 / 202.
+
+| Source id | Paper (short) | Chunks | Figure chunks |
+|---|---|---:|---:|
+| `arxiv:1208.0928` | Surface codes: practical large-scale QC | 186 | 34 |
+| `arxiv:quant-ph/9705052` | Gottesman — Stabilizer Codes | 141 | 8 |
+| `arxiv:1302.3428` | QEC for Quantum Memories | 140 | 20 |
+| `arxiv:1808.02892` | A Game of Surface Codes | 117 | 47 |
+| `arxiv:quant-ph/9906129` | FTQC with constant error rate | 106 | 4 |
+| `arxiv:0905.2794` | QEC for Beginners | 100 | 24 |
+| `arxiv:2101.09310` | Fusion-based quantum computation | 75 | 13 |
+| `arxiv:2308.07915` | High-threshold low-overhead FT | 65 | 11 |
+| `arxiv:2409.17595` | Magic state cultivation | 60 | 33 |
+| `arxiv:quant-ph/0008040` | GKP — Encoding a qubit in an oscillator | 56 | 8 |
+| `arxiv:quant-ph/9707021` | Kitaev — FTQC by anyons | 51 | 12 |
+| `arxiv:1907.11157` | QEC: An Introductory Guide | 51 | 13 |
+| `arxiv:quant-ph/9601029` | Steane — Multiple-particle interference | 47 | 6 |
+| `arxiv:2107.02194` | Dynamically Generated Logical Qubits | 47 | 9 |
+| `arxiv:2201.03540` | Erasure conversion for FT | 44 | 12 |
+| `arxiv:2408.13687` | QEC below the surface-code threshold | 35 | 18 |
+| `arxiv:quant-ph/0403025` | Bravyi–Kitaev — magic-state distillation | 33 | 3 |
+
+> Hybrid figure harvest is opt-out: `chatqec ingest --arxiv <id> --full-text
+> --no-describe-figures` keeps the fast LaTeX-only behavior.
 
 ---
 
