@@ -36,7 +36,7 @@ def render(call: ToolCall) -> None:
                 st.components.v1.html(svg, height=380)
             return
 
-    if call.name == "pymatching_decode":
+    if call.name in ("pymatching_decode", "code_params"):
         try:
             data = ast.literal_eval(out)
         except (ValueError, SyntaxError):
