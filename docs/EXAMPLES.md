@@ -45,12 +45,23 @@ each feature. Regenerate the stats with the snippet at the bottom.
 
 | Metric | Value |
 |---|---|
-| Total points | **2004** |
+| Total points | **2669** |
 | Canonical (`canonical`) | 294 |
 | Book chapters (`peer_reviewed`) | 247 |
-| arXiv papers (`preprint`) | 1354 |
-| Blogs (`blog`) | 109 |
+| arXiv papers (`preprint`) | ~1900 |
+| Blogs / vendor pages (`blog`) | ~148 |
 | Collection status | green |
+
+> **v0.4 corpus expansion (2026-07-12):** +665 chunks / 16 sources — 11 more
+> fault-tolerance/QEC papers (full LaTeX + vision-described figures) and 5 QEC
+> vendor/lab pages. Papers: CSS (Calderbank-Shor), Knill-Laflamme, topological
+> memory (Dennis-Kitaev-Landahl-Preskill), color codes (Bombín-Martín-Delgado),
+> low-overhead & "not-as-costly" magic-state (Bravyi-Haah, Litinski),
+> constant-overhead FT (Gottesman), good qLDPC (Panteleev-Kalachev), and hardware
+> demos (Google surface-code scaling, Quantinuum real-time FT QEC, Harvard/QuEra
+> logical processor). Vendor pages: Google Quantum AI ×2, IBM FT roadmap,
+> Quantinuum ×2. Reproducible via `scripts/seed_corpus_v0_4.sh`. Registry: 28
+> arXiv · 6 book chapters · 10 blog/vendor · 56 canonical = 100 sources.
 
 Embedding model: **`gemini-embedding-001`** (768-d dense) + BM25 sparse, one collection.
 

@@ -37,33 +37,23 @@ cd "$(dirname "$0")/.."
 
 # -----------------------------------------------------------------------------
 # Foundational fault-tolerance / QEC papers (full LaTeX + figures)
+# Explicit arXiv ids (verified titles); --full-text needs --arxiv, not --resolve-by-title.
 # -----------------------------------------------------------------------------
-run uv run chatqec ingest --resolve-by-title "Good quantum error-correcting codes exist" \
-  --author "Calderbank Shor" --year 1996 --full-text --describe-figures
-run uv run chatqec ingest --resolve-by-title "A Theory of Quantum Error-Correcting Codes" \
-  --author "Knill Laflamme" --year 1997 --full-text --describe-figures
-run uv run chatqec ingest --resolve-by-title "Topological quantum memory" \
-  --author "Dennis Kitaev Landahl Preskill" --year 2002 --full-text --describe-figures
-run uv run chatqec ingest --resolve-by-title "Topological quantum distillation" \
-  --author "Bombin Martin-Delgado" --year 2006 --full-text --describe-figures
-run uv run chatqec ingest --resolve-by-title "Magic state distillation with low overhead" \
-  --author "Bravyi Haah" --year 2012 --full-text --describe-figures
-run uv run chatqec ingest --resolve-by-title "Magic State Distillation Not as Costly as You Think" \
-  --author "Litinski" --year 2019 --full-text --describe-figures
-run uv run chatqec ingest --resolve-by-title "Fault-tolerant quantum computation with constant overhead" \
-  --author "Gottesman" --year 2014 --full-text --describe-figures
-run uv run chatqec ingest --resolve-by-title "Asymptotically good quantum and locally testable classical LDPC codes" \
-  --author "Panteleev Kalachev" --year 2022 --full-text --describe-figures
+run uv run chatqec ingest --arxiv quant-ph/9512032 --full-text --describe-figures  # Calderbank-Shor: Good QEC codes exist (CSS)
+run uv run chatqec ingest --arxiv quant-ph/9604034 --full-text --describe-figures  # Knill-Laflamme: theory of QEC codes (KL conditions)
+run uv run chatqec ingest --arxiv quant-ph/0110143 --full-text --describe-figures  # Dennis-Kitaev-Landahl-Preskill: topological quantum memory
+run uv run chatqec ingest --arxiv quant-ph/0605138 --full-text --describe-figures  # Bombin-Martin-Delgado: topological quantum distillation (color codes)
+run uv run chatqec ingest --arxiv 1209.2426 --full-text --describe-figures         # Bravyi-Haah: magic state distillation with low overhead
+run uv run chatqec ingest --arxiv 1905.06903 --full-text --describe-figures        # Litinski: magic state distillation not as costly
+run uv run chatqec ingest --arxiv 1310.2984 --full-text --describe-figures         # Gottesman: FT computation with constant overhead
+run uv run chatqec ingest --arxiv 2111.03654 --full-text --describe-figures        # Panteleev-Kalachev: asymptotically good qLDPC
 
 # -----------------------------------------------------------------------------
 # Landmark hardware fault-tolerance demonstrations (full LaTeX + figures)
 # -----------------------------------------------------------------------------
-run uv run chatqec ingest --resolve-by-title "Suppressing quantum errors by scaling a surface code logical qubit" \
-  --author "Google Quantum AI" --year 2023 --full-text --describe-figures
-run uv run chatqec ingest --resolve-by-title "Realization of real-time fault-tolerant quantum error correction" \
-  --author "Ryan-Anderson" --year 2021 --full-text --describe-figures
-run uv run chatqec ingest --resolve-by-title "Logical quantum processor based on reconfigurable atom arrays" \
-  --author "Bluvstein Lukin" --year 2023 --full-text --describe-figures
+run uv run chatqec ingest --arxiv 2207.06431 --full-text --describe-figures        # Google Quantum AI: suppressing errors by scaling a surface-code logical qubit
+run uv run chatqec ingest --arxiv 2107.07505 --full-text --describe-figures        # Ryan-Anderson (Quantinuum): real-time fault-tolerant QEC
+run uv run chatqec ingest --arxiv 2312.03982 --full-text --describe-figures        # Bluvstein (Harvard/QuEra): logical processor on reconfigurable atom arrays
 
 # -----------------------------------------------------------------------------
 # Important QEC vendor / lab pages (HTML → blog tier; URLs verified reachable)
