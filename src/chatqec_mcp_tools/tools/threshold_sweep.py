@@ -82,8 +82,10 @@ def _render_plot(rows: list[SweepRow], family: str) -> str:
     ax.set_title(f"{family} threshold sweep")
     ax.legend()
     buf = io.StringIO()
-    fig.savefig(buf, format="svg", bbox_inches="tight")
-    plt.close(fig)
+    try:
+        fig.savefig(buf, format="svg", bbox_inches="tight")
+    finally:
+        plt.close(fig)
     return buf.getvalue()
 
 
@@ -97,7 +99,7 @@ def threshold_sweep(inp: ThresholdSweepInput) -> ThresholdSweepOutput:
 
         rows: list[SweepRow] = []
         for d in inp.distances:
-            rounds = inp.rounds or d
+            rounds = inp.rounds if inp.rounds is not None else d
             for p in inp.p_values:
                 circuit = stim.Circuit.generated(
                     _FAMILY_MAP[inp.code_family],
@@ -115,7 +117,10 @@ def threshold_sweep(inp: ThresholdSweepInput) -> ThresholdSweepOutput:
     except (ValueError, RuntimeError) as e:
         return ThresholdSweepOutput(ok=False, error_message=f"sweep error: {e}")
 
-    svg = _render_plot(rows, inp.code_family)
-    if len(svg.encode("utf-8")) > _MAX_SVG_BYTES:
-        svg = ""  # keep the table; drop an oversized plot rather than fail
+    try:
+        svg = _render_plot(rows, inp.code_family)
+        if len(svg.encode("utf-8")) > _MAX_SVG_BYTES:
+            svg = ""  # keep the table; drop an oversized plot rather than fail
+    except Exception:  # plot is best-effort; a render failure must not fail the sweep
+        svg = ""
     return ThresholdSweepOutput(ok=True, rows=rows, plot_svg=svg)

@@ -43,3 +43,18 @@ def test_sweep_rejects_even_distance_for_surface_code():
     ))
     assert out.ok is False
     assert "odd" in out.error_message.lower()
+
+
+def test_sweep_survives_plot_failure(monkeypatch):
+    import chatqec_mcp_tools.tools.threshold_sweep as ts
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("render exploded")
+
+    monkeypatch.setattr(ts, "_render_plot", _boom)
+    out = threshold_sweep(ThresholdSweepInput(
+        code_family="repetition_code", distances=[3], p_values=[0.1], shots=50,
+    ))
+    assert out.ok is True
+    assert out.plot_svg == ""
+    assert len(out.rows) == 1
