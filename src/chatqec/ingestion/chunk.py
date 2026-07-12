@@ -10,6 +10,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from chatqec.ingestion.ids import safe_source_id
+
 
 class Chunk(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -33,8 +35,7 @@ class ChunkSink:
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
     def _safe_filename(self, source_id: str) -> str:
-        # Make source-id safe for filesystem (replace : / @ with _)
-        return source_id.replace(":", "_").replace("/", "_").replace("@", "_") + ".jsonl"
+        return safe_source_id(source_id) + ".jsonl"
 
     def write_many(self, source_id: str, chunks: list[Chunk]) -> Path:
         out = self.root_dir / self._safe_filename(source_id)

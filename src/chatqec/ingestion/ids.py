@@ -123,3 +123,13 @@ def canonical_wiki_id(topic_slug: str) -> str:
             f"canonical wiki topic_slug must be kebab-case (a-z, 0-9, hyphen): {topic_slug!r}"
         )
     return f"canonical:{topic_slug}"
+
+
+def safe_source_id(source_id: str) -> str:
+    """Filesystem-safe form of a source id (chunk filenames, figure dirs).
+
+    Replaces the id separators ``:``, ``/``, ``@`` with ``_`` so ``arxiv:2408.13687``
+    and ``pdf:ab12:pp1-9`` map to stable on-disk names. Single source of truth for
+    this transform across the chunk sink, embed pipeline, and figure persistence.
+    """
+    return source_id.replace(":", "_").replace("/", "_").replace("@", "_")

@@ -12,3 +12,22 @@ def test_describer_is_a_figuredescriber():
     d = LlamaVisionDescriber(device="cpu")
     assert hasattr(d, "describe")
     assert d.model_id == "meta-llama/Llama-3.2-11B-Vision-Instruct"
+
+
+def test_available_returns_bool_without_loading_model(monkeypatch):
+    # Cheap probe: returns a plain bool and never touches the weights.
+    assert isinstance(LlamaVisionDescriber.available(), bool)
+
+
+def test_available_false_when_torch_missing(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _blocked(name, *args, **kwargs):
+        if name == "torch":
+            raise ImportError("no torch")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _blocked)
+    assert LlamaVisionDescriber.available() is False

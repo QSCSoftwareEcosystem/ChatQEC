@@ -33,6 +33,21 @@ class LlamaVisionDescriber:
         self._model: Any = None
         self._processor: Any = None
 
+    @staticmethod
+    def available() -> bool:
+        """True if a local vision backend (torch + CUDA) is usable.
+
+        Cheap probe so callers can skip expensive figure harvesting (PDF download
+        + Marker) on machines that could never run the model. Weight availability
+        is not checked here — a missing/gated checkpoint surfaces as a per-figure
+        describe failure, which callers already tolerate.
+        """
+        try:
+            import torch
+        except ImportError:
+            return False
+        return bool(torch.cuda.is_available())
+
     def _ensure_loaded(self) -> None:  # pragma: no cover - GPU + weights
         if self._model is not None:
             return

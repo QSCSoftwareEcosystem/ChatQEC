@@ -79,6 +79,7 @@ def figures_to_chunks(
     tier: str,
     title: str,
     start_index: int,
+    year: int | None = None,
 ) -> list[Chunk]:
     """Build one embeddable chunk per real figure (for the arXiv hybrid path).
 
@@ -111,7 +112,7 @@ def figures_to_chunks(
                 source_type=source_type,
                 authority_tier=tier,
                 anchor=f"#figure-{path.stem}",
-                metadata={"figures": [str(path)]},
+                metadata={"figures": [str(path)], "year": year},
             )
         )
         idx += 1

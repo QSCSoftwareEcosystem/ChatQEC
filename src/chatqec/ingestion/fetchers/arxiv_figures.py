@@ -17,12 +17,9 @@ import requests
 from chatqec.ingestion.chunk import Chunk
 from chatqec.ingestion.fetchers.pdf_marker import MarkerUnavailableError, run_marker_on_pdf
 from chatqec.ingestion.figures import FigureDescriber, figures_to_chunks
+from chatqec.ingestion.ids import safe_source_id
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
-
-
-def _safe(source_id: str) -> str:
-    return source_id.replace(":", "_").replace("/", "_").replace("@", "_")
 
 
 def fetch_arxiv_figure_chunks(
@@ -32,6 +29,7 @@ def fetch_arxiv_figure_chunks(
     title: str,
     describer: FigureDescriber,
     start_index: int,
+    year: int | None = None,
     images_root: Path = Path("data/figures"),
 ) -> list[Chunk]:  # pragma: no cover - network + subprocess + GPU
     """Download the arXiv PDF, persist its figures, and return described figure chunks.
@@ -51,9 +49,9 @@ def fetch_arxiv_figure_chunks(
     except requests.RequestException:
         return []
 
-    images_dir = images_root / _safe(source_id)
+    images_dir = images_root / safe_source_id(source_id)
     with tempfile.TemporaryDirectory() as tmp:
-        pdf_path = Path(tmp) / f"{_safe(bare_id)}.pdf"
+        pdf_path = Path(tmp) / f"{safe_source_id(bare_id)}.pdf"
         pdf_path.write_bytes(bytes(resp.content))
         try:
             # Marker persists figures into images_dir; its text output is unused.
@@ -72,4 +70,5 @@ def fetch_arxiv_figure_chunks(
         tier="preprint",
         title=title,
         start_index=start_index,
+        year=year,
     )

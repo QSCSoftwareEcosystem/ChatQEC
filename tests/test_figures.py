@@ -77,6 +77,7 @@ def test_figures_to_chunks_builds_one_chunk_per_probable_figure(tmp_path):
         tier="preprint",
         title="Some QEC Paper",
         start_index=10,
+        year=2024,
     )
     # only the real figure becomes a chunk; the decorative one is skipped
     assert len(chunks) == 1
@@ -88,6 +89,8 @@ def test_figures_to_chunks_builds_one_chunk_per_probable_figure(tmp_path):
     assert c.authority_tier == "preprint"
     assert "a surface-code lattice" in c.text
     assert c.metadata["figures"] == [str(big)]
+    # figures inherit the paper's year so recency scoring matches sibling text chunks
+    assert c.metadata["year"] == 2024
 
 
 def test_figures_to_chunks_survives_describer_failure(tmp_path):

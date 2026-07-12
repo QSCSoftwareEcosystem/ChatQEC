@@ -677,7 +677,7 @@ def _resolve_and_fetch_arxiv(
 
 
 def _arxiv_id_to_chunks(
-    arxiv_id_value: str, full_text: bool, describe_figures: bool = False
+    arxiv_id_value: str, full_text: bool, describe_figures: bool
 ) -> tuple[ArxivMetadata, list[Chunk]]:  # pragma: no cover - network + subprocess
     """Resolve an arXiv id to (metadata, chunks).
 
@@ -732,8 +732,15 @@ def _append_arxiv_figures(
     from chatqec.ingestion.fetchers.arxiv_figures import fetch_arxiv_figure_chunks
     from chatqec.ingestion.figure_vision import LlamaVisionDescriber
 
+    # Skip the (expensive) PDF download + Marker run up front on machines with no
+    # vision backend — otherwise text-only hosts pay that cost for an empty result.
+    if not LlamaVisionDescriber.available():
+        click.echo("  no local vision backend (GPU/weights) — text-only.", err=True)
+        return chunks
+
     source_id = chunks[0].source_id
     title = chunks[0].title
+    year = chunks[0].metadata.get("year")
     try:
         fig_chunks = fetch_arxiv_figure_chunks(
             arxiv_id_value,
@@ -741,6 +748,7 @@ def _append_arxiv_figures(
             title=title,
             describer=LlamaVisionDescriber(),
             start_index=len(chunks),
+            year=year if isinstance(year, int) else None,
         )
     except Exception as e:  # figure harvest must never break text ingestion
         click.echo(f"  figure harvest failed ({e}) — text-only.", err=True)
@@ -793,7 +801,7 @@ def _ingest_pdf(  # pragma: no cover - drives Marker subprocess + disk I/O
     from chatqec.ingestion.fetchers.pdf import build_pdf_metadata, text_to_chunks
     from chatqec.ingestion.fetchers.pdf_marker import run_marker_on_pdf
     from chatqec.ingestion.figures import annotate_figures
-    from chatqec.ingestion.ids import pdf_id
+    from chatqec.ingestion.ids import pdf_id, safe_source_id
 
     page_range, suffix = _marker_page_range(pages)
     md = build_pdf_metadata(
@@ -803,7 +811,7 @@ def _ingest_pdf(  # pragma: no cover - drives Marker subprocess + disk I/O
         year=year or 0,
     )
     source_id = pdf_id(md.content_sha256) + suffix
-    images_dir = Path("data/figures") / source_id.replace(":", "_").replace("/", "_")
+    images_dir = Path("data/figures") / safe_source_id(source_id)
     click.echo(f"extracting {pdf_path.name} (pages={pages or 'all'}) via Marker…", err=True)
     body = run_marker_on_pdf(pdf_path, page_range=page_range, images_dir=images_dir)
     if describe_figures:
