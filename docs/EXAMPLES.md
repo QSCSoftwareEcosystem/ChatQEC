@@ -63,6 +63,33 @@ each feature. Regenerate the stats with the snippet at the bottom.
 > Quantinuum ×2. Reproducible via `scripts/seed_corpus_v0_4.sh`. Registry: 28
 > arXiv · 6 book chapters · 10 blog/vendor · 56 canonical = 100 sources.
 
+**Try me — exercise the v0.4 additions** (all verified to retrieve the new sources).
+`retrieve` is cheap (embeddings + Qdrant + reranker, no Claude); `ask` runs the full
+cited answer:
+
+```bash
+# Foundational fault-tolerance / QEC papers now in the corpus
+.venv/bin/chatqec retrieve --query "Knill-Laflamme error correction conditions"          # [quant-ph/9604034 + canonical]
+.venv/bin/chatqec retrieve --query "topological quantum memory error threshold"          # [quant-ph/0110143 Dennis-Kitaev-Landahl-Preskill]
+.venv/bin/chatqec retrieve --query "color code topological quantum distillation"         # [quant-ph/0605138 Bombín-Martín-Delgado]
+.venv/bin/chatqec retrieve --query "why good quantum LDPC codes reduce overhead"         # [2111.03654 Panteleev-Kalachev]
+.venv/bin/chatqec ask "What is the Knill-Laflamme condition for a quantum code to correct an error set?"
+.venv/bin/chatqec ask "How does magic state distillation overhead scale, and how did Litinski cut it?"
+
+# Hardware fault-tolerance demonstrations
+.venv/bin/chatqec ask "Summarize the evidence that a surface-code logical qubit improves as distance grows."   # [2207.06431 Google]
+.venv/bin/chatqec ask "How were logical qubits run on reconfigurable neutral-atom arrays?"                     # [2312.03982 Bluvstein/QuEra]
+
+# QEC vendor / industry info (blog tier)
+.venv/bin/chatqec retrieve --query "IBM roadmap to a fault-tolerant quantum computer with qLDPC"  # [IBM qdc-2025 blog]
+.venv/bin/chatqec ask "What do Google, IBM, and Quantinuum each say about their path to fault tolerance?"
+```
+
+> Note: `retrieve` blends semantic similarity with an authority-tier weight, so a
+> curated **canonical** page can outrank a raw paper chunk on definitional queries
+> (e.g. Knill-Laflamme) — that's by design. Ask `ask` for a synthesized answer that
+> cites across both.
+
 Embedding model: **`gemini-embedding-001`** (768-d dense) + BM25 sparse, one collection.
 
 ### Source registry (`sources/registry.jsonl`)
