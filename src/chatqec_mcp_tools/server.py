@@ -22,6 +22,10 @@ from chatqec_mcp_tools.tools.stim_simulate import (
     StimSimulateInput,
     stim_simulate,
 )
+from chatqec_mcp_tools.tools.threshold_sweep import (
+    ThresholdSweepInput,
+    threshold_sweep,
+)
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,10 @@ def _stim_diagram_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _pymatching_decode_handler(args: dict[str, Any]) -> dict[str, Any]:
     return pymatching_decode(PymatchingDecodeInput.model_validate(args)).model_dump()
+
+
+def _threshold_sweep_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return threshold_sweep(ThresholdSweepInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -78,6 +86,16 @@ _TOOLS = [
         ),
         input_schema=PymatchingDecodeInput.model_json_schema(),
         handler=_pymatching_decode_handler,
+    ),
+    ToolSpec(
+        name="threshold_sweep",
+        description=(
+            "Sweep physical error rate p across code distances for a code family "
+            "(surface_code_rotated, repetition_code, color_code); MWPM-decode each "
+            "and return a logical-error-rate table plus a log-log threshold plot (SVG)."
+        ),
+        input_schema=ThresholdSweepInput.model_json_schema(),
+        handler=_threshold_sweep_handler,
     ),
 ]
 
