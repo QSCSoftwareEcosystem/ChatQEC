@@ -26,6 +26,9 @@ def render(call: ToolCall) -> None:
         except (ValueError, SyntaxError):
             data = None
         if isinstance(data, dict):
+            if not data.get("ok", True):
+                st.error(data.get("error_message") or "tool returned an error")
+                return
             if data.get("rows"):
                 st.dataframe(data["rows"])
             svg = data.get("plot_svg") or ""
