@@ -92,7 +92,6 @@ ignore = ["E501", "PLR0913"]
 "src/chatqec/ingestion/figure_vision.py" = ["PLC0415"]
 "src/chatqec/providers/huggingface.py" = ["PLC0415"]
 "src/chatqec/providers/gemini.py" = ["PLC0415"]
-"chatqec_app/components/tool_output.py" = ["PLC0415"]
 
 [tool.mypy]
 python_version = "3.11"

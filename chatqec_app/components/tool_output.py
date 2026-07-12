@@ -1,5 +1,7 @@
 """Renders a ToolCall's output: Stim diagrams as SVG, sample arrays as tables."""
 
+import ast
+
 import streamlit as st
 
 from chatqec.api import ToolCall
@@ -8,8 +10,6 @@ _MAX_INLINE_CHARS = 2000
 
 
 def render(call: ToolCall) -> None:
-    import ast
-
     st.markdown(f"**Tool:** `{call.name}`")
     st.code(str(call.input), language="json")
     out = call.output
