@@ -62,3 +62,50 @@ def test_annotate_survives_describer_failure(tmp_path):
     md = "![](f.png)"
     out, figs = annotate_figures(md, describer=Boom(), base_dir=tmp_path)
     assert out == md and figs == []
+
+
+def test_figures_to_chunks_builds_one_chunk_per_probable_figure(tmp_path):
+    from chatqec.ingestion.figures import figures_to_chunks
+
+    big = _png(tmp_path, "fig1.png", (640, 480))
+    tiny = _png(tmp_path, "logo.png", (16, 16))
+    chunks = figures_to_chunks(
+        [big, tiny],
+        describer=_FakeDescriber("a surface-code lattice"),
+        source_id="arxiv:1234.5678",
+        source_type="arxiv",
+        tier="preprint",
+        title="Some QEC Paper",
+        start_index=10,
+    )
+    # only the real figure becomes a chunk; the decorative one is skipped
+    assert len(chunks) == 1
+    c = chunks[0]
+    assert c.source_id == "arxiv:1234.5678"
+    assert c.chunk_index == 10
+    assert c.chunk_id == "arxiv:1234.5678#10"
+    assert c.source_type == "arxiv"
+    assert c.authority_tier == "preprint"
+    assert "a surface-code lattice" in c.text
+    assert c.metadata["figures"] == [str(big)]
+
+
+def test_figures_to_chunks_survives_describer_failure(tmp_path):
+    from chatqec.ingestion.figures import figures_to_chunks
+
+    _png(tmp_path, "fig1.png", (640, 480))
+
+    class Boom:
+        def describe(self, image_path):
+            raise RuntimeError("model down")
+
+    chunks = figures_to_chunks(
+        [tmp_path / "fig1.png"],
+        describer=Boom(),
+        source_id="arxiv:x",
+        source_type="arxiv",
+        tier="preprint",
+        title="T",
+        start_index=0,
+    )
+    assert chunks == []

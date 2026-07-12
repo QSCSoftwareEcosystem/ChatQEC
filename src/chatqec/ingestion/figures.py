@@ -9,6 +9,8 @@ from typing import Protocol
 
 from PIL import Image
 
+from chatqec.ingestion.chunk import Chunk
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,3 +68,51 @@ def annotate_figures(
         return f"{whole}\n\n> **Figure (auto-described):** {desc}\n"
 
     return _IMG_REF_RE.sub(_sub, md_text), figures
+
+
+def figures_to_chunks(
+    image_paths: list[Path],
+    *,
+    describer: FigureDescriber,
+    source_id: str,
+    source_type: str,
+    tier: str,
+    title: str,
+    start_index: int,
+) -> list[Chunk]:
+    """Build one embeddable chunk per real figure (for the arXiv hybrid path).
+
+    Unlike ``annotate_figures`` (which injects descriptions inline into Marker
+    markdown), this emits *dedicated* figure chunks appended to a source's LaTeX
+    text chunks: each carries the auto-description as searchable text and the
+    persisted image path in ``metadata["figures"]``. ``start_index`` is the next
+    free ``chunk_index`` after the source's existing chunks. Decorative images,
+    empty descriptions, and describer failures are skipped (never raised).
+    """
+    chunks: list[Chunk] = []
+    idx = start_index
+    for path in image_paths:
+        if not is_probable_figure(path):
+            continue
+        try:
+            desc = describer.describe(path).strip()
+        except Exception:  # never break ingestion on a model error
+            logger.warning("figure describe failed for %s", path, exc_info=True)
+            continue
+        if not desc:
+            continue
+        chunks.append(
+            Chunk(
+                chunk_id=f"{source_id}#{idx}",
+                source_id=source_id,
+                chunk_index=idx,
+                text=f"Figure (auto-described): {desc}",
+                title=title,
+                source_type=source_type,
+                authority_tier=tier,
+                anchor=f"#figure-{path.stem}",
+                metadata={"figures": [str(path)]},
+            )
+        )
+        idx += 1
+    return chunks

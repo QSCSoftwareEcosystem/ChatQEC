@@ -677,12 +677,15 @@ def _resolve_and_fetch_arxiv(
 
 
 def _arxiv_id_to_chunks(
-    arxiv_id_value: str, full_text: bool
+    arxiv_id_value: str, full_text: bool, describe_figures: bool = False
 ) -> tuple[ArxivMetadata, list[Chunk]]:  # pragma: no cover - network + subprocess
     """Resolve an arXiv id to (metadata, chunks).
 
     Default: abstract only. With ``full_text``: LaTeX source, then an isolated
-    Marker PDF extraction, then abstract — whichever succeeds first.
+    Marker PDF extraction, then abstract — whichever succeeds first. With
+    ``describe_figures`` (hybrid), the high-fidelity text is kept and the paper's
+    PDF figures are additionally extracted, vision-described, and appended as
+    dedicated figure chunks.
     """
     from chatqec.ingestion.fetchers.arxiv import fetch_arxiv_by_id
 
@@ -699,24 +702,52 @@ def _arxiv_id_to_chunks(
     from chatqec.ingestion.fetchers import arxiv_source
     from chatqec.ingestion.fetchers.pdf_marker import MarkerUnavailableError
 
+    md_id: ArxivMetadata
+    chunks: list[Chunk]
     try:
         md_id, chunks = arxiv_source.fetch_arxiv_fulltext(
             arxiv_id_value, target_tokens=512, overlap_tokens=64
         )
         click.echo(f"  full-text LaTeX source → {len(chunks)} chunks", err=True)
-        return md_id, chunks
     except arxiv_source.SourceUnavailableError:
         click.echo("  no LaTeX source — extracting the PDF with Marker (isolated)...", err=True)
+        try:
+            md_id, chunks = arxiv_source.fetch_arxiv_pdf_fulltext(
+                arxiv_id_value, target_tokens=512, overlap_tokens=64
+            )
+            click.echo(f"  Marker PDF extraction → {len(chunks)} chunks", err=True)
+        except (MarkerUnavailableError, OSError) as e:
+            click.echo(f"  Marker unavailable ({e}) — falling back to abstract only.", err=True)
+            return _abstract()
 
+    if describe_figures and chunks:
+        chunks = _append_arxiv_figures(arxiv_id_value, chunks)
+    return md_id, chunks
+
+
+def _append_arxiv_figures(
+    arxiv_id_value: str, chunks: list[Chunk]
+) -> list[Chunk]:  # pragma: no cover - network + subprocess + GPU
+    """Harvest + vision-describe the paper's PDF figures and append them (hybrid)."""
+    from chatqec.ingestion.fetchers.arxiv_figures import fetch_arxiv_figure_chunks
+    from chatqec.ingestion.figure_vision import LlamaVisionDescriber
+
+    source_id = chunks[0].source_id
+    title = chunks[0].title
     try:
-        md_id, chunks = arxiv_source.fetch_arxiv_pdf_fulltext(
-            arxiv_id_value, target_tokens=512, overlap_tokens=64
+        fig_chunks = fetch_arxiv_figure_chunks(
+            arxiv_id_value,
+            source_id=source_id,
+            title=title,
+            describer=LlamaVisionDescriber(),
+            start_index=len(chunks),
         )
-        click.echo(f"  Marker PDF extraction → {len(chunks)} chunks", err=True)
-        return md_id, chunks
-    except (MarkerUnavailableError, OSError) as e:
-        click.echo(f"  Marker unavailable ({e}) — falling back to abstract only.", err=True)
-        return _abstract()
+    except Exception as e:  # figure harvest must never break text ingestion
+        click.echo(f"  figure harvest failed ({e}) — text-only.", err=True)
+        return chunks
+    if fig_chunks:
+        click.echo(f"  + {len(fig_chunks)} vision-described figure chunks", err=True)
+    return chunks + fig_chunks
 
 
 def _collect_watchlist_candidates(wl: Watchlist) -> list[tuple[str, str, list[str], int | None]]:
@@ -994,7 +1025,7 @@ def ingest(
             "Per spec §7.4 prefer --resolve-by-title for LLM-suggested papers.",
             err=True,
         )
-        md_id, chunks = _arxiv_id_to_chunks(arxiv_id_value, full_text)
+        md_id, chunks = _arxiv_id_to_chunks(arxiv_id_value, full_text, describe_figures)
         source_id = chunks[0].source_id
         sink.write_many(source_id, chunks)
         reg.append(
