@@ -45,6 +45,15 @@ def test_sweep_rejects_even_distance_for_surface_code():
     assert "odd" in out.error_message.lower()
 
 
+def test_sweep_color_code_decodes():
+    out = threshold_sweep(ThresholdSweepInput(
+        code_family="color_code", distances=[3], p_values=[0.01], shots=50,
+    ))
+    assert out.ok is True
+    assert len(out.rows) == 1
+    assert 0.0 <= out.rows[0].logical_error_rate <= 0.5
+
+
 def test_sweep_survives_plot_failure(monkeypatch):
     import chatqec_mcp_tools.tools.threshold_sweep as ts
 
