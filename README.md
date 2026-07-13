@@ -3,8 +3,10 @@
 An open-source research assistant for **Quantum Error Correction**.
 
 Ask QEC questions; get cited answers grounded in a curated corpus of papers,
-textbooks, GitHub repos, and lecture transcripts. Run small [Stim] circuits in
-a sandbox. Use it as a Python library, a CLI, or a Streamlit web app.
+textbook chapters, QEC vendor/lab pages, and a hand-curated canonical wiki.
+Run small [Stim] circuits in a sandbox. Use it as a Python library, a CLI, or a
+Streamlit web app. (GitHub-repo and video-transcript fetchers exist but the
+corpus isn't seeded with them yet — see [Roadmap](#roadmap).)
 
 [Stim]: https://github.com/quantumlib/Stim
 
@@ -416,6 +418,11 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
   below-threshold-scaling, mid-circuit-measurement) → 60 canonical pages
 - ✅ Stim-backed `code_params` tool
 - ✅ Optional Tavily web-search fallback (rerank-gated, calibrated threshold 0.4)
+
+**v0.5 — more source types:**
+- Populate the corpus with **code repos** and **video/lecture transcripts** —
+  the GitHub and YouTube fetchers already exist (`src/chatqec/ingestion/fetchers/`)
+  and the watchlist tracks both; the registry just isn't seeded with them yet.
 
 **v1.0 — production:**
 - Real `from_config()` deploy flow with secret management
