@@ -48,20 +48,45 @@ each feature. Regenerate the stats with the snippet at the bottom.
 | Total points | **2669** |
 | Canonical (`canonical`) | 294 |
 | Book chapters (`peer_reviewed`) | 247 |
-| arXiv papers (`preprint`) | ~1900 |
-| Blogs / vendor pages (`blog`) | ~148 |
+| arXiv papers (`preprint`) | 1980 |
+| Blogs / vendor pages (`blog`) | 148 |
 | Collection status | green |
 
-> **v0.4 corpus expansion (2026-07-12):** +665 chunks / 16 sources — 11 more
-> fault-tolerance/QEC papers (full LaTeX + vision-described figures) and 5 QEC
-> vendor/lab pages. Papers: CSS (Calderbank-Shor), Knill-Laflamme, topological
-> memory (Dennis-Kitaev-Landahl-Preskill), color codes (Bombín-Martín-Delgado),
-> low-overhead & "not-as-costly" magic-state (Bravyi-Haah, Litinski),
-> constant-overhead FT (Gottesman), good qLDPC (Panteleev-Kalachev), and hardware
-> demos (Google surface-code scaling, Quantinuum real-time FT QEC, Harvard/QuEra
-> logical processor). Vendor pages: Google Quantum AI ×2, IBM FT roadmap,
-> Quantinuum ×2. Reproducible via `scripts/seed_corpus_v0_4.sh`. Registry: 28
-> arXiv · 6 book chapters · 10 blog/vendor · 56 canonical = 100 sources.
+Exact tier counts via Qdrant `points/count` (filter on `authority_tier`): canonical
+294 · peer_reviewed 247 · preprint 1980 · blog 148 = **2669**.
+
+### v0.4 corpus detail (added 2026-07-12)
+
+**+665 chunks / 16 sources**, reproducible via `scripts/seed_corpus_v0_4.sh`.
+Registry now: **28 arXiv · 6 book chapters · 10 blog/vendor · 56 canonical = 100 sources.**
+
+**11 fault-tolerance / QEC papers** — full LaTeX (Marker-PDF fallback where arXiv has
+no source) + local Llama-3.2-Vision figure descriptions (626 text+figure chunks, 135
+figures total):
+
+| arXiv id | Paper | Chunks | Figures |
+|---|---|---:|---:|
+| `quant-ph/9512032` | Calderbank-Shor — Good QEC codes exist (CSS) | 17 | 1 |
+| `quant-ph/9604034` | Knill-Laflamme — A theory of QEC codes | 35 | 1 |
+| `quant-ph/0110143` | Dennis-Kitaev-Landahl-Preskill — Topological quantum memory | 119 | 22 |
+| `quant-ph/0605138` | Bombín-Martín-Delgado — Topological quantum distillation (color codes) | 14 | 4 |
+| `1209.2426` | Bravyi-Haah — Magic state distillation with low overhead | 25 | 3 |
+| `1905.06903` | Litinski — Magic State Distillation: Not as Costly as You Think | 76 | 28 |
+| `1310.2984` | Gottesman — FT computation with constant overhead | 43 | 3 |
+| `2111.03654` | Panteleev-Kalachev — Asymptotically good qLDPC codes | 58 | 6 |
+| `2207.06431` | Google Quantum AI — Suppressing errors by scaling a surface-code logical qubit | 108 | 42 |
+| `2107.07505` | Ryan-Anderson (Quantinuum) — Real-time fault-tolerant QEC | 37 | 10 |
+| `2312.03982` | Bluvstein (Harvard/QuEra) — Logical processor on reconfigurable atom arrays | 94 | 15 |
+
+**5 QEC vendor / lab pages** (HTML → `blog` tier, 39 chunks):
+
+| Source id | Vendor page | Chunks |
+|---|---|---:|
+| `url:14197f44` | Google Quantum AI — Making quantum error correction work (Willow) | 6 |
+| `url:84fa74b6` | Google — Developer's guide to error correction (surface code) | 4 |
+| `url:42acc910` | IBM Quantum — Scaling for quantum advantage (Starling FT roadmap, qLDPC) | 8 |
+| `url:529d2782` | Quantinuum — Unlocking a more efficient path to fault tolerance | 12 |
+| `url:282bbc44` | Quantinuum + CU Boulder — Making QEC easier | 9 |
 
 **Try me — exercise the v0.4 additions** (all verified to retrieve the new sources).
 `retrieve` is cheap (embeddings + Qdrant + reranker, no Claude); `ask` runs the full
@@ -76,14 +101,30 @@ cited answer:
 .venv/bin/chatqec ask "What is the Knill-Laflamme condition for a quantum code to correct an error set?"
 .venv/bin/chatqec ask "How does magic state distillation overhead scale, and how did Litinski cut it?"
 
+# Magic-state distillation & overhead
+.venv/bin/chatqec ask "How does magic state distillation overhead scale, and how did Litinski cut it?"         # [1905.06903 Litinski, 1209.2426 Bravyi-Haah]
+.venv/bin/chatqec ask "What does 'fault tolerance with constant overhead' mean and how is it achieved?"        # [1310.2984 Gottesman]
+.venv/bin/chatqec ask "Why do good quantum LDPC codes matter for the resource cost of fault tolerance?"        # [2111.03654 Panteleev-Kalachev]
+
 # Hardware fault-tolerance demonstrations
 .venv/bin/chatqec ask "Summarize the evidence that a surface-code logical qubit improves as distance grows."   # [2207.06431 Google]
 .venv/bin/chatqec ask "How were logical qubits run on reconfigurable neutral-atom arrays?"                     # [2312.03982 Bluvstein/QuEra]
+.venv/bin/chatqec ask "How does real-time fault-tolerant error correction work on a trapped-ion machine?"      # [2107.07505 Quantinuum]
 
 # QEC vendor / industry info (blog tier)
-.venv/bin/chatqec retrieve --query "IBM roadmap to a fault-tolerant quantum computer with qLDPC"  # [IBM qdc-2025 blog]
+.venv/bin/chatqec retrieve --query "IBM roadmap to a fault-tolerant quantum computer with qLDPC"      # [IBM qdc-2025 blog]
+.venv/bin/chatqec retrieve --query "Google Willow surface code error correction below threshold"      # [Google Willow blog]
+.venv/bin/chatqec ask "What is Quantinuum's stated path to fault tolerance and their logical-qubit encoding rate?"   # [Quantinuum blogs]
 .venv/bin/chatqec ask "What do Google, IBM, and Quantinuum each say about their path to fault tolerance?"
 ```
+
+> **Verified live (2026-07-12):** the Knill-Laflamme, neutral-atom (`2312.03982`),
+> and cross-vendor `ask` queries were run end-to-end and returned cited answers at
+> `confidence: high`, drawing on the newly-ingested sources (e.g. the neutral-atom
+> answer grounded in `arxiv:2312.03982`; the cross-vendor answer cited the new
+> Quantinuum vendor pages). On broad multi-entity questions, top-K retrieval can be
+> dominated by whichever source has the most/closest chunks — narrower queries pull
+> each vendor cleanly (Google `0.88`, IBM surfaced for its roadmap query).
 
 > Note: `retrieve` blends semantic similarity with an authority-tier weight, so a
 > curated **canonical** page can outrank a raw paper chunk on definitional queries
