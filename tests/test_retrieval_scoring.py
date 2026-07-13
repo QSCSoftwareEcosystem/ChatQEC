@@ -78,6 +78,10 @@ def test_score_sorts_results_desc():
     assert scored[-1].chunk_id == "c_low"
 
 
+def test_web_tier_ranks_below_blog():
+    assert TIER_WEIGHTS["web"] < TIER_WEIGHTS["blog"]
+
+
 def test_unknown_tier_falls_back_to_blog_weight():
     cands = [
         Candidate(

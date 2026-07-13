@@ -14,6 +14,7 @@ TIER_WEIGHTS: dict[str, float] = {
     "preprint": 0.7,
     "blog": 0.5,
     "video": 0.5,
+    "web": 0.3,
 }
 
 _RECENCY_WINDOW_YEARS = 5

@@ -5,7 +5,7 @@ End-to-end: classifier -> rewriter -> retriever -> synthesizer.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from chatqec.api_types import Answer, Citation, ImageAttachment, StreamChunk, ToolCall
@@ -18,6 +18,7 @@ from chatqec.ingestion.ids import canonical_wiki_id
 from chatqec.retrieval.canonical_injector import CanonicalIndex
 from chatqec.retrieval.figure_loader import load_chunk_figures
 from chatqec.retrieval.hybrid import HybridRetriever, RetrievalResult, RetrievedChunk
+from chatqec.retrieval.web_search import WebResult, build_web_chunks
 from chatqec.trace import trace
 
 __all__ = [
@@ -93,6 +94,10 @@ class ChatQEC:
         memory: ConversationMemory | None = None,
         top_k: int = 8,
         candidate_k: int = 50,
+        web_searcher: Callable[[str, int], list[WebResult]] | None = None,
+        web_fallback: bool = False,
+        web_fallback_threshold: float = 0.45,
+        web_k: int = 5,
     ) -> None:
         self.classifier = classifier
         self.rewriter = rewriter
@@ -102,6 +107,10 @@ class ChatQEC:
         self.memory = memory or ConversationMemory()
         self.top_k = top_k
         self.candidate_k = candidate_k
+        self.web_searcher = web_searcher
+        self.web_fallback = web_fallback
+        self.web_fallback_threshold = web_fallback_threshold
+        self.web_k = web_k
 
     def _canonical_chunks(self, matched_topics: list[str]) -> list[RetrievedChunk]:
         """Build force-injected canonical chunks for the matched topic slugs.
@@ -129,6 +138,17 @@ class ChatQEC:
                 )
             )
         return chunks
+
+    def _web_chunks(self, question: str, retrieval: RetrievalResult) -> list[RetrievedChunk]:
+        """Gate-guarded web-search fallback chunks (empty unless enabled + weak retrieval)."""
+        searcher = self.web_searcher if self.web_fallback else None
+        return build_web_chunks(
+            question,
+            retrieval=retrieval,
+            web_searcher=searcher,
+            threshold=self.web_fallback_threshold,
+            web_k=self.web_k,
+        )
 
     def _caption(self, images: list[ImageAttachment]) -> str:
         """Describe attached images for retrieval (empty string if none)."""
@@ -171,11 +191,12 @@ class ChatQEC:
             matched_topics=retrieval.matched_topics,
             injected=[c.source_id for c in canonical_chunks],
         )
+        web_chunks = self._web_chunks(question, retrieval)
         figure_images = images or load_chunk_figures(retrieval.chunks)
         figure_paths = [] if images else _chunk_figure_paths(retrieval.chunks)
         result = self.synthesizer.synthesize(
             question=question,
-            retrieved=retrieval.chunks,
+            retrieved=retrieval.chunks + web_chunks,
             canonical_chunks=canonical_chunks,
             history=self.memory.recent(n=_HISTORY_TURNS),
             images=figure_images,
@@ -241,11 +262,12 @@ class ChatQEC:
             matched_topics=retrieval.matched_topics,
             injected=[c.source_id for c in canonical_chunks],
         )
+        web_chunks = self._web_chunks(question, retrieval)
         figure_images = images or load_chunk_figures(retrieval.chunks)
         full_text = ""
         for delta in self.synthesizer.synthesize_stream(
             question=question,
-            retrieved=retrieval.chunks,
+            retrieved=retrieval.chunks + web_chunks,
             canonical_chunks=canonical_chunks,
             history=self.memory.recent(n=_HISTORY_TURNS),
             images=figure_images,
