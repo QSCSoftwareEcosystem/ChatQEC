@@ -1,5 +1,6 @@
 """Chat page — streaming Q&A with cited evidence and tool output rendering."""
 
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -21,8 +22,9 @@ st.title("Chat")
 verbose = st.sidebar.toggle(
     "🔍 Verbose trace",
     value=False,
-    help="Show every pipeline step (classify, rewrite, retrieve, synthesize, "
-    "model/provider, MCP tool calls) with full payloads.",
+    help="Write every pipeline step (classify, rewrite, retrieve, synthesize, "
+    "model/provider, MCP tool calls) with full payloads to a timestamped file "
+    "under logs/ — same as the CLI --log-file. Not shown inline.",
 )
 
 # --- session state ---
@@ -107,10 +109,17 @@ if submission and (question or uploaded):
         for im in images:
             st.image(im.data, width=240)
 
-    # Capture the execution trace into a buffer (not stderr) when verbose is on.
-    trace_buf: list[str] = []
+    # Write the execution trace to a logs/ file (same as the CLI), not the UI.
+    # One timestamped file per Streamlit session; each question appends to it.
+    trace_log_path: Path | None = None
     if verbose:
-        enable_trace(sink=trace_buf.append, to_stderr=False)
+        if "trace_log_path" not in st.session_state:
+            st.session_state["trace_log_path"] = (
+                f"logs/chatqec-trace-{datetime.now():%Y%m%d-%H%M%S}.log"
+            )
+        trace_log_path = enable_trace(
+            True, log_file=st.session_state["trace_log_path"], to_stderr=False
+        )
     else:
         disable_trace()
 
@@ -130,8 +139,8 @@ if submission and (question or uploaded):
 
     if verbose:
         disable_trace()
-        with st.expander("🔍 Execution trace", expanded=True):
-            st.code("\n".join(trace_buf) or "(no trace recorded)", language="text")
+        if trace_log_path is not None:
+            st.caption(f"🔍 Execution trace written to `{trace_log_path}`")
     st.session_state.messages.append(
         {
             "role": "assistant",
