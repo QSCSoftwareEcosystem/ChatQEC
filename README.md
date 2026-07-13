@@ -67,18 +67,40 @@ CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_
 
 Four pages: **Chat** (streaming Q&A with citation cards), **Sources**
 (filterable registry view), **Watchlist** (what we track), **About**. Set
-`CHATQEC_MCP_SERVER` to let the Chat page run Stim simulations (off by default).
+`CHATQEC_MCP_SERVER` to let the Chat page run the QEC tools (off by default).
+
+> **`CHATQEC_MCP_SERVER` must be set _before_ you launch Streamlit, and the app
+> restarted** to pick it up — the bot is built once and cached (`@st.cache_resource`).
+> Without it the Chat page has no tools, so the model answers from the corpus and
+> says it *"couldn't invoke the live simulation tools."* Make sure the sibling is
+> installed/up to date first (see [Enable Stim execution](#enable-stim-execution)).
 
 ### Enable Stim execution
 
 Install the sibling MCP server and point `--mcp-server` at it:
 
 ```bash
-uv tool install chatqec-mcp-tools
+uv tool install chatqec-mcp-tools          # published build; or from a local checkout:
+uv tool install --force ~/chatqec-mcp-tools
+
 uv run chatqec ask --mcp-server chatqec-mcp-tools \
   "Simulate a 3-qubit bit-flip repetition-code syndrome circuit in Stim for 2000 \
    shots and report the syndrome distribution."
 ```
+
+> **The installed command is a snapshot.** `uv tool install` freezes the server at
+> install time, so **after adding or changing tools in the sibling repo you must
+> reinstall** or the new tools won't be exposed:
+> ```bash
+> uv tool install --force ~/chatqec-mcp-tools   # re-expose e.g. pymatching_decode, code_params
+> ```
+> Check what tools the model can actually see:
+> ```bash
+> uv run python -c "from chatqec.cli import _build_chatqec; \
+>   b=_build_chatqec(mcp_server='chatqec-mcp-tools'); \
+>   print([t.name for t in b.synthesizer.mcp_adapter.client.list_tools()])"
+> # → ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params']
+> ```
 
 The model **decides on its own** when a question needs simulation and calls the
 MCP tools — `stim_simulate`, `stim_diagram`, `pymatching_decode`,
