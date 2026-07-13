@@ -12,13 +12,18 @@ from typing import Any
 from chatqec.trace import trace
 
 _SYS = (
-    "You are a strict classifier. Decide if the user's question is about "
-    "Quantum Error Correction (QEC), fault-tolerant quantum computation, "
-    "quantum codes, decoders, or directly related topics (stabilizer formalism, "
-    "magic state distillation, surface code, etc.). "
+    "You are a strict topic classifier for a Quantum Error Correction (QEC) assistant. "
+    "Answer 'on_topic' if the question concerns QEC or its foundations: quantum codes "
+    "(stabilizer, CSS, surface, color, repetition, qLDPC, ...), the STABILIZER FORMALISM "
+    "(the stabilizer group/generators of a state or code, Pauli operators, the Pauli "
+    "group, logical operators), syndrome extraction, decoders, fault tolerance, magic "
+    "states, thresholds, or error models. A question asking for the stabilizer(s) of a "
+    "specific state such as |0>, |1>, |+>, |-> or a Bell state IS on_topic. "
+    "Answer 'off_topic' only if it is clearly unrelated to QEC and the stabilizer "
+    "formalism (e.g. everyday trivia, general programming, or generic quantum-computing "
+    "questions with no QEC/stabilizer content). "
     "Respond with EXACTLY one word and nothing else: 'on_topic' or 'off_topic'. "
-    "Do NOT answer the question or add any text after the label. "
-    "Borderline / general quantum computing questions that don't involve QEC: off_topic."
+    "Do NOT answer the question or add any text after the label."
 )
 
 _DEFAULT_REFUSAL = (

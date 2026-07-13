@@ -58,6 +58,18 @@ def test_classifier_off_topic_when_label_precedes_content():
     assert clf.classify("best pasta recipe").on_topic is False
 
 
+def test_classifier_prompt_covers_stabilizer_formalism():
+    # Regression guard: Haiku consistently mis-refused "stabilizer of state |1>"
+    # because the prompt under-specified the stabilizer formalism. The system prompt
+    # sent to the API must explicitly cover it (incl. the stabilizer of a state).
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    clf.classify("what is the stabilizer of state |1>")
+    system = client.messages.create.call_args.kwargs["system"].lower()
+    assert "stabilizer formalism" in system
+    assert "|1>" in system  # a specific single-qubit state is named as on_topic
+
+
 def test_classifier_includes_model_name_in_api_call():
     client = _make_anthropic_with_response("on_topic")
     clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
