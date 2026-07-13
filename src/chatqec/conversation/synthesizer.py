@@ -37,14 +37,24 @@ _HIGH_CONFIDENCE_CITATIONS = 3
 _MIN_CITATIONS_FOR_MEDIUM = 1
 
 
-def _confidence_from_citations(n_citations: int, *, has_context: bool) -> str:
+def _confidence_from_citations(citations: list[Citation], *, has_context: bool) -> str:
+    """Score confidence from corpus citations only.
+
+    Web-sourced citations (``source_id`` prefixed ``"web:"``) never count toward
+    "high" confidence — they're ephemeral, unreviewed search results rather than
+    curated corpus evidence, so an answer built solely on them should read as at
+    most "medium".
+    """
     if not has_context:
         return "low"
-    if n_citations >= _HIGH_CONFIDENCE_CITATIONS:
+    n_corpus = sum(1 for c in citations if not c.source_id.startswith("web:"))
+    if n_corpus >= _HIGH_CONFIDENCE_CITATIONS:
         return "high"
-    if n_citations >= _MIN_CITATIONS_FOR_MEDIUM:
+    if n_corpus >= _MIN_CITATIONS_FOR_MEDIUM:
         return "medium"
-    return "low"
+    # No (or too few) corpus citations. Cap at "medium" if there's at least one
+    # citation at all (e.g. web-only evidence) rather than claiming "high".
+    return "medium" if citations else "low"
 
 
 class Synthesizer:
@@ -145,7 +155,7 @@ class Synthesizer:
         return SynthesisResult(
             text=strip_trailing_sources(text),
             citations=citations,
-            confidence=_confidence_from_citations(len(citations), has_context=bool(all_context)),
+            confidence=_confidence_from_citations(citations, has_context=bool(all_context)),
             input_tokens=usage_in,
             output_tokens=usage_out,
             tool_invocations=invocations,

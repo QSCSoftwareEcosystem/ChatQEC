@@ -47,6 +47,10 @@ def test_retrieve_query_prints_table(monkeypatch):
         def rerank(self, q, cands, *, top_k):
             return list(range(min(top_k, len(cands))))
 
+        def rerank_scored(self, q, cands, *, top_k):
+            idx = list(range(min(top_k, len(cands))))
+            return [(i, 1.0 - 0.01 * pos) for pos, i in enumerate(idx)]
+
     monkeypatch.setattr("chatqec.cli._make_embedder", lambda cfg: _StubEmb())
     monkeypatch.setattr("chatqec.cli._make_sparse", _StubSparse)
     monkeypatch.setattr("chatqec.cli._make_store", lambda url, coll: store)

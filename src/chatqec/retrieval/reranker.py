@@ -29,12 +29,16 @@ class CrossEncoderReranker:
         return self._model
 
     def rerank(self, query: str, candidates: list[str], *, top_k: int) -> list[int]:
+        return [i for i, _ in self.rerank_scored(query, candidates, top_k=top_k)]
+
+    def rerank_scored(
+        self, query: str, candidates: list[str], *, top_k: int
+    ) -> list[tuple[int, float]]:
         if not candidates:
             return []
         model = self._model_or_load()
-        pairs = [[query, c] for c in candidates]
-        scores: np.ndarray = model.predict(pairs)
+        scores = model.predict([[query, c] for c in candidates])
         top_k = min(top_k, len(candidates))
         # Indices of top_k highest scores, sorted descending
         order = np.argsort(-scores)[:top_k]
-        return [int(i) for i in order]
+        return [(int(i), float(scores[i])) for i in order]

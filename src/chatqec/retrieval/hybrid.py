@@ -147,7 +147,9 @@ class HybridRetriever:
         texts = [str(hits_by_chunk[s.chunk_id].get("text", "")) for s in top_cands]
         # Use first query for reranking (caller can pass merged query)
         rerank_query = queries[0]
-        top_idx = self.reranker.rerank(rerank_query, texts, top_k=top_k)
+        reranked = self.reranker.rerank_scored(rerank_query, texts, top_k=top_k)
+        top_idx = [i for i, _ in reranked]
+        top_rerank = reranked[0][1] if reranked else 0.0
         trace("retriever.reranked", rerank_query=rerank_query, top_idx=list(top_idx))
         retrieved = [
             RetrievedChunk(
@@ -172,5 +174,6 @@ class HybridRetriever:
                 "candidates_considered": len(candidates),
                 "after_scoring": len(top_cands),
                 "after_rerank": len(retrieved),
+                "top_rerank_score": float(top_rerank),
             },
         )

@@ -19,6 +19,19 @@ def _ctx(i: int) -> RetrievedChunk:
     )
 
 
+def _web_ctx(i: int) -> RetrievedChunk:
+    sid = f"web:{i:08x}"
+    return RetrievedChunk(
+        chunk_id=f"{sid}#0",
+        source_id=sid,
+        text=f"web chunk {i}",
+        title=f"W{i}",
+        authority_tier="web",
+        score=0.5,
+        payload={"url": f"https://web.example.com/{i}"},
+    )
+
+
 def _client_with_text(text: str):
     client = MagicMock()
     msg = MagicMock()
@@ -86,6 +99,19 @@ def test_synthesize_confidence_based_on_citation_count():
     s_low = Synthesizer(client=client_low, model="claude-sonnet-4-6")
     res = s_low.synthesize(question="q", retrieved=[_ctx(0)], canonical_chunks=[], history=[])
     assert res.confidence == "low"
+
+
+def test_synthesize_web_only_citations_do_not_reach_high_confidence():
+    client = _client_with_text("A [^1]. B [^2]. C [^3].")
+    synth = Synthesizer(client=client, model="claude-sonnet-4-6")
+    result = synth.synthesize(
+        question="q",
+        retrieved=[_web_ctx(0), _web_ctx(1), _web_ctx(2)],
+        canonical_chunks=[],
+        history=[],
+    )
+    assert len(result.citations) == 3
+    assert result.confidence != "high"
 
 
 def test_synthesize_with_adapter_runs_tool_loop():

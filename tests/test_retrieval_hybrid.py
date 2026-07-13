@@ -32,6 +32,14 @@ class _StubReranker:
         # Identity rerank: return the candidates in original order
         return list(range(min(top_k, len(candidates))))
 
+    def rerank_scored(
+        self, query: str, candidates: list[str], *, top_k: int
+    ) -> list[tuple[int, float]]:
+        self.calls += 1
+        idx = list(range(min(top_k, len(candidates))))
+        # Descending fake scores so the first index is the "best" one.
+        return [(i, 0.9 - 0.1 * pos) for pos, i in enumerate(idx)]
+
 
 def _seed_store() -> ChatQecStore:
     store = ChatQecStore(
@@ -134,6 +142,19 @@ def test_retrieve_reranker_called_once_per_query():
     rr.retrieve(queries=["q1", "q2"], top_k=2, candidate_k=10)
     # Reranker is applied once over the union of all queries' candidates
     assert reranker.calls == 1
+
+
+def test_retrieve_debug_carries_top_rerank_score():
+    store = _seed_store()
+    rr = HybridRetriever(
+        store=store,
+        embedder=_StubEmb(),
+        sparse_encoder=_StubSparse(),
+        reranker=_StubReranker(),
+        canonical_index=_canon_index_with_surface_code(),
+    )
+    result = rr.retrieve(queries=["surface code"], top_k=2, candidate_k=10)
+    assert result.debug["top_rerank_score"] == 0.9
 
 
 def test_retrieve_empty_store_returns_empty():

@@ -83,17 +83,20 @@ def _stub_searcher(_q, _k):
     return [WebResult(title="W", url="https://ex.com/x", content="web text", score=0.5)]
 
 
-def _result(chunks, topics):
-    # RetrievalResult(chunks, matched_topics, debug={}) — debug defaults, verified.
-    return RetrievalResult(chunks=chunks, matched_topics=topics)
+def _result(chunks, topics, top_rerank_score=0.6):
+    # RetrievalResult(chunks, matched_topics, debug={...}) — the gate reads the
+    # ABSOLUTE cross-encoder rerank score from debug, not the normalized chunk score.
+    return RetrievalResult(
+        chunks=chunks, matched_topics=topics, debug={"top_rerank_score": top_rerank_score}
+    )
 
 
 def test_gate_searches_when_retrieval_is_weak():
     out = build_web_chunks(
         "q",
-        retrieval=_result([_chunk(0.2)], []),
+        retrieval=_result([_chunk(0.2)], [], top_rerank_score=0.05),
         web_searcher=_stub_searcher,
-        threshold=0.45,
+        threshold=0.2,
         web_k=5,
     )
     assert len(out) == 1
@@ -104,7 +107,11 @@ def test_gate_searches_when_retrieval_is_weak():
 
 def test_gate_searches_when_no_chunks():
     out = build_web_chunks(
-        "q", retrieval=_result([], []), web_searcher=_stub_searcher, threshold=0.45, web_k=5
+        "q",
+        retrieval=_result([], [], top_rerank_score=0.0),
+        web_searcher=_stub_searcher,
+        threshold=0.2,
+        web_k=5,
     )
     assert len(out) == 1
 
@@ -112,9 +119,9 @@ def test_gate_searches_when_no_chunks():
 def test_gate_skips_when_retrieval_is_strong():
     out = build_web_chunks(
         "q",
-        retrieval=_result([_chunk(0.8)], []),
+        retrieval=_result([_chunk(0.8)], [], top_rerank_score=0.6),
         web_searcher=_stub_searcher,
-        threshold=0.45,
+        threshold=0.2,
         web_k=5,
     )
     assert out == []
@@ -123,16 +130,73 @@ def test_gate_skips_when_retrieval_is_strong():
 def test_gate_skips_when_canonical_topic_matched():
     out = build_web_chunks(
         "q",
-        retrieval=_result([_chunk(0.1)], ["surface-code"]),
+        retrieval=_result([_chunk(0.1)], ["surface-code"], top_rerank_score=0.05),
         web_searcher=_stub_searcher,
-        threshold=0.45,
+        threshold=0.2,
         web_k=5,
     )
     assert out == []
 
 
+def _raising_searcher(_q, _k):
+    raise RuntimeError("searcher blew up")
+
+
+def test_gate_never_raises_when_searcher_raises():
+    out = build_web_chunks(
+        "q",
+        retrieval=_result([], [], top_rerank_score=0.0),
+        web_searcher=_raising_searcher,
+        threshold=0.2,
+        web_k=5,
+    )
+    assert out == []
+
+
+def _searcher_with_bad_url(_q, _k):
+    return [
+        WebResult(title="bad", url=None, content="c", score=0.5),  # type: ignore[arg-type]
+        WebResult(title="ok", url="https://ex.com/y", content="c", score=0.5),
+    ]
+
+
+def test_gate_skips_result_with_nonstr_url_without_raising():
+    out = build_web_chunks(
+        "q",
+        retrieval=_result([], [], top_rerank_score=0.0),
+        web_searcher=_searcher_with_bad_url,
+        threshold=0.2,
+        web_k=5,
+    )
+    assert len(out) == 1
+    assert out[0].payload["url"] == "https://ex.com/y"
+
+
+def _searcher_with_duplicate_urls(_q, _k):
+    return [
+        WebResult(title="A", url="https://ex.com/dup", content="first", score=0.6),
+        WebResult(title="A again", url="https://ex.com/dup", content="second", score=0.4),
+    ]
+
+
+def test_gate_dedupes_results_by_url():
+    out = build_web_chunks(
+        "q",
+        retrieval=_result([], [], top_rerank_score=0.0),
+        web_searcher=_searcher_with_duplicate_urls,
+        threshold=0.2,
+        web_k=5,
+    )
+    assert len(out) == 1
+    assert out[0].text == "first"  # order preserved — first occurrence kept
+
+
 def test_gate_skips_when_searcher_is_none():
     out = build_web_chunks(
-        "q", retrieval=_result([], []), web_searcher=None, threshold=0.45, web_k=5
+        "q",
+        retrieval=_result([], [], top_rerank_score=0.0),
+        web_searcher=None,
+        threshold=0.2,
+        web_k=5,
     )
     assert out == []

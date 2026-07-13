@@ -84,32 +84,44 @@ def build_web_chunks(
     """Return web-tier chunks when the corpus retrieval is weak, else ``[]``.
 
     Deterministic gate: search only when a searcher is configured, no canonical
-    topic was force-injected, and the retrieval is weak (no chunks, or the best
-    chunk score is below ``threshold``). Never raises.
+    topic was force-injected, and the retrieval is weak. Weakness is judged on
+    the ABSOLUTE cross-encoder rerank score of the best chunk (``debug
+    ["top_rerank_score"]``) — not ``c.score``, which is min-max-normalized per
+    query and whose top value is ~always >= 0.5, so it never signals weakness.
+    Never raises.
     """
     if web_searcher is None:
         return []
     if retrieval.matched_topics:
         return []
-    top = max((c.score for c in retrieval.chunks), default=0.0)
-    if retrieval.chunks and top >= threshold:
+    raw_top_rerank = retrieval.debug.get("top_rerank_score", 0.0)
+    top_rerank = float(raw_top_rerank) if isinstance(raw_top_rerank, int | float) else 0.0
+    weak = (not retrieval.chunks) or (top_rerank < threshold)
+    if not weak:
         return []
     try:
         results = web_searcher(question, web_k)
     except Exception:  # searcher is best-effort; never break the answer path
         return []
     chunks: list[RetrievedChunk] = []
+    seen_urls: set[str] = set()
     for r in results:
-        sid = f"web:{sha256_text(r.url)[:8]}"
-        chunks.append(
-            RetrievedChunk(
-                chunk_id=f"{sid}#0",
-                source_id=sid,
-                text=r.content,
-                title=r.title,
-                authority_tier="web",
-                score=r.score,
-                payload={"url": r.url},
+        try:
+            if r.url in seen_urls:
+                continue
+            seen_urls.add(r.url)
+            sid = f"web:{sha256_text(r.url)[:8]}"
+            chunks.append(
+                RetrievedChunk(
+                    chunk_id=f"{sid}#0",
+                    source_id=sid,
+                    text=r.content,
+                    title=r.title,
+                    authority_tier="web",
+                    score=r.score,
+                    payload={"url": r.url},
+                )
             )
-        )
+        except Exception:  # a single malformed result must not break the loop
+            continue
     return chunks

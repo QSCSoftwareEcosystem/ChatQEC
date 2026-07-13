@@ -36,6 +36,32 @@ def test_reranker_returns_empty_for_empty_candidates():
     assert rr.rerank("q", [], top_k=5) == []
 
 
+def test_rerank_scored_returns_indices_and_scores(monkeypatch):
+    mock_ce = MagicMock()
+    mock_ce.predict.return_value = np.array([0.9, 0.1, 0.5])
+    mock_ce_class = MagicMock(return_value=mock_ce)
+    monkeypatch.setattr("chatqec.retrieval.reranker.CrossEncoder", mock_ce_class)
+
+    rr = CrossEncoderReranker(model_name="mixedbread-ai/mxbai-rerank-base-v1")
+    out = rr.rerank_scored("query", ["a", "b", "c"], top_k=2)
+    assert out == [(0, 0.9), (2, 0.5)]
+
+
+def test_rerank_scored_empty_candidates():
+    rr = CrossEncoderReranker()
+    assert rr.rerank_scored("q", [], top_k=5) == []
+
+
+def test_rerank_delegates_to_rerank_scored(monkeypatch):
+    mock_ce = MagicMock()
+    mock_ce.predict.return_value = np.array([0.2, 0.8])
+    mock_ce_class = MagicMock(return_value=mock_ce)
+    monkeypatch.setattr("chatqec.retrieval.reranker.CrossEncoder", mock_ce_class)
+
+    rr = CrossEncoderReranker()
+    assert rr.rerank("q", ["x", "y"], top_k=2) == [1, 0]
+
+
 def test_reranker_default_is_non_china_model():
     # Guard the provenance choice: default must not be a BAAI/bge model.
     rr = CrossEncoderReranker()
