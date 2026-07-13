@@ -282,6 +282,33 @@ code_params color_code d=3:           [[n=7,  k=1]]  num_stabilizers=6   stim_di
 > distance directly with **Stim** (`shortest_graphlike_error`) — no qiskit-qec dependency.
 > Plan/spec: `docs/superpowers/plans/2026-07-12-code-params-tool.md`.
 
+#### Questions that invoke each tool
+
+Tools only fire when the app/CLI is started with the MCP server attached:
+
+```bash
+uv run chatqec ask --mcp-server chatqec-mcp-tools "…"                       # CLI
+CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_app.py   # Streamlit
+```
+
+Without it, questions are answered from the corpus only (no live tool call). When tools
+*are* available the **model decides** to call one based on the phrasing — so ask
+imperatively (name the **code family + distance + error rate**; use verbs like
+*simulate, decode, sweep, render, report parameters*).
+
+| Tool | What triggers it | Example questions |
+|---|---|---|
+| `stim_simulate` | "simulate / run / sample this circuit", "how many detection events" | *"Simulate a distance-3 rotated surface-code memory circuit in Stim for 2000 shots and report the detection-event rate."* · *"Run this Stim circuit and show the measurement samples: `H 0\nCNOT 0 1\nM 0 1`."* |
+| `stim_diagram` | "draw / render / show the circuit diagram" | *"Render the encoding circuit for the 3-qubit bit-flip code as a diagram."* · *"Show me a Stim timeline diagram of a repetition-code syndrome round."* |
+| `pymatching_decode` | "decode / what's the logical error rate of this circuit" | *"Decode a distance-5 surface-code memory experiment at p=0.005 and give me its logical error rate."* · *"MWPM-decode this Stim circuit over 10,000 shots — what fraction fails?"* |
+| `threshold_sweep` | "find / plot the threshold", "sweep p across distances" | *"Sweep the physical error rate for the rotated surface code at distances 3, 5, 7 and plot the logical error rate."* · *"Find the threshold of the repetition code and show the log-log plot."* |
+| `code_params` | "how many physical qubits / [[n,k,d]] / stabilizers / code distance" | *"For a distance-5 rotated surface code, report [[n,k]], the stabilizer count, and the code distance."* · *"How many physical qubits encode one logical qubit in the distance-7 color code, and what's its distance?"* |
+
+> Definitional questions ("what *is* the surface-code threshold?") stay corpus-only — no
+> tool. The model reaches for a tool only when the question demands a **computed or
+> rendered artifact** (a simulated number, a circuit image, a decoded rate, a threshold
+> plot, or a code's parameters).
+
 ### Web-search fallback (Tavily) — why this backend
 
 When a question isn't covered by the corpus or canonical wiki, ChatQEC can fall back
