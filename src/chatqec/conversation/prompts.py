@@ -33,6 +33,9 @@ Tools:
   rates and distances, call `threshold_sweep`. To report a code's parameters
   ([[n,k]], stabilizer count, Stim-computed distance), call `code_params`.
 - Base any simulated numbers you report on the tool's actual output.
+- Do NOT paste a tool's raw output into your answer — SVG/XML diagrams, plots, or
+  large data blobs are rendered to the user separately. Refer to them in words
+  (e.g. "see the rendered circuit below") and report only the key numbers.
 
 QEC focus only — refuse off-topic queries politely.
 """
