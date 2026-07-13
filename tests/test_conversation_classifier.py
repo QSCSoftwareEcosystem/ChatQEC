@@ -36,6 +36,28 @@ def test_classifier_treats_malformed_response_as_off_topic_to_be_safe():
     assert verdict.on_topic is False
 
 
+def test_classifier_on_topic_when_model_appends_content_after_label():
+    # Haiku sometimes emits the label then keeps answering (e.g. when the query
+    # says "give me an example"): 'on_topic\n\nThe Steane code is ...'. The verdict
+    # must key off the leading label, not exact-match the whole response.
+    client = _make_anthropic_with_response("on_topic\n\nThe Steane code is a CSS code")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    verdict = clf.classify("what is steane code. Give me example")
+    assert verdict.on_topic is True
+
+
+def test_classifier_on_topic_tolerates_trailing_punctuation():
+    client = _make_anthropic_with_response("on_topic.")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    assert clf.classify("what is the color code?").on_topic is True
+
+
+def test_classifier_off_topic_when_label_precedes_content():
+    client = _make_anthropic_with_response("off_topic\n\nThis is about cooking.")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    assert clf.classify("best pasta recipe").on_topic is False
+
+
 def test_classifier_includes_model_name_in_api_call():
     client = _make_anthropic_with_response("on_topic")
     clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")

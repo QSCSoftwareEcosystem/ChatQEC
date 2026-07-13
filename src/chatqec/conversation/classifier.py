@@ -16,7 +16,8 @@ _SYS = (
     "Quantum Error Correction (QEC), fault-tolerant quantum computation, "
     "quantum codes, decoders, or directly related topics (stabilizer formalism, "
     "magic state distillation, surface code, etc.). "
-    "Respond with EXACTLY one word: 'on_topic' or 'off_topic'. "
+    "Respond with EXACTLY one word and nothing else: 'on_topic' or 'off_topic'. "
+    "Do NOT answer the question or add any text after the label. "
     "Borderline / general quantum computing questions that don't involve QEC: off_topic."
 )
 
@@ -54,6 +55,13 @@ class OffTopicClassifier:
         )
         text = str(msg.content[0].text).strip().lower()
         trace("classifier.response", model=self.model, raw=text)
-        if text == "on_topic":
+        # Key off the leading label token, not exact-match: Haiku sometimes emits
+        # the label and then keeps answering (e.g. "on_topic\n\nThe Steane code is …"
+        # when the query says "give me an example"). Strip surrounding punctuation so
+        # "on_topic." / "on_topic:" also count. A truly malformed first token
+        # (anything but "on_topic") stays off_topic, which is the safe default.
+        tokens = text.split()
+        first = tokens[0].strip(".,:;!?\"'`") if tokens else ""
+        if first == "on_topic":
             return TopicVerdict(on_topic=True)
         return TopicVerdict(on_topic=False, refusal_message=_DEFAULT_REFUSAL)
