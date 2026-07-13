@@ -51,3 +51,16 @@ def test_web_search_malformed_json_returns_empty():
     resp.json.side_effect = ValueError("bad json")
     with patch("requests.post", return_value=resp):
         assert web_search("q", k=3, api_key="tvly-x") == []
+
+
+def test_web_search_skips_result_with_nonnumeric_score():
+    resp = MagicMock(status_code=200)
+    resp.json.return_value = {
+        "results": [
+            {"title": "bad", "url": "u1", "content": "c", "score": "N/A"},
+            {"title": "ok", "url": "u2", "content": "c", "score": 0.5},
+        ]
+    }
+    with patch("requests.post", return_value=resp):
+        out = web_search("q", k=2, api_key="tvly-x")
+    assert [r.url for r in out] == ["u2"]  # malformed item skipped, no raise

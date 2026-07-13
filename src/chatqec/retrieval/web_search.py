@@ -54,12 +54,16 @@ def web_search(query: str, *, k: int, api_key: str, timeout: float = 15.0) -> li
     for r in results:
         if not isinstance(r, dict):
             continue
+        try:
+            score = float(r.get("score", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            continue
         out.append(
             WebResult(
                 title=str(r.get("title", "")),
                 url=str(r.get("url", "")),
                 content=str(r.get("content", "")),
-                score=float(r.get("score", 0.0) or 0.0),
+                score=score,
             )
         )
     return out
