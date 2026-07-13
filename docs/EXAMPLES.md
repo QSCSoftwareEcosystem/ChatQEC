@@ -33,27 +33,31 @@ each feature. Regenerate the stats with the snippet at the bottom.
 
 | Metric | Value |
 |---|---|
-| Pages | **56** (24 P0, 23 P1, 9 P2) |
-| Embedded chunks | **294** |
-| Chunks per page | min **4**, max **6**, avg **5.25** |
-| Chunk text length (chars) | min 116, median 358, mean 371, max 846 |
-| Distribution | 2 pages × 4 chunks · 38 pages × 5 · 16 pages × 6 |
-| Smallest page | `leakage` (4 chunks) |
-| Largest page | `threshold-theorem` (6 chunks) |
+| Pages | **60** (56 v1 roster + 4 v0.4) |
+| Embedded chunks | **314** |
+| Chunks per page | avg **~5.2** |
+| v0.4 additions (2026-07-12) | `erasure-conversion`, `real-time-decoding`, `below-threshold-scaling`, `mid-circuit-measurement` |
+
+The 4 new pages fill concept gaps the v0.4 papers surfaced (verified absent from the
+prior 56 pages' bodies and aliases): erasure conversion (`2201.03540`), real-time /
+online decoding (`2107.07505` + Riverlane), Λ below-threshold scaling (`2408.13687`,
+`2207.06431`), and mid-circuit measurement (`2312.03982`). Each retrieves at ≥0.93
+and force-injects on its slug/aliases.
 
 ### Vector store (`chatqec_chunks`, Qdrant)
 
 | Metric | Value |
 |---|---|
-| Total points | **2669** |
-| Canonical (`canonical`) | 294 |
+| Total points | **2689** |
+| Canonical (`canonical`) | 314 |
 | Book chapters (`peer_reviewed`) | 247 |
 | arXiv papers (`preprint`) | 1980 |
 | Blogs / vendor pages (`blog`) | 148 |
 | Collection status | green |
 
 Exact tier counts via Qdrant `points/count` (filter on `authority_tier`): canonical
-294 · peer_reviewed 247 · preprint 1980 · blog 148 = **2669**.
+314 · peer_reviewed 247 · preprint 1980 · blog 148 = **2689** (canonical grew +20
+when the 4 new v0.4 pages were embedded).
 
 ### v0.4 corpus detail (added 2026-07-12)
 
