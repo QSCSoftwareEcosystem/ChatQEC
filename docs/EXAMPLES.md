@@ -281,6 +281,31 @@ code_params color_code d=3:           [[n=7,  k=1]]  num_stabilizers=6   stim_di
 > distance directly with **Stim** (`shortest_graphlike_error`) — no qiskit-qec dependency.
 > Plan/spec: `docs/superpowers/plans/2026-07-12-code-params-tool.md`.
 
+### Web-search fallback (Tavily) — why this backend
+
+When a question isn't covered by the corpus or canonical wiki, ChatQEC can fall back
+to a **web search** (off by default; enable with `CHATQEC_WEB_FALLBACK=true` +
+`TAVILY_API_KEY`). The backend is **Tavily**, chosen deliberately:
+
+- **RAG-optimized output** — Tavily returns already-extracted, clean page *content* per
+  result, not just SERP links, so answers are grounded and citable without a separate
+  fetch/parse step (Serper/SerpAPI would require that extra step).
+- **No new dependency** — a single `POST https://api.tavily.com/search` via the
+  already-present `requests`; no extra SDK.
+- **Per-result relevance scores + URLs** map directly onto our retrieval model and
+  citations.
+- **Free tier** covers fallback volume for a research assistant.
+- Alternatives weighed: **Exa** (neural/research search — strong but a second key with
+  overlapping value), **Serper.dev** (CrewAI's default; raw SERP + fetch step),
+  **DuckDuckGo** (`ddgs`, no key but rate-limited/flaky). Tavily won on
+  content-quality per unit of integration effort.
+
+Web evidence is the **lowest** authority tier (`web` = 0.3, below `blog` = 0.5), so it
+can never outrank canonical pages or papers; the model is instructed to disclose when an
+answer relies on web sources and to cite the URL. Results are ephemeral — the CLI prints
+a `chatqec ingest --url <url>` tip so a repeatedly-useful source can be promoted into the
+permanent corpus.
+
 ## Feature examples
 
 ### 1. Semantic retrieval — paraphrase with zero keyword overlap

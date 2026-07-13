@@ -205,6 +205,13 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
     from chatqec.conversation.rewriter import QueryRewriter
     from chatqec.conversation.synthesizer import Synthesizer
     from chatqec.retrieval.hybrid import HybridRetriever
+    from chatqec.retrieval.web_search import WebResult, web_search
+
+    _tavily_key = os.environ.get("TAVILY_API_KEY", "")
+    _web_enabled = os.environ.get("CHATQEC_WEB_FALLBACK", "").lower() in {"1", "true", "yes"}
+
+    def _web_searcher(query: str, k: int) -> list[WebResult]:
+        return web_search(query, k=k, api_key=_tavily_key)
 
     conf_dir = str(Path(os.environ.get("CHATQEC_CONF_DIR", "conf")).resolve())
     with initialize_config_dir(version_base=None, config_dir=conf_dir):
@@ -254,6 +261,8 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
         retriever=retriever,
         synthesizer=synthesizer,
         canonical_index=canonical_index,  # type: ignore[arg-type]
+        web_searcher=_web_searcher if _tavily_key else None,
+        web_fallback=_web_enabled,
     )
 
 
@@ -340,6 +349,9 @@ def ask(
             click.echo(f"  - [{c.source_id}] {c.title}")
             if c.url:
                 click.echo(f"    {c.url}")
+        web_urls = [c.url for c in answer.citations if c.source_id.startswith("web:") and c.url]
+        for u in dict.fromkeys(web_urls):  # de-dup, preserve order
+            click.echo(f"tip: to keep this web source, run: chatqec ingest --url {u}", err=True)
     if answer.figure_paths:
         click.echo("\nFigures:")
         for p in answer.figure_paths:
