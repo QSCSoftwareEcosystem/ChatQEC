@@ -9,7 +9,7 @@ a sandbox. Use it as a Python library, a CLI, or a Streamlit web app.
 [Stim]: https://github.com/quantumlib/Stim
 
 > **Status: v0.1.0 — first public release.** The pipeline is end-to-end and
-> testable; it ships with the full 56-page canonical wiki (chunked and embedded
+> testable; it ships with the full 60-page canonical wiki (chunked and embedded
 > into Qdrant) and grows via the watchlist refresh job. See [Roadmap](#roadmap).
 
 ---
@@ -79,8 +79,9 @@ uv run chatqec ask --mcp-server chatqec-mcp-tools \
 ```
 
 The model **decides on its own** when a question needs simulation and calls the
-Stim tools (`stim_simulate`, `stim_diagram`), which run in a subprocess sandbox
-with memory and wall-clock limits. Reported numbers come from the tool's actual
+MCP tools — `stim_simulate`, `stim_diagram`, `pymatching_decode`,
+`threshold_sweep`, `code_params` — which run in a subprocess sandbox with
+memory and wall-clock limits. Reported numbers come from the tool's actual
 output, not the model's guess.
 
 **Provider:** tool use works with the `anthropic`, `gemini`, or `auto` provider
@@ -187,12 +188,27 @@ still works exactly as before — figures just won't be described or made
 searchable. `data/figures/` is a build artifact and is gitignored, same as
 `data/chunks/`.
 
+### Web-search fallback (Tavily)
+
+When a question isn't covered by the corpus or canonical wiki, ChatQEC can
+fall back to a web search (Tavily) and answer from cited web results instead
+of refusing. **Off by default** — enable it with `TAVILY_API_KEY` in `.env`
+plus `CHATQEC_WEB_FALLBACK=true`. The trigger is deterministic: it fires only
+when the best retrieved chunk's cross-encoder rerank score falls below a
+calibrated threshold (0.4). Web results sit at the lowest `web` authority tier
+(0.3, below `blog`), so they never outrank canonical pages or papers, and the
+model discloses when it relies on web sources and cites the URL. Results are
+ephemeral — nothing is written to the corpus — and the CLI prints a
+`chatqec ingest --url <url>` tip so you can promote a good source into the
+permanent corpus. No new dependency: Tavily is called via the existing
+`requests` library.
+
 ---
 
 ## What to expect on your first run
 
 **The corpus is intentionally small at v0.1.0.** Beyond a small seed corpus, the
-56-page canonical wiki is pre-loaded and embedded into Qdrant; the registry grows
+60-page canonical wiki is pre-loaded and embedded into Qdrant; the registry grows
 from there via the watchlist. Definitional questions on these topics return cited
 answers immediately:
 
@@ -249,7 +265,7 @@ the fallback kicks in — eval headline numbers should still be run with
 
 | Layer | Module | Notes |
 |---|---|---|
-| Canonical wiki | [`knowledge/canonical/`](knowledge/canonical/) | 56 pages (full v1 roster in [`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed` |
+| Canonical wiki | [`knowledge/canonical/`](knowledge/canonical/) | 60 pages (full v1 roster + v0.4 additions in [`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed` |
 | Source registry | [`sources/registry.jsonl`](sources/registry.jsonl) | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`) |
 | Watchlist | [`sources/watchlist.yaml`](sources/watchlist.yaml) | arXiv categories, GitHub repos, YouTube channels |
 | Ingestion | [`src/chatqec/ingestion/`](src/chatqec/ingestion/) | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`) |
@@ -259,7 +275,12 @@ the fallback kicks in — eval headline numbers should still be run with
 | Conversation | [`src/chatqec/conversation/`](src/chatqec/conversation/) | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop |
 | Guards | [`src/chatqec/guards/`](src/chatqec/guards/) | Per-IP rate limit, daily USD budget, hCaptcha verifier |
 | Eval | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/) | 50-pair Q&A set across 6 subtypes; recall@K + citation accuracy + LLM-judge faithfulness |
-| MCP tools | [`chatqec-mcp-tools`](https://code.ornl.gov/qsc-as/chatqec-mcp-tools) | `stim_simulate`, `stim_diagram` over MCP stdio |
+| MCP tools | [`chatqec-mcp-tools`](https://code.ornl.gov/qsc-as/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance) over MCP stdio |
+
+Full corpus breakdown (chunk counts, per-source stats) lives in
+[`docs/EXAMPLES.md`](docs/EXAMPLES.md); as of v0.4 the store has ~2,689
+embedded chunks across 104 sources (60 canonical, 28 arXiv, 6 book chapters,
+10 blog/vendor).
 
 ---
 
@@ -282,12 +303,19 @@ question  ──▶ Haiku ──▶│  off-topic?  │── no ──▶ refus
         │     │  canonical wiki force-inject          │
         └─────┼───────────────────────────────────────┘
               │
-       ┌──────▼─────────┐         ┌─────────────────────┐
-       │ Sonnet         │  tools  │  MCP adapter        │
-       │ synthesizer    │ ◀────▶ │  → stim_simulate    │
-       │ (cited answer) │         │  → stim_diagram     │
-       └────────────────┘         └─────────────────────┘
+       ┌──────▼─────────┐         ┌───────────────────────┐
+       │ Sonnet         │  tools  │  MCP adapter          │
+       │ synthesizer    │ ◀────▶ │  → stim_simulate      │
+       │ (cited answer) │         │  → stim_diagram       │
+       └────────────────┘         │  → pymatching_decode  │
+                                   │  → threshold_sweep    │
+                                   │  → code_params        │
+                                   └───────────────────────┘
 ```
+
+> When retrieval is weak (best rerank score < 0.4) and the web fallback is
+> enabled, Tavily results are injected into the hybrid retriever as
+> lowest-authority `web`-tier context instead of the pipeline refusing.
 
 **Why each piece?** See [`docs/DESIGN_CHOICES.md`](docs/DESIGN_CHOICES.md) for a
 focused walkthrough of model selection (why Haiku for the classifier, Sonnet
@@ -374,10 +402,20 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
   version, and source licenses (provenance from `sources/registry.jsonl`).
 
 **v0.3 — tooling:**
-- PyMatching decoder tool
-- qiskit-qec tool (in the MCP sibling)
-- Threshold-sweep helper
+- ✅ PyMatching decoder tool
+- qiskit-qec tool (in the MCP sibling) — **superseded** by the Stim-backed
+  `code_params` tool; qiskit-qec is unshippable (not on PyPI, abandoned,
+  broken against modern Qiskit)
+- ✅ Threshold-sweep helper
 - ✅ Real stdio MCP client (Stim tool-use now works) + Claude→Gemini tool failover
+
+**v0.4 — corpus & fallback:**
+- ✅ Expanded corpus: +11 foundational/FT + hardware-demo papers with full
+  text and vision-described figures; +5 QEC vendor/lab pages (Google, IBM,
+  Quantinuum); +4 canonical pages (erasure-conversion, real-time-decoding,
+  below-threshold-scaling, mid-circuit-measurement) → 60 canonical pages
+- ✅ Stim-backed `code_params` tool
+- ✅ Optional Tavily web-search fallback (rerank-gated, calibrated threshold 0.4)
 
 **v1.0 — production:**
 - Real `from_config()` deploy flow with secret management

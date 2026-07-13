@@ -82,7 +82,8 @@ when the 4 new v0.4 pages were embedded).
 ### v0.4 corpus detail (added 2026-07-12)
 
 **+665 chunks / 16 sources**, reproducible via `scripts/seed_corpus_v0_4.sh`.
-Registry now: **28 arXiv · 6 book chapters · 10 blog/vendor · 56 canonical = 100 sources.**
+Registry now: **28 arXiv · 6 book chapters · 10 blog/vendor · 60 canonical = 104 sources**
+(the 4 v0.4 canonical pages are registered too).
 
 **11 fault-tolerance / QEC papers** — full LaTeX (Marker-PDF fallback where arXiv has
 no source) + local Llama-3.2-Vision figure descriptions (626 text+figure chunks, 135
