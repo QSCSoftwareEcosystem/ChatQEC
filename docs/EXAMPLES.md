@@ -44,6 +44,26 @@ online decoding (`2107.07505` + Riverlane), Λ below-threshold scaling (`2408.13
 `2207.06431`), and mid-circuit measurement (`2312.03982`). Each retrieves at ≥0.93
 and force-injects on its slug/aliases.
 
+**Try me — the 4 new canonical pages** (verified; `retrieve` shows force-injection +
+the paired backing paper, `ask` synthesizes both):
+
+```bash
+# Force-injection + retrieval (cheap, no Claude)
+.venv/bin/chatqec retrieve --query "converting errors into detectable erasures raises the threshold"  # canonical:erasure-conversion + [2201.03540]
+.venv/bin/chatqec retrieve --query "decoder must keep up with the syndrome rate or the backlog grows"  # canonical:real-time-decoding
+.venv/bin/chatqec retrieve --query "exponential logical error suppression Lambda factor below threshold"  # force-injects below-threshold-scaling
+.venv/bin/chatqec retrieve --query "measuring ancilla qubits mid-circuit without collapsing the data"  # canonical:mid-circuit-measurement
+
+# Alias hits (force-injection triggers on aliases, not just the slug)
+.venv/bin/chatqec retrieve --query "erasure qubits and erasure-biased noise"          # alias -> erasure-conversion
+.venv/bin/chatqec retrieve --query "online decoding and the decoding backlog problem"  # alias -> real-time-decoding
+
+# Full cited answers (canonical definition + v0.4 paper as evidence)
+.venv/bin/chatqec ask "What is erasure conversion and why does it raise the QEC threshold?"
+.venv/bin/chatqec ask "What is the Lambda error-suppression factor and what does 'below threshold' mean?"
+.venv/bin/chatqec ask "Why is real-time decoding a bottleneck, and how is the backlog problem addressed?"
+```
+
 ### Vector store (`chatqec_chunks`, Qdrant)
 
 | Metric | Value |
