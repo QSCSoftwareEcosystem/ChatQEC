@@ -306,6 +306,25 @@ answer relies on web sources and to cite the URL. Results are ephemeral — the 
 a `chatqec ingest --url <url>` tip so a repeatedly-useful source can be promoted into the
 permanent corpus.
 
+**Gate calibration (2026-07-13).** The fallback fires only when the best retrieved
+chunk's **absolute cross-encoder rerank score** (`debug["top_rerank_score"]`, mxbai
+`mxbai-rerank-base-v1`) falls below `web_fallback_threshold`. Measured against real
+queries through the live retriever:
+
+| Query class | `top_rerank_score` |
+|---|---|
+| Covered / in-corpus (surface code, KL, qLDPC, neutral atoms, lattice surgery…) | **0.52 – 0.99** |
+| Genuinely-uncovered QEC specifics (exact pseudo-thresholds, ns latency budgets…) | **0.15 – 0.33** |
+| Off-topic (pizza, stocks, dog training) | **< 0.03** |
+
+The clusters separate cleanly, so the default threshold is **0.4** — it triggers a web
+search for uncovered + off-topic questions while never firing for covered topics
+(0.12 headroom below the lowest covered score). Tune via the `web_fallback_threshold`
+constructor arg (raise it to search more aggressively, lower it to search only on the
+clearest gaps). Note: a question whose *topic* is well-covered but whose *specific* answer
+isn't (e.g. "cat-qubit CNOT fidelity on a specific chip" → 0.90) stays corpus-answered by
+design — the curated content is relevant even if the exact figure isn't present.
+
 ## Feature examples
 
 ### 1. Semantic retrieval — paraphrase with zero keyword overlap

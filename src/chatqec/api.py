@@ -97,10 +97,11 @@ class ChatQEC:
         web_searcher: Callable[[str, int], list[WebResult]] | None = None,
         web_fallback: bool = False,
         # Absolute mxbai-rerank cross-encoder score of the best chunk (NOT the
-        # min-max-normalized retrieval score). Relevant matches typically score
-        # ~0.5+; irrelevant ones score <0.05. 0.2 is a conservative default that
-        # still needs tuning against real queries.
-        web_fallback_threshold: float = 0.2,
+        # min-max-normalized retrieval score). Calibrated 2026-07-13 against real
+        # queries: covered/in-corpus topics score 0.52-0.99, genuinely-uncovered QEC
+        # specifics 0.15-0.33, off-topic <0.03. 0.4 sits in the gap — fires the web
+        # fallback for uncovered/off-topic queries, never for covered topics.
+        web_fallback_threshold: float = 0.4,
         web_k: int = 5,
     ) -> None:
         self.classifier = classifier

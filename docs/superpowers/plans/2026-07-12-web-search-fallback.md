@@ -14,7 +14,7 @@
 - **`web_search` and the gate never raise** — any failure (missing key, network, non-200, bad JSON) returns `[]`.
 - New tier weight: `TIER_WEIGHTS["web"] = 0.3` (strictly below `blog` = 0.5).
 - Feature **off by default**: `web_fallback=False`. When off, or when `web_searcher is None`, behavior is byte-identical to today.
-- Gate trigger (deterministic): search only when `web_fallback` is on AND retrieval is weak — `(no chunks) or (top rerank score < threshold (0.2))` — AND `not retrieval.matched_topics` (a force-injected canonical topic means the corpus already has an authoritative anchor). The gate reads the absolute cross-encoder rerank score (`debug["top_rerank_score"]`), not the min-max-normalized chunk score.
+- Gate trigger (deterministic): search only when `web_fallback` is on AND retrieval is weak — `(no chunks) or (top rerank score < threshold (0.4))` — AND `not retrieval.matched_topics` (a force-injected canonical topic means the corpus already has an authoritative anchor). The gate reads the absolute cross-encoder rerank score (`debug["top_rerank_score"]`), not the min-max-normalized chunk score.
 - Web results are ephemeral (not written to registry/Qdrant). Cite the URL.
 - Ruff/mypy/pre-commit must pass (repo runs ruff, ruff-format, mypy on commit).
 - Tests must not hit the network — mock `requests.post` / stub the searcher.

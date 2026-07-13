@@ -57,7 +57,7 @@ def web_search(query: str, *, k: int, api_key: str, timeout: float = 15.0) -> li
 
 **3. Confidence gate in `ChatQEC.ask()` (`src/chatqec/api.py`)**
 - After `retrieval = self.retriever.retrieve(...)`, compute a weakness signal:
-  `weak = (not retrieval.chunks) or (top rerank score < threshold (0.2))`, reading
+  `weak = (not retrieval.chunks) or (top rerank score < threshold (0.4))`, reading
   the absolute cross-encoder rerank score from `retrieval.debug["top_rerank_score"]`
   (not the min-max-normalized `c.score`), **and** `not retrieval.matched_topics` (a force-injected
   canonical topic means the corpus already has an authoritative anchor — don't search).
