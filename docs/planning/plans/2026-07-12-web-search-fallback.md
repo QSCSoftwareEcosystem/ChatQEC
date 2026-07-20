@@ -1,7 +1,5 @@
 # Web-Search Fallback (Tavily) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.
-
 **Goal:** Add an optional, deterministic web-search fallback (Tavily) so `ask()` answers from the web — cited, lowest-authority — when the curated corpus lacks evidence, instead of refusing.
 
 **Architecture:** One new module `retrieval/web_search.py` holding a Tavily REST searcher and a **pure gate function**; a new lowest `web` authority tier; `ChatQEC` gains web params and calls the gate between retrieval and synthesis; a prompt tweak; CLI wiring + docs. Off by default (needs `web_fallback=True` **and** `TAVILY_API_KEY`).

@@ -280,7 +280,7 @@ code_params color_code d=3:           [[n=7,  k=1]]  num_stabilizers=6   stim_di
 > plus source patches). Rather than carry that maintenance burden, `code_params` derives
 > [[n,k]] + stabilizer count from each family's standard formula and computes the code
 > distance directly with **Stim** (`shortest_graphlike_error`) — no qiskit-qec dependency.
-> Plan/spec: `docs/superpowers/plans/2026-07-12-code-params-tool.md`.
+> Plan/spec: `docs/planning/plans/2026-07-12-code-params-tool.md`.
 
 #### Questions that invoke each tool
 

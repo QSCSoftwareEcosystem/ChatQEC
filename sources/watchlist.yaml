@@ -1,7 +1,7 @@
 # ChatQEC watchlist — drives the weekly refresh job.
 # Contributors: add entries via PR. The refresh job opens a PR with new candidates
 # in status=pending_review; maintainers approve via merge.
-# Authoritative seeds: docs/superpowers/specs/2026-05-29-chatqec-design.md §A.4–A.9
+# Authoritative seeds: docs/planning/specs/2026-05-29-chatqec-design.md §A.4–A.9
 
 arxiv:
   categories: [quant-ph]

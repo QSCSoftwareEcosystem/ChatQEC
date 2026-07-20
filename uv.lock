@@ -37,13 +37,13 @@ name = "accelerate"
 version = "1.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "huggingface-hub", marker = "python_full_version == '3.12.*' or sys_platform != 'win32'" },
-    { name = "numpy", marker = "python_full_version == '3.12.*' or sys_platform != 'win32'" },
-    { name = "packaging", marker = "python_full_version == '3.12.*' or sys_platform != 'win32'" },
-    { name = "psutil", marker = "python_full_version == '3.12.*' or sys_platform != 'win32'" },
-    { name = "pyyaml", marker = "python_full_version == '3.12.*' or sys_platform != 'win32'" },
-    { name = "safetensors", marker = "python_full_version == '3.12.*' or sys_platform != 'win32'" },
-    { name = "torch", marker = "python_full_version == '3.12.*' or sys_platform != 'win32'" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "psutil" },
+    { name = "pyyaml" },
+    { name = "safetensors" },
+    { name = "torch" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ca/14/787e5498cd062640f0f3d92ef4ae4063174f76f9afd29d13fc52a319daae/accelerate-1.13.0.tar.gz", hash = "sha256:d631b4e0f5b3de4aff2d7e9e6857d164810dfc3237d54d017f075122d057b236", size = 402835, upload-time = "2026-03-04T19:34:12.359Z" }
 wheels = [
@@ -664,9 +664,16 @@ dev = [
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
+vision = [
+    { name = "accelerate" },
+    { name = "pillow" },
+    { name = "torch" },
+    { name = "transformers" },
+]
 
 [package.metadata]
 requires-dist = [
+    { name = "accelerate", marker = "extra == 'vision'", specifier = ">=0.34" },
     { name = "anthropic", specifier = ">=0.40" },
     { name = "arxiv" },
     { name = "click", specifier = ">=8.1" },
@@ -681,6 +688,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "omegaconf", specifier = ">=2.3" },
+    { name = "pillow", marker = "extra == 'vision'", specifier = ">=10" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.7" },
     { name = "pydantic", specifier = ">=2.8" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -694,11 +702,13 @@ requires-dist = [
     { name = "slowapi" },
     { name = "streamlit", specifier = ">=1.40" },
     { name = "tenacity" },
+    { name = "torch", marker = "extra == 'vision'", specifier = ">=2.2" },
     { name = "trafilatura" },
+    { name = "transformers", marker = "extra == 'vision'", specifier = ">=4.49" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "unstructured", extras = ["pdf"] },
 ]
-provides-extras = ["dev"]
+provides-extras = ["vision", "dev"]
 
 [[package]]
 name = "click"

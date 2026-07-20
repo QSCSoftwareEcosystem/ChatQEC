@@ -4,12 +4,11 @@ An open-source research assistant for **Quantum Error Correction**.
 
 Ask QEC questions; get cited answers grounded in a curated corpus of papers,
 textbook chapters, QEC vendor/lab pages, and a hand-curated canonical wiki.
-Run small [Stim] circuits in a sandbox. Use it as a Python library, a CLI, or a
+Run small [Stim][Stim] circuits in a sandbox. Use it as a Python library, a CLI, or a
 Streamlit web app. (GitHub-repo and video-transcript fetchers exist but the
 corpus isn't seeded with them yet — see [Roadmap](#roadmap).)
 
 [Stim]: https://github.com/quantumlib/Stim
-
 > **Status: v0.1.0 — first public release.** The pipeline is end-to-end and
 > testable; it ships with the full 60-page canonical wiki (chunked and embedded
 > into Qdrant) and grows via the watchlist refresh job. See [Roadmap](#roadmap).
@@ -91,10 +90,13 @@ uv run chatqec ask --mcp-server chatqec-mcp-tools \
 > **The installed command is a snapshot.** `uv tool install` freezes the server at
 > install time, so **after adding or changing tools in the sibling repo you must
 > reinstall** or the new tools won't be exposed:
+>
 > ```bash
 > uv tool install --force ~/chatqec-mcp-tools   # re-expose e.g. pymatching_decode, code_params
 > ```
+>
 > Check what tools the model can actually see:
+>
 > ```bash
 > uv run python -c "from chatqec.cli import _build_chatqec; \
 >   b=_build_chatqec(mcp_server='chatqec-mcp-tools'); \
@@ -132,8 +134,7 @@ chatqec watch refresh --apply                         # pull new arXiv/GitHub ca
 chatqec eval run --output eval/results.json           # run the 50-pair eval set
 ```
 
-> **Tip — verify retrieval without Anthropic credit.** `chatqec retrieve --query
-> "..."` exercises only Gemini embeddings + Qdrant + the BGE reranker, **no
+> **Tip — verify retrieval without Anthropic credit.** `chatqec retrieve --query "..."` exercises only Gemini embeddings + Qdrant + the BGE reranker, **no
 > Claude calls**. Use it to confirm the corpus is queryable before spending on
 > the LLM synthesis step.
 
@@ -268,11 +269,11 @@ The surface code threshold under depolarizing noise is...
 
 Three explicit values are available for `models.provider`:
 
-| Value | Behaviour |
-|---|---|
+| Value                  | Behaviour                                                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `auto` *(default)* | Try Anthropic → fall back to HuggingFace on credit/auth/quota errors. Non-recoverable errors (5xx, network) still raise. |
-| `anthropic` | Anthropic only. Fails hard if no credit / no key. |
-| `huggingface` | HuggingFace only. Useful for fully open-stack deploys. |
+| `anthropic`          | Anthropic only. Fails hard if no credit / no key.                                                                         |
+| `huggingface`        | HuggingFace only. Useful for fully open-stack deploys.                                                                    |
 
 Provide whichever keys you have: `ANTHROPIC_API_KEY` and/or `HF_TOKEN` (the
 fine-grained token needs the **"Make calls to Inference Providers"** scope).
@@ -287,19 +288,19 @@ the fallback kicks in — eval headline numbers should still be run with
 
 ## What's in the box
 
-| Layer | Module | Notes |
-|---|---|---|
-| Canonical wiki | [`knowledge/canonical/`](knowledge/canonical/) | 60 pages (full v1 roster + v0.4 additions in [`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed` |
-| Source registry | [`sources/registry.jsonl`](sources/registry.jsonl) | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`) |
-| Watchlist | [`sources/watchlist.yaml`](sources/watchlist.yaml) | arXiv categories, GitHub repos, YouTube channels |
-| Ingestion | [`src/chatqec/ingestion/`](src/chatqec/ingestion/) | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`) |
-| Embedding | [`src/chatqec/embedding/`](src/chatqec/embedding/) | Gemini (default) or local BGE/Nomic; BM25 via fastembed |
-| Store | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py) | Hybrid dense + sparse search |
-| Retrieval | [`src/chatqec/retrieval/`](src/chatqec/retrieval/) | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection |
-| Conversation | [`src/chatqec/conversation/`](src/chatqec/conversation/) | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop |
-| Guards | [`src/chatqec/guards/`](src/chatqec/guards/) | Per-IP rate limit, daily USD budget, hCaptcha verifier |
-| Eval | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/) | 50-pair Q&A set across 6 subtypes; recall@K + citation accuracy + LLM-judge faithfulness |
-| MCP tools | [`chatqec-mcp-tools`](https://code.ornl.gov/qsc-as/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance) over MCP stdio |
+| Layer           | Module                                                                 | Notes                                                                                                                                                                                                                                                                               |
+| --------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical wiki  | [`knowledge/canonical/`](knowledge/canonical/)                        | 60 pages (full v1 roster + v0.4 additions in[`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed`                                                                                                                                |
+| Source registry | [`sources/registry.jsonl`](sources/registry.jsonl)                    | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`)                                                                                                                                                                                |
+| Watchlist       | [`sources/watchlist.yaml`](sources/watchlist.yaml)                    | arXiv categories, GitHub repos, YouTube channels                                                                                                                                                                                                                                    |
+| Ingestion       | [`src/chatqec/ingestion/`](src/chatqec/ingestion/)                    | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`)                                                                         |
+| Embedding       | [`src/chatqec/embedding/`](src/chatqec/embedding/)                    | Gemini (default) or local BGE/Nomic; BM25 via fastembed                                                                                                                                                                                                                             |
+| Store           | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py)          | Hybrid dense + sparse search                                                                                                                                                                                                                                                        |
+| Retrieval       | [`src/chatqec/retrieval/`](src/chatqec/retrieval/)                    | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection                                                                                                                                        |
+| Conversation    | [`src/chatqec/conversation/`](src/chatqec/conversation/)              | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop                                                                                                                                                                                           |
+| Guards          | [`src/chatqec/guards/`](src/chatqec/guards/)                          | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                              |
+| Eval            | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)          | 50-pair Q&A set across 6 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                            |
+| MCP tools       | [`chatqec-mcp-tools`](https://code.ornl.gov/qsc-as/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance) over MCP stdio |
 
 Full corpus breakdown (chunk counts, per-source stats) lives in
 [`docs/EXAMPLES.md`](docs/EXAMPLES.md); as of v0.4 the store has ~2,689
@@ -309,6 +310,15 @@ embedded chunks across 104 sources (60 canonical, 28 arXiv, 6 book chapters,
 ---
 
 ## How it works
+
+![ChatQEC architecture: ingestion lane, shared corpus & tools, query lane, and a planned hardware-aware placement lane](docs/images/chatqec_architecture.png)
+
+*Ingestion (offline), the shared corpus/tools layer, and the query pipeline are
+implemented today. The bottom **Hardware-aware placement** lane (live IBM
+Quantum/IQM calibration → layout advisor) is **future work** — see
+[Roadmap](#roadmap).*
+
+The query lane in detail:
 
 ```
                        ┌──────────────┐
@@ -346,7 +356,7 @@ focused walkthrough of model selection (why Haiku for the classifier, Sonnet
 for the synthesizer, BGE for the reranker, etc.) and architectural picks (why
 hybrid retrieval, why Qdrant, why MCP for tool use, why a canonical wiki
 layer, why auto-fallback). Full design spec:
-[`docs/superpowers/specs/2026-05-29-chatqec-design.md`](docs/superpowers/specs/2026-05-29-chatqec-design.md).
+[`docs/planning/specs/2026-05-29-chatqec-design.md`](docs/planning/specs/2026-05-29-chatqec-design.md).
 
 ---
 
@@ -362,14 +372,14 @@ CHATQEC_DAILY_BUDGET_USD=2.50 uv run streamlit run chatqec_app/streamlit_app.py
 
 Required environment:
 
-| Variable | Purpose |
-|---|---|
-| `ANTHROPIC_API_KEY` | Haiku (classifier/rewriter) + Sonnet (synthesizer + judge) — required when `models.provider=anthropic` (default) |
-| `HF_TOKEN` *or* `HUGGINGFACE_API_KEY` | Llama-3.1/3.3 via HuggingFace Inference API — required when `models.provider=huggingface` |
-| `GEMINI_API_KEY` | `gemini-embedding-001` for dense vectors (or set `embedding.provider=local`) |
-| `HCAPTCHA_SECRET` | Optional. Public Streamlit deploys; empty = captcha disabled |
-| `CHATQEC_DAILY_BUDGET_USD` | Optional. Daily USD cap for the budget guard |
-| `WATCHLIST_PUSH_TOKEN` | CI-only. GitLab token for the scheduled watchlist refresh MR |
+| Variable                                    | Purpose                                                                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY`                       | Haiku (classifier/rewriter) + Sonnet (synthesizer + judge) — required when`models.provider=anthropic` (default) |
+| `HF_TOKEN` *or* `HUGGINGFACE_API_KEY` | Llama-3.1/3.3 via HuggingFace Inference API — required when`models.provider=huggingface`                        |
+| `GEMINI_API_KEY`                          | `gemini-embedding-001` for dense vectors (or set `embedding.provider=local`)                                   |
+| `HCAPTCHA_SECRET`                         | Optional. Public Streamlit deploys; empty = captcha disabled                                                       |
+| `CHATQEC_DAILY_BUDGET_USD`                | Optional. Daily USD cap for the budget guard                                                                       |
+| `WATCHLIST_PUSH_TOKEN`                    | CI-only. GitLab token for the scheduled watchlist refresh MR                                                       |
 
 ---
 
@@ -383,14 +393,14 @@ uv run chatqec eval run \
 
 The seed set has 50 Q&A pairs across six subtypes:
 
-| Subtype | Cases |
-|---|---|
-| definition | 8 |
-| paper_lookup | 8 |
-| comparison | 9 |
-| math_detail | 9 |
-| recent_niche | 8 |
-| code_execution | 8 |
+| Subtype        | Cases |
+| -------------- | ----- |
+| definition     | 8     |
+| paper_lookup   | 8     |
+| comparison     | 9     |
+| math_detail    | 9     |
+| recent_niche   | 8     |
+| code_execution | 8     |
 
 Metrics: **recall@K** (did the retriever surface a relevant source?),
 **citation accuracy** (did the answer's citations point to the right sources?),
@@ -405,6 +415,7 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 ## Roadmap
 
 **v0.1.0 (this release):**
+
 - ✅ End-to-end pipeline: classifier → rewriter → hybrid retrieval → synthesizer
 - ✅ Canonical wiki layer — full 56-page v1 roster, chunked + embedded into Qdrant (`chatqec canonical embed`)
 - ✅ Multimodal image input (`chatqec ask --image` + Streamlit attach) with Gemini-Flash captioning for retrieval
@@ -416,6 +427,7 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 - ✅ Watchlist refresh (arXiv + GitHub) with scheduled CI MR
 
 **v0.2 — content & quality:**
+
 - Populate the source registry to ~500 documents (seed via watchlist + bulk arXiv)
 - ✅ Build out the canonical wiki to the full v1 roster (56 pages)
 - Publish baseline eval numbers and the methodology behind them
@@ -426,6 +438,7 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
   version, and source licenses (provenance from `sources/registry.jsonl`).
 
 **v0.3 — tooling:**
+
 - ✅ PyMatching decoder tool
 - qiskit-qec tool (in the MCP sibling) — **superseded** by the Stim-backed
   `code_params` tool; qiskit-qec is unshippable (not on PyPI, abandoned,
@@ -434,6 +447,7 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 - ✅ Real stdio MCP client (Stim tool-use now works) + Claude→Gemini tool failover
 
 **v0.4 — corpus & fallback:**
+
 - ✅ Expanded corpus: +11 foundational/FT + hardware-demo papers with full
   text and vision-described figures; +5 QEC vendor/lab pages (Google, IBM,
   Quantinuum); +4 canonical pages (erasure-conversion, real-time-decoding,
@@ -442,14 +456,25 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 - ✅ Optional Tavily web-search fallback (rerank-gated, calibrated threshold 0.4)
 
 **v0.5 — more source types:**
+
 - Populate the corpus with **code repos** and **video/lecture transcripts** —
   the GitHub and YouTube fetchers already exist (`src/chatqec/ingestion/fetchers/`)
   and the watchlist tracks both; the registry just isn't seeded with them yet.
 
 **v1.0 — production:**
+
 - Real `from_config()` deploy flow with secret management
 - Docker-isolated sandbox (current uses subprocess + rlimits)
 - Per-source retraction propagation
+
+**Later — exploratory:**
+
+- **Hardware-aware placement.** Pull live calibration data (T1/T2, gate &
+  readout error, coupling map) from real backends (IBM Quantum, IQM) and add a
+  layout advisor that recommends the best qubit subset + links for a given
+  code/circuit, feeding that advice into the synthesizer's answer. Shown as
+  the "(future work)" lane in the [architecture diagram](#how-it-works) above;
+  no implementation exists yet.
 
 ---
 
@@ -471,8 +496,8 @@ uv run chatqec canonical validate
 ```
 
 Conventional Commits + small, reviewable diffs. The design spec
-([`docs/superpowers/specs/`](docs/superpowers/specs/)) and implementation plan
-([`docs/superpowers/plans/`](docs/superpowers/plans/)) are the source of
+([`docs/planning/specs/`](docs/planning/specs/)) and implementation plan
+([`docs/planning/plans/`](docs/planning/plans/)) are the source of
 truth — extend them before adding a feature outside the v1 scope.
 
 ---
@@ -483,7 +508,8 @@ If ChatQEC helps your research, please cite it as:
 
 ```bibtex
 @software{chatqec_2026,
-  author  = {Afrose, Sharmin},
+  author  = {Sharmin Afrose, Vicente Leyton-Ortega, Travis Humble, Tirthankar Ghosal
+},
   title   = {ChatQEC: an open-source research assistant for Quantum Error Correction},
   version = {0.1.0},
   year    = {2026},
@@ -493,8 +519,8 @@ If ChatQEC helps your research, please cite it as:
 
 ---
 
-## License
+## Acknowledgements
 
-Apache 2.0 — see [LICENSE](LICENSE). The sibling MCP server
-[`chatqec-mcp-tools`](https://code.ornl.gov/qsc-as/chatqec-mcp-tools) is also
-Apache 2.0.
+This material is based upon work supported by the U.S. Department of Energy,
+Office of Science, National Quantum Information Science Research Centers,
+Quantum Science Center.

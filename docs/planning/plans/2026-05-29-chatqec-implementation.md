@@ -1,14 +1,12 @@
 # ChatQEC Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Build ChatQEC v1 — an open-source semi-automated research assistant that answers Quantum Error Correction questions over a heterogeneous corpus, with citations and sandboxed Stim execution, exposed as a Python library, CLI, and Streamlit app.
 
 **Architecture:** Hybrid RAG (Qdrant vector + BM25 + cross-encoder reranker) over a JSONL source registry, with a hand-curated canonical wiki layer that's force-injected on topic match. Claude Sonnet synthesizes with native tool-use, calling a sibling `chatqec-mcp-tools` MCP server (Stim in v1) in a Docker sandbox. Gemini provides embeddings and a long-context fallback. No agent framework — native Anthropic + Gemini + Qdrant SDKs, with LlamaIndex *readers only* for ingestion.
 
 **Tech Stack:** Python 3.11+, uv, Hydra+OmegaConf, Qdrant, Anthropic SDK, google-generativeai, sentence-transformers (BGE reranker), Stim, mcp Python SDK, Streamlit, Click, slowapi, unstructured, defuddle, LlamaIndex readers (arxiv/github/youtube/file).
 
-**Spec reference:** [`docs/superpowers/specs/2026-05-29-chatqec-design.md`](../specs/2026-05-29-chatqec-design.md)
+**Spec reference:** [`docs/planning/specs/2026-05-29-chatqec-design.md`](../specs/2026-05-29-chatqec-design.md)
 
 ---
 
@@ -57,7 +55,7 @@ Each milestone ends with a green test suite and a commit point.
 ```bash
 cd /home/pza/chatQEC
 git init -b main
-git add .gitignore docs/superpowers/specs/2026-05-29-chatqec-design.md
+git add .gitignore docs/planning/specs/2026-05-29-chatqec-design.md
 git commit -m "chore: bootstrap repo with design spec and .gitignore"
 ```
 
@@ -78,7 +76,7 @@ Expected output: `Branch 'main' set up to track 'origin/main'.`
 
 - [ ] **Step 4: Verify the push**
 
-Open the GitLab project page in a browser; you should see the `.gitignore` and the spec under `docs/superpowers/specs/`.
+Open the GitLab project page in a browser; you should see the `.gitignore` and the spec under `docs/planning/specs/`.
 
 ---
 
@@ -876,8 +874,8 @@ sandboxed Stim execution for circuit-level questions.
 
 ## Status
 
-Pre-alpha. See [the design spec](docs/superpowers/specs/2026-05-29-chatqec-design.md)
-and [the implementation plan](docs/superpowers/plans/2026-05-29-chatqec-implementation.md).
+Pre-alpha. See [the design spec](docs/planning/specs/2026-05-29-chatqec-design.md)
+and [the implementation plan](docs/planning/plans/2026-05-29-chatqec-implementation.md).
 
 ## Quick start (developers)
 
@@ -2764,7 +2762,7 @@ Create `knowledge/canonical/_roster.yaml`:
 
 ```yaml
 # Canonical wiki roster — v1 target (52 pages: 24 P0, 20 P1, 8 P2).
-# Authoritative source: docs/superpowers/specs/2026-05-29-chatqec-design.md §A.1
+# Authoritative source: docs/planning/specs/2026-05-29-chatqec-design.md §A.1
 # This file is documentation; the loader ignores files starting with '_'.
 
 pages:
@@ -5186,7 +5184,7 @@ Create `sources/watchlist.yaml`:
 # ChatQEC watchlist — drives the weekly refresh job.
 # Contributors: add entries via PR. The refresh job opens a PR with new candidates
 # in status=pending_review; maintainers approve via merge.
-# Authoritative seeds: docs/superpowers/specs/2026-05-29-chatqec-design.md §A.4–A.9
+# Authoritative seeds: docs/planning/specs/2026-05-29-chatqec-design.md §A.4–A.9
 
 arxiv:
   categories: [quant-ph]

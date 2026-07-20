@@ -6,7 +6,7 @@
 | Status | Draft, awaiting approval |
 | Author | sharmin.afrose.vt@gmail.com |
 | Scope | v1 architecture + v2 roadmap |
-| Next step on approval | Invoke `superpowers:writing-plans` to produce an implementation plan |
+| Next step on approval | Produce an implementation plan |
 
 ---
 
@@ -521,7 +521,7 @@ chatqec/
 └── docs/
     ├── architecture.md
     ├── contributing.md
-    └── superpowers/specs/      # this file lives here
+    └── planning/specs/         # this file lives here
 ```
 
 Sibling repo:

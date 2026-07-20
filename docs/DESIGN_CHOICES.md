@@ -2,7 +2,7 @@
 
 Quick rationale for the model lineup and architectural picks in ChatQEC v0.1.
 For exhaustive context see
-[`docs/superpowers/specs/2026-05-29-chatqec-design.md`](superpowers/specs/2026-05-29-chatqec-design.md).
+[`docs/planning/specs/2026-05-29-chatqec-design.md`](planning/specs/2026-05-29-chatqec-design.md).
 
 ---
 
@@ -16,6 +16,8 @@ For exhaustive context see
 | Eval judge | `claude-haiku-4-5` | `meta-llama/Llama-3.3-70B-Instruct` | Yes/no faithfulness check; precision over creativity |
 | Dense embeddings | `gemini-embedding-001` | (none — local BGE/Nomic) | Strong retrieval, free tier, Matryoshka-truncatable |
 | Cross-encoder reranker | `mixedbread-ai/mxbai-rerank-base-v1` | (local, no fallback) | Apache-2.0, strong BEIR scores; non-China origin (avoids BAAI/bge) |
+| Figure describer (ingestion) | `meta-llama/Llama-3.2-11B-Vision-Instruct` (local GPU) | (skipped — text-only if no GPU/weights) | Describes paper/PDF figures into searchable chunks; runs offline, no per-image API cost |
+| Image captioner (query) | provider-native vision — Claude (Anthropic) / `gemini-2.5-flash` (Gemini) | `meta-llama/Llama-4-Scout-17B-16E-Instruct` | Captions user-attached images into the retrieval query; reuses the active LLM provider's multimodal path |
 
 ### Why Haiku for the classifier and rewriter
 
@@ -55,6 +57,15 @@ The bi-encoder retrieval (Qdrant + BM25) is recall-oriented — fast over large 
 - **mixedbread-ai/mxbai-rerank-base-v1** is open-weights (Apache-2.0), no API key, runs locally. It replaces `BAAI/bge-reranker-base` to avoid China-origin models; mxbai-rerank-v1 is DeBERTa-v3 based and a like-for-like upgrade (stronger BEIR scores).
 - We picked `-base` (~280 MB) over `-large` (~1.5 GB) because base is much faster and the quality drop is small for short QEC contexts. Only the **v1** line is used — mxbai-rerank-**v2** is built on a Qwen base.
 - The model is configurable via `models.reranker` in `conf/config.yaml`.
+
+### Why two separate vision models
+
+Image reading happens in two very different places, so they use different models.
+
+- **Figure describer (offline ingestion).** When a paper or PDF is ingested, its figures are turned into short technical descriptions (code/circuit/lattice/decoder/plot + any axis labels) that become searchable chunks. This is a **local `meta-llama/Llama-3.2-11B-Vision-Instruct`** (~20 GB) running on the machine's GPU — it processes many figures in a batch job, so paying a per-image API price would be wasteful, and keeping it local avoids sending figures to a third party. If no GPU/weights are present the step is skipped automatically and ingestion stays text-only. Code: `src/chatqec/ingestion/figure_vision.py`.
+- **Image captioner (online query).** When a user attaches an image in chat, it is captioned into 1–3 sentences that get folded into the retrieval query so the KB matches the figure. This reuses the **active LLM provider's own multimodal path** — Claude's native vision under `provider: anthropic`, `gemini-2.5-flash` under `provider: gemini` — with **`meta-llama/Llama-4-Scout-17B-16E-Instruct`** as the HuggingFace fallback. Code: `src/chatqec/conversation/vision.py`; the HF vision model is set at `models.hf.vision` in `conf/config.yaml`.
+
+Both are US-origin open-weights on the fallback path, consistent with the compliance constraint below.
 
 ### HuggingFace fallback model choices
 
@@ -159,7 +170,7 @@ It greedily emits a new chunk *only* at math-block boundaries. Slightly longer c
 
 ### Why an arXiv title-and-author resolver (§7.4)
 
-LLMs hallucinate arXiv IDs ~14% of the time when asked for them ([early plan-time benchmark](superpowers/specs/2026-05-29-chatqec-design.md)). If we accepted any LLM-suggested arXiv ID directly, ~1 in 7 ingestion calls would silently pull the wrong paper.
+LLMs hallucinate arXiv IDs ~14% of the time when asked for them ([early plan-time benchmark](planning/specs/2026-05-29-chatqec-design.md)). If we accepted any LLM-suggested arXiv ID directly, ~1 in 7 ingestion calls would silently pull the wrong paper.
 
 The resolver:
 1. Takes the *title keywords* and *author last names* (which LLMs hallucinate far less).

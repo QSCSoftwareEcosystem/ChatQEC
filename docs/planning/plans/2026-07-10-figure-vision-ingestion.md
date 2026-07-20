@@ -1,7 +1,5 @@
 # Figure Vision Ingestion (Level 3) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Persist book/paper figures during ingestion, describe each with a local vision model so figures are semantically searchable, and surface the actual image to the user at answer time.
 
 **Architecture:** Marker already emits figures as `![](name.jpeg)` next to its markdown. We (1) copy those images into a durable `data/figures/<source_id>/` folder and fix the links (DONE — `persist_marker_images`), (2) run a local **Llama-3.2-11B-Vision-Instruct** describer over each real figure and inject a marked description block into the markdown before chunking, (3) record each chunk's figure paths in `Chunk.metadata`, and (4) at answer time load those images from retrieved chunks and pass them to the multimodal synthesizer + render them (Streamlit) / print their paths (CLI). The describer sits behind a `FigureDescriber` protocol so the model is swappable and tests use a fake.

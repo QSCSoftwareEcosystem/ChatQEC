@@ -1,7 +1,5 @@
 # Image Input (Multimodal Prompts) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Let users attach up to 3 images to a chat prompt (Streamlit + CLI) and ask questions about them; the answering VLM sees the image and a Gemini-Flash caption augments retrieval.
 
 **Architecture:** An `ImageAttachment` value object threads through `ChatQEC.ask/ask_stream` → synthesizer (multimodal message blocks) → provider translators. Images always reach the answerer; a caption always augments retrieval. Fallback chain Anthropic→Gemini→Llama-4(HF) all carry images; graceful-degrade is a last resort.

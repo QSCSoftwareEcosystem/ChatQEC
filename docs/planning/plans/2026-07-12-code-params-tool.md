@@ -1,7 +1,5 @@
 # `code_params` Tool (Stim-backed) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.
-
 **Goal:** Add a `code_params` MCP tool that reports a named QEC code's parameters ([[n,k]], stabilizer count) plus a **Stim-computed** code distance — replacing the deferred `qiskit_qec_run` with a clean, dependency-free implementation.
 
 **Architecture:** Pure `fn(Input)->Output` in the `chatqec-mcp-tools` sibling, same pattern as the other tools. `n`, `k`, `num_stabilizers` come from each family's standard formula; the distance is computed by `stim.Circuit.generated(...).shortest_graphlike_error()`. Then wire it into the main app's prompt + Streamlit rendering.
