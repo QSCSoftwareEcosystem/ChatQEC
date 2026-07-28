@@ -34,6 +34,10 @@ from chatqec_mcp_tools.tools.threshold_sweep import (
     ThresholdSweepInput,
     threshold_sweep,
 )
+from chatqec_mcp_tools.tools.tsim_simulate import (
+    TsimSimulateInput,
+    tsim_simulate,
+)
 
 
 @dataclass(frozen=True)
@@ -66,6 +70,10 @@ def _code_params_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _qec_circuit_build_handler(args: dict[str, Any]) -> dict[str, Any]:
     return qec_circuit_build(QecCircuitBuildInput.model_validate(args)).model_dump()
+
+
+def _tsim_simulate_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return tsim_simulate(TsimSimulateInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -134,6 +142,18 @@ _TOOLS = [
         ),
         input_schema=QecCircuitBuildInput.model_json_schema(),
         handler=_qec_circuit_build_handler,
+    ),
+    ToolSpec(
+        name="tsim_simulate",
+        description=(
+            "Run a Tsim circuit (Stim syntax plus non-Clifford gates — T, T_DAG, "
+            "R_X/R_Y/R_Z, U3, TPP/TPP_DAG, R_XX/R_YY/R_ZZ/R_PAULI, CCZ, CCX) and "
+            "return measurement/detector samples; enables magic-state distillation/"
+            "cultivation circuits that plain Stim cannot simulate at all. Optional "
+            "`tsim` extra — returns ok=False with an error_message if not installed."
+        ),
+        input_schema=TsimSimulateInput.model_json_schema(),
+        handler=_tsim_simulate_handler,
     ),
 ]
 
