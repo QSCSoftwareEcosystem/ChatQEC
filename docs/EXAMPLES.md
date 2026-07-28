@@ -256,6 +256,15 @@ guessing numbers. Three new tools shipped this round (all Stim-backed).
 | **`threshold_sweep`** | sweep p × distance for a code family → table + log-log SVG plot | stim + pymatching + matplotlib 3.10.9 |
 | **`code_params`** | report a code's [[n,k]] + stabilizer count and a Stim-computed distance | stim 1.16.0 |
 
+> **Benchmark prompt set:** [`eval/stim_qec_prompts.json`](../eval/stim_qec_prompts.json)
+> covers all 5 of these tools — companion to
+> [`eval/lightstim_qec_prompts.json`](../eval/lightstim_qec_prompts.json), same
+> shape. It distinguishes prompts that supply a raw circuit (reliable) from
+> ones that require the model to hand-write a circuit for a named code — the
+> weak spot `docs/stim_getting_started_capability_check.md` already found —
+> plus edge cases and cross-tool prompts, all with reference values verified
+> directly against the real tools.
+
 **Test check-run (2026-07-12):** full sibling suite **30 passed** (`uv run pytest -q`),
 ruff + mypy strict clean. Per file: `test_decoding` 2 · `test_pymatching_decode` 5 ·
 `test_threshold_sweep` 5 (incl. `color_code` regression) · `test_code_params` 4 · `test_server` 4.

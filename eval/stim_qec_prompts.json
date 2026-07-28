@@ -1,0 +1,137 @@
+{
+  "description": "Benchmark prompts for ChatQEC's five core Stim-backed MCP tools (stim_simulate, stim_diagram, pymatching_decode, threshold_sweep, code_params) — companion to eval/lightstim_qec_prompts.json, same shape. Distinguishes prompts where a raw circuit is supplied in the prompt (reliable path) from prompts that require the model to hand-write a circuit for a named code (a documented weak spot — see docs/stim_getting_started_capability_check.md, which found stim_simulate/stim_diagram/pymatching_decode fail or silently produce wrong qubit counts on hand-rolled named-code circuits about half the time, while threshold_sweep/code_params — which call stim.Circuit.generated internally — are reliable). Not run in bulk; run a subset live and record raw logs the same way docs/lightstim_capability_check.md does.",
+  "categories": {
+    "tool_simulate": "stim_simulate with a raw circuit given in the prompt — reliable path",
+    "tool_simulate_named": "stim_simulate on a named code with NO circuit given — model must hand-write it; known weak spot",
+    "tool_diagram": "stim_diagram with a raw circuit given in the prompt",
+    "tool_diagram_named": "stim_diagram on a named code with NO circuit given — known weak spot",
+    "tool_decode": "pymatching_decode with a raw circuit given in the prompt",
+    "tool_decode_named": "pymatching_decode on a named code with NO circuit given — known weak spot",
+    "tool_sweep": "threshold_sweep — always named-family, generated internally via stim.Circuit.generated, reliable",
+    "tool_params": "code_params — always named-family, reliable",
+    "tool_edge_case": "Should fail gracefully (ok=False or a clear rejection), not crash or silently return a wrong-shaped result",
+    "combined": "Should invoke more than one tool coherently"
+  },
+  "prompts": [
+    {
+      "id": "st-sim-001",
+      "category": "tool_simulate",
+      "question": "Create a simple 2-qubit Stim circuit that prepares a Bell pair (H on qubit 0, CNOT from 0 to 1) and measures both qubits in the Z basis. Simulate 2000 shots and show me the sampled measurement results.",
+      "expected_tool": "stim_simulate",
+      "reference": {"circuit": "H 0\nCNOT 0 1\nM 0 1", "shots": 2000, "expected_outcome": "every sampled row is [0,0] or [1,1], never [0,1]/[1,0] — perfect ZZ correlation"}
+    },
+    {
+      "id": "st-sim-002",
+      "category": "tool_simulate_named",
+      "question": "Simulate a distance-9 repetition-code memory circuit in Stim for 25 rounds and report the detector firing rate.",
+      "expected_tool": "stim_simulate",
+      "notes": "Documented weak spot (capability-check #3): the model has previously hand-written a circuit that resets data qubits every round, destroying the memory, and reported an analytic estimate instead of a tool-derived aggregate (the tool only returns a sample preview, never an aggregate rate). Watch for both failure modes."
+    },
+    {
+      "id": "st-diagram-001",
+      "category": "tool_diagram",
+      "question": "Render this Stim circuit as a timeline diagram: `H 0\\nCNOT 0 1\\nM 0 1`",
+      "expected_tool": "stim_diagram",
+      "reference": {"circuit": "H 0\nCNOT 0 1\nM 0 1", "expected_outcome": "ok=True, non-empty SVG"}
+    },
+    {
+      "id": "st-diagram-002",
+      "category": "tool_diagram_named",
+      "question": "Show me a Stim timeline diagram of a distance-3 rotated surface code memory circuit.",
+      "expected_tool": "stim_diagram",
+      "reference": {"true_qubit_count": 9, "true_layout": "9 data + 8 ancilla"},
+      "notes": "Documented failure (capability-check #10): a prior run hand-rolled a 24-qubit (14 data + 10 ancilla) circuit — wrong; the true d=3 rotated surface code is [[9,1,3]], 9 data + 8 ancilla = 17 qubits total, confirmed by code_params in the same session. A correct answer either matches 17 qubits or routes through code_params/qec_circuit_build first to get the real layout before diagramming."
+    },
+    {
+      "id": "st-decode-001",
+      "category": "tool_decode",
+      "question": "MWPM-decode this Stim circuit over 5000 shots and tell me what fraction of shots have a logical error: `X_ERROR(0.05) 0 1 2\\nM 0 1 2\\nDETECTOR rec[-1] rec[-2]\\nDETECTOR rec[-2] rec[-3]\\nOBSERVABLE_INCLUDE(0) rec[-1]`",
+      "expected_tool": "pymatching_decode",
+      "notes": "Toy 3-qubit repetition-style circuit; verified directly against the tool: ok=True, logical_error_rate≈0.008 at p=0.05, 5000 shots (stochastic — expect close, not exact, on re-run)."
+    },
+    {
+      "id": "st-decode-002",
+      "category": "tool_decode_named",
+      "question": "Decode a distance-5 surface-code memory experiment at p=0.005 over 10,000 shots and give me its logical error rate.",
+      "expected_tool": "pymatching_decode",
+      "notes": "Documented weak spot (capability-check #5): 5 hand-written circuit variants attempted in one session, ended at confidence: low with no logical error rate ever reported. A correct answer should get a real number close to the reference in ls-cmp-style sanity checks (~0.005-0.02 range depending on rounds), or should fail over to threshold_sweep instead of giving up."
+    },
+    {
+      "id": "st-sweep-001",
+      "category": "tool_sweep",
+      "question": "Sweep the physical error rate for the rotated surface code at distances 3 and 5, p in [0.02, 0.05, 0.10], and plot the logical error rate.",
+      "expected_tool": "threshold_sweep",
+      "reference": {
+        "note": "Real numbers from docs/EXAMPLES.md's verified 2026-07-12 smoke-run (stochastic — expect close, not exact, on re-run)",
+        "d3_p0.02": 0.0110, "d5_p0.02": 0.0010,
+        "d3_p0.05": 0.0665, "d5_p0.05": 0.0450,
+        "d3_p0.10": 0.1895, "d5_p0.10": 0.2220,
+        "expected_pattern": "below threshold (p=0.02): larger d wins (lower LER); above threshold (p=0.10): larger d loses"
+      }
+    },
+    {
+      "id": "st-sweep-002",
+      "category": "tool_sweep",
+      "question": "Find the threshold of the repetition code and show me the log-log plot.",
+      "expected_tool": "threshold_sweep",
+      "notes": "Correct answer explains the repetition code has no real QEC threshold (all sweep points show larger d losing, since there's only one error type it protects against) — capability-check #7 got this right."
+    },
+    {
+      "id": "st-params-001",
+      "category": "tool_params",
+      "question": "For a distance-5 rotated surface code, report [[n,k]], the stabilizer count, and the code distance.",
+      "expected_tool": "code_params",
+      "reference": {"code_family": "surface_code_rotated", "distance": 5, "n": 25, "k": 1, "num_stabilizers": 24, "stim_code_distance": 5}
+    },
+    {
+      "id": "st-params-002",
+      "category": "tool_params",
+      "question": "How many physical qubits encode one logical qubit in the distance-9 repetition code, and what's its distance?",
+      "expected_tool": "code_params",
+      "reference": {"code_family": "repetition_code", "distance": 9, "n": 9, "k": 1, "num_stabilizers": 8, "stim_code_distance": 9}
+    },
+    {
+      "id": "st-params-003",
+      "category": "tool_params",
+      "question": "What is [[n,k]] and the code distance for a distance-3 color code, and why might the reported distance be a lower bound?",
+      "expected_tool": "code_params",
+      "reference": {"code_family": "color_code", "distance": 3, "n": 7, "k": 1, "num_stabilizers": 6, "stim_code_distance": 2},
+      "notes": "stim_code_distance (2) is the graphlike distance, a lower bound on the true distance (3) — color-code hyperedge errors are undercounted by shortest_graphlike_error. Correct answer explains this caveat, not just reports 2 as fact."
+    },
+    {
+      "id": "st-edge-001",
+      "category": "tool_edge_case",
+      "question": "Report [[n,k]] and code distance for a distance-4 rotated surface code.",
+      "expected_tool": "code_params",
+      "expected_outcome": "ok=False — surface_code_rotated requires odd distance."
+    },
+    {
+      "id": "st-edge-002",
+      "category": "tool_edge_case",
+      "question": "Sweep the surface code at distances 3, 5, 100 for p=0.05.",
+      "expected_tool": "threshold_sweep",
+      "expected_outcome": "ok=False — distance 100 is outside the tool's schema range [3, 15]."
+    },
+    {
+      "id": "st-edge-003",
+      "category": "tool_edge_case",
+      "question": "Simulate this circuit for 50,000,000 shots: `H 0\\nM 0`",
+      "expected_tool": "stim_simulate",
+      "expected_outcome": "ok=False — shots > 1,000,000 not permitted."
+    },
+    {
+      "id": "st-combined-001",
+      "category": "combined",
+      "question": "Report the distance-5 rotated surface code's parameters, then sweep its logical error rate at p=0.01, 0.05, 0.10 and tell me if it's below threshold at the lowest p.",
+      "expected_tool": ["code_params", "threshold_sweep"],
+      "reference": {"code_params": {"n": 25, "k": 1, "num_stabilizers": 24}, "expected_pattern": "below threshold at p=0.01 relative to a smaller distance's LER at the same p"}
+    },
+    {
+      "id": "st-combined-002",
+      "category": "combined",
+      "question": "Build me a distance-3 repetition code circuit, diagram it, and then decode it at p=0.1 over 2000 shots.",
+      "expected_tool": ["stim_diagram", "pymatching_decode"],
+      "notes": "Tests whether the model reuses ONE circuit across both tool calls consistently, or diagrams one hand-rolled circuit and decodes a different (possibly inconsistent) one."
+    }
+  ]
+}
