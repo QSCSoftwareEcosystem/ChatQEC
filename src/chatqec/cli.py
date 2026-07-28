@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -875,17 +877,18 @@ def _ingest_github(  # pragma: no cover - drives a GitHub API pull
     Uses LlamaIndex's ``GithubRepositoryReader`` scoped to ``github_paths_value``
     (curated docs only, never the full source tree), then hands the resulting
     ``{path: text}`` map to the existing, unit-tested chunker.
-    """
-    import os
 
+    Preconditions (``GITHUB_TOKEN`` present, ``commit_sha_value`` a full 40-char
+    hex sha, ``github_repo_value`` a valid ``org/repo``) are validated by
+    ``ingest()`` before this function is ever called, so they're not re-checked
+    here — this keeps that validation logic testable without network access.
+    """
     from llama_index.readers.github import GithubClient, GithubRepositoryReader
 
     from chatqec.ingestion.fetchers.github import GitHubMetadata, files_to_chunks
 
     org, _, repo = github_repo_value.partition("/")
-    github_token = os.environ.get("GITHUB_TOKEN")
-    if not github_token:
-        raise click.UsageError("--github requires a GITHUB_TOKEN environment variable")
+    github_token = os.environ["GITHUB_TOKEN"]
     client = GithubClient(github_token=github_token)
     reader = GithubRepositoryReader(
         github_client=client,
@@ -898,6 +901,7 @@ def _ingest_github(  # pragma: no cover - drives a GitHub API pull
     )
     docs = reader.load_data(commit_sha=commit_sha_value)
     files = {d.metadata["file_path"]: d.text for d in docs}
+    # TODO: confirm actual license before running the live LightStim ingest
     md = GitHubMetadata(org=org, repo=repo, commit_sha=commit_sha_value, license="Apache-2.0")
     chunks = files_to_chunks(md, files=files)
     if not chunks:
@@ -1048,8 +1052,20 @@ def ingest(
     now = datetime.now(tz=UTC)
 
     if github_repo_value:
+        org, sep, repo = github_repo_value.partition("/")
+        if not sep or not org or not repo:
+            raise click.UsageError(
+                f"--github must be in 'org/repo' form; got {github_repo_value!r}"
+            )
         if not commit_sha_value:
             raise click.UsageError("--github requires --commit-sha (pin, never a branch)")
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha_value):
+            raise click.UsageError(
+                "--commit-sha must be a full 40-character hex commit sha, not a "
+                f"branch name; got {commit_sha_value!r}"
+            )
+        if not os.environ.get("GITHUB_TOKEN"):
+            raise click.UsageError("--github requires a GITHUB_TOKEN environment variable")
         _ingest_github(
             github_repo_value,
             commit_sha_value,
