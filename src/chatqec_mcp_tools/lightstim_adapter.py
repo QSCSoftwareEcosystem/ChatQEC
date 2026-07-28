@@ -1,5 +1,6 @@
-"""Only module in this repo that imports lightstim.* — see docs/planning
-LightStim integration plan for why this seam exists (upstream churn isolation).
+"""Only module in this repo that imports lightstim.* — kept as a single seam so
+upstream LightStim API churn (it's a young, fast-moving project) is isolated to
+one file instead of leaking into the tool/server layer.
 
 LightStim (https://github.com/QuTone/LightStim) is a higher-level framework built
 on top of Stim that ships QEC code families Stim doesn't provide out of the box:

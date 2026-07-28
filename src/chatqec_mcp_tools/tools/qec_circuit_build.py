@@ -49,7 +49,11 @@ def qec_circuit_build(inp: QecCircuitBuildInput) -> QecCircuitBuildOutput:
     except LightStimUnavailable as e:
         return QecCircuitBuildOutput(ok=False, error_message=str(e))
     except (ValueError, RuntimeError) as e:
-        return QecCircuitBuildOutput(ok=False, error_message=f"lightstim error: {e}")
+        # Covers both genuine lightstim runtime errors and this adapter's own
+        # domain validation (unsupported distance/preset/protocol) — the message
+        # from either source is already self-describing, so it's passed through
+        # as-is rather than re-labeled as a "lightstim error".
+        return QecCircuitBuildOutput(ok=False, error_message=f"could not build circuit: {e}")
 
     return QecCircuitBuildOutput(
         ok=True,
