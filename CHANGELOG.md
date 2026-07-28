@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Pinned GitHub-repo ingestion: `chatqec ingest --github <org>/<repo> --commit-sha
+  <sha> [--github-paths ...]` (`cli.py`), reusing the existing
+  `GitHubMetadata`/`files_to_chunks` fetcher (`ingestion/fetchers/github.py`).
+  `--commit-sha` is mandatory and validated as a 40-char hex commit — never a
+  branch — before any network call. `QuTone/LightStim` added to
+  `sources/watchlist.yaml` so `chatqec watch refresh` surfaces upstream moves.
+  The first live run (LightStim's `docs/api/` + `skills/`) is documented but
+  not yet executed pending a `GITHUB_TOKEN`.
+- `qec_circuit_build` MCP tool in the sibling `chatqec-mcp-tools` repo: builds
+  circuits for code families Stim doesn't ship built-in (toric code, BB codes,
+  PQRM, LightStim's construction of the 6.6.6 color code) by delegating to
+  [LightStim](https://github.com/QuTone/LightStim), pinned to an exact commit
+  via an optional `lightstim` extra (`chatqec-mcp-tools[lightstim]`) so the
+  five existing Stim-backed tools keep working unmodified if it's absent. See
+  [`docs/EXAMPLES.md`](docs/EXAMPLES.md#lightstim-via-qec_circuit_build) and
+  [`docs/lightstim_capability_check.md`](docs/lightstim_capability_check.md)
+  (scaffolded, live model-call verification still pending an
+  `ANTHROPIC_API_KEY`).
 - Full-text arXiv ingestion via `chatqec ingest --arxiv <id> --full-text`:
   - LaTeX-source path (`ingestion/latex.py`, `fetchers/arxiv_source.py`) — cleans
     source while preserving math/code environments verbatim, keeps figure

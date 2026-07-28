@@ -92,7 +92,7 @@ uv run chatqec ask --mcp-server chatqec-mcp-tools \
 > reinstall** or the new tools won't be exposed:
 >
 > ```bash
-> uv tool install --force ~/chatqec-mcp-tools   # re-expose e.g. pymatching_decode, code_params
+> uv tool install --force ~/chatqec-mcp-tools   # re-expose e.g. pymatching_decode, code_params, qec_circuit_build
 > ```
 >
 > Check what tools the model can actually see:
@@ -101,14 +101,23 @@ uv run chatqec ask --mcp-server chatqec-mcp-tools \
 > uv run python -c "from chatqec.cli import _build_chatqec; \
 >   b=_build_chatqec(mcp_server='chatqec-mcp-tools'); \
 >   print([t.name for t in b.synthesizer.mcp_adapter.client.list_tools()])"
-> # → ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params']
+> # → ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build']
 > ```
 
 The model **decides on its own** when a question needs simulation and calls the
 MCP tools — `stim_simulate`, `stim_diagram`, `pymatching_decode`,
-`threshold_sweep`, `code_params` — which run in a subprocess sandbox with
-memory and wall-clock limits. Reported numbers come from the tool's actual
-output, not the model's guess.
+`threshold_sweep`, `code_params`, `qec_circuit_build` — which run in a
+subprocess sandbox with memory and wall-clock limits. Reported numbers come
+from the tool's actual output, not the model's guess.
+
+> **`qec_circuit_build` needs the sibling's optional `lightstim` extra.**
+> The tool is always registered, but without `lightstim` installed it returns
+> `ok=False` for every call. Reinstall with the extra to actually use it:
+> `uv tool install --force "~/chatqec-mcp-tools[lightstim]"`. It builds circuits
+> for code families Stim doesn't ship built-in (toric code, BB codes, PQRM,
+> plus LightStim's own construction of the 6.6.6 color code) — see
+> [`docs/EXAMPLES.md`](docs/EXAMPLES.md#lightstim-via-qec_circuit_build) and
+> [`docs/lightstim_capability_check.md`](docs/lightstim_capability_check.md).
 
 **Provider:** tool use works with the `anthropic`, `gemini`, or `auto` provider
 (set `models.provider` in `conf/config.yaml`). Under `auto`, ChatQEC tries
@@ -124,6 +133,7 @@ chatqec chat              # interactive REPL (/quit, /clear)
 chatqec ingest --arxiv 2408.13687 --url https://...   # add a source (abstract only)
 chatqec ingest --arxiv 2408.13687 --full-text         # ingest the full paper (LaTeX source → Marker PDF fallback)
 chatqec ingest --pdf Raw/book.pdf --pages 46-77 --title "..." --describe-figures  # book chapter + figure vision
+chatqec ingest --github QuTone/LightStim --commit-sha <sha> --github-paths docs/api --github-paths skills  # pinned repo docs
 chatqec embed --all-pending --provider gemini         # embed → flip to active
 chatqec sources list                                  # registry view
 chatqec retrieve --query "..."                        # debug: top-K chunks only (no LLM)
@@ -293,7 +303,7 @@ the fallback kicks in — eval headline numbers should still be run with
 | Canonical wiki  | [`knowledge/canonical/`](knowledge/canonical/)                        | 60 pages (full v1 roster + v0.4 additions in[`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed`                                                                                                                                |
 | Source registry | [`sources/registry.jsonl`](sources/registry.jsonl)                    | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`)                                                                                                                                                                                |
 | Watchlist       | [`sources/watchlist.yaml`](sources/watchlist.yaml)                    | arXiv categories, GitHub repos, YouTube channels                                                                                                                                                                                                                                    |
-| Ingestion       | [`src/chatqec/ingestion/`](src/chatqec/ingestion/)                    | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`)                                                                         |
+| Ingestion       | [`src/chatqec/ingestion/`](src/chatqec/ingestion/)                    | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub, pinned to an exact commit via `--commit-sha` / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`)                                                                         |
 | Embedding       | [`src/chatqec/embedding/`](src/chatqec/embedding/)                    | Gemini (default) or local BGE/Nomic; BM25 via fastembed                                                                                                                                                                                                                             |
 | Store           | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py)          | Hybrid dense + sparse search                                                                                                                                                                                                                                                        |
 | Retrieval       | [`src/chatqec/retrieval/`](src/chatqec/retrieval/)                    | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection                                                                                                                                        |
@@ -457,9 +467,15 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 
 **v0.5 — more source types:**
 
+- ✅ `chatqec ingest --github <org>/<repo> --commit-sha <sha>` wired to the CLI
+  (pinned to an exact commit, never a branch — reuses the existing
+  `GitHubMetadata`/`files_to_chunks` fetcher); `QuTone/LightStim` added to
+  `sources/watchlist.yaml` so `chatqec watch refresh` surfaces upstream moves.
 - Populate the corpus with **code repos** and **video/lecture transcripts** —
-  the GitHub and YouTube fetchers already exist (`src/chatqec/ingestion/fetchers/`)
-  and the watchlist tracks both; the registry just isn't seeded with them yet.
+  the GitHub fetcher is now wired to `chatqec ingest`; the YouTube fetcher
+  already exists (`src/chatqec/ingestion/fetchers/`) and the watchlist tracks
+  both, but the registry isn't seeded with either yet — the first live
+  `--github` run (LightStim's `docs/api/` + `skills/`) is still pending.
 
 **v1.0 — production:**
 

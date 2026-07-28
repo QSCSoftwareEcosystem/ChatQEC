@@ -180,6 +180,33 @@ The resolver:
 
 The `chatqec ingest --arxiv <id>` path *also* works but prints a warning. It's correct for human-curated lists (like your `scripts/seed_corpus_v0_2.sh`) where you verified the ID; wrong for LLM-suggested ones.
 
+### Why `--github` ingestion pins to an exact commit, never a branch
+
+`chatqec ingest --github <org>/<repo> --commit-sha <sha>` is the first fetcher
+that pulls from a live, externally-maintained code repository rather than a
+versioned paper or a URL snapshot. The risk that's specific to this source
+type: a GitHub repo can rewrite its own history under you — `main` today is
+not `main` next week, and a fast-moving pre-1.0 project (the motivating case
+was [LightStim](https://github.com/QuTone/LightStim), not on PyPI, API not yet
+stable) can change class names, module layout, or content underneath an
+ingested chunk with no version bump to notice.
+
+So `--commit-sha` is **mandatory**, validated as a 40-character hex commit
+before any network call — never a branch name, never `main` — and the same
+sha is reused as the *dependency* pin wherever the repo also ships code
+ChatQEC calls (e.g. `chatqec-mcp-tools`'s `qec_circuit_build` tool, pinned to
+LightStim `47dd7497...` in its `pyproject.toml`). One version string, two
+consumers: the knowledge base never describes an API surface the running code
+doesn't actually have, and vice versa. Bumping either without the other is a
+deliberate, reviewed act — not something a routine re-ingest or dependency
+update can silently do.
+
+The "is a new version available" question is answered by the existing
+watchlist mechanism (`sources/watchlist.yaml`'s `github:` list +
+`refresh_github()`), not a bespoke checker — `chatqec watch refresh` already
+polls `pushed_at` per watched repo; `QuTone/LightStim` is just one more entry
+in a list that already existed for this purpose.
+
 ### Why authority tiers + recency in scoring (§8.5)
 
 QEC sources are *not* equally trustworthy. A peer-reviewed Nature paper, a tutorial blog, and a forum post can all match a query semantically — but should not all be cited equally.
@@ -241,7 +268,8 @@ If you want to add a new model, source type, or provider, the seams are:
 |---|---|
 | New LLM provider | `src/chatqec/providers/<name>.py` + register in `_build_llm_client` |
 | New source type (e.g. arXiv preprint server in a new field) | `src/chatqec/ingestion/fetchers/<name>.py` + wire in `chatqec ingest` |
+| New pinned GitHub source to watch | add a `repo:` entry to `sources/watchlist.yaml`'s `github:` list — `refresh_github()` needs no code change |
 | New scoring component | `src/chatqec/retrieval/scoring.py` — add the weight to `Coefficients` |
 | New canonical page | `knowledge/canonical/<topic>.md` + add to `_roster.yaml` |
 | New eval question subtype | `src/chatqec/eval/dataset.py` — add to `QuestionSubtype` enum + `eval/qa_set.jsonl` |
-| New MCP tool | `chatqec-mcp-tools/src/chatqec_mcp_tools/tools/<name>.py` + register in `server.py` |
+| New MCP tool | `chatqec-mcp-tools/src/chatqec_mcp_tools/tools/<name>.py` + register in `server.py` — e.g. `qec_circuit_build`, which isolates its one external, actively-changing dependency (LightStim) behind a single adapter file (`lightstim_adapter.py`) so upstream churn touches one seam, not the whole tool |

@@ -309,6 +309,60 @@ imperatively (name the **code family + distance + error rate**; use verbs like
 > rendered artifact** (a simulated number, a circuit image, a decoded rate, a threshold
 > plot, or a code's parameters).
 
+### LightStim via `qec_circuit_build`
+
+A 6th tool, `qec_circuit_build`, was added to the `chatqec-mcp-tools` sibling to
+cover code families plain Stim doesn't ship built-in: toric code, BB codes, and
+PQRM (LightStim's construction of the 6.6.6 color code is included too, though
+`code_params` already covers a Stim-native `color_code:memory_xyz` at a
+different qubit-count convention — see the caveat below). It delegates to
+[LightStim](https://github.com/QuTone/LightStim), pinned to an exact commit via
+the sibling's optional `lightstim` extra, so the five existing tools keep
+working unmodified whether or not it's installed.
+
+| Registered tool | Purpose | Backend |
+|---|---|---|
+| **`qec_circuit_build`** | build a `stim.Circuit` for toric/color/BB/PQRM codes at a given distance + rounds | LightStim @ `47dd74976780192ae901d91958863cced1165354` (optional `lightstim` extra) |
+
+**Test check-run:** sibling suite **44 passed** (`uv run pytest -q`, with the
+`lightstim` extra installed; **36 passed / 6 skipped** without it — the 6
+lightstim-gated integration tests skip cleanly), ruff + mypy strict clean in
+both configurations.
+
+**Functional smoke-run** (direct tool call, real pinned LightStim commit — not
+a `chatqec ask` run, see the capability-check caveat below):
+
+```text
+qec_circuit_build toric_code       d=3 r=3: ok=True  num_qubits=36   num_detectors=56   num_observables=2
+qec_circuit_build color_code_666   d=3 r=3: ok=True  num_qubits=13   num_detectors=18   num_observables=1
+qec_circuit_build color_code_666   d=5 r=5: ok=True  num_qubits=37   num_detectors=90   num_observables=1
+qec_circuit_build bb_code          d=6 r=6: ok=True  num_qubits=144  num_detectors=444  num_observables=12
+qec_circuit_build pqrm             d=3 r=3: ok=True  num_qubits=25   num_detectors=40   num_observables=1
+qec_circuit_build bb_code          d=7 r=7: ok=False error_message="bb_code only supports distance in [6, 10, 12]; got 7"
+```
+
+> **`bb_code` and `pqrm` only support a few discrete distances** — `{6, 10, 12}`
+> and `{3, 7}` respectively — by construction of LightStim's real presets
+> (trimmed further to fit this tool's own `[3, 15]` schema range). Other
+> distances return `ok=False` with a clear message, not a crash.
+>
+> **`color_code_666` is not "LightStim-only."** `code_params`'s `color_code`
+> family already wraps Stim's built-in `color_code:memory_xyz`, but reports
+> **data qubits only** (`(3d²+1)/4`) where LightStim's `color_code_666`
+> reports the **data+ancilla total** in its superdense layout — the two
+> numbers legitimately disagree by design, not by bug.
+>
+> **Live model-call verification is pending.** These numbers are from calling
+> `qec_circuit_build` directly against the real pinned LightStim commit — not
+> from a `chatqec ask --mcp-server chatqec-mcp-tools "..."` run, which needs an
+> `ANTHROPIC_API_KEY` this environment didn't have when the tool was added. See
+> [`docs/lightstim_capability_check.md`](lightstim_capability_check.md) for the
+> ready-to-run prompts, runbook, and reference values.
+
+| Tool | What triggers it | Example questions |
+|---|---|---|
+| `qec_circuit_build` | "build / construct a toric / BB / PQRM code circuit", "distance-N color code circuit" | *"Build a distance-3 toric code memory circuit and tell me its detector count."* · *"I need a distance-6 BB code circuit — can you build it?"* |
+
 ### Web-search fallback (Tavily) — why this backend
 
 When a question isn't covered by the corpus or canonical wiki, ChatQEC can fall back
