@@ -898,6 +898,15 @@ def _ingest_github(  # pragma: no cover - drives a GitHub API pull
             list(github_paths_value),
             GithubRepositoryReader.FilterType.INCLUDE,
         ),
+        # filter_directories only restricts which directories are descended
+        # into; it does NOT exclude root-level files (LICENSE, Dockerfile,
+        # pyproject.toml, etc.), which would otherwise ride along regardless
+        # of --github-paths. Restrict to markdown so only curated docs land
+        # in the knowledge base, matching this function's own contract.
+        filter_file_extensions=(
+            [".md"],
+            GithubRepositoryReader.FilterType.INCLUDE,
+        ),
     )
     docs = reader.load_data(commit_sha=commit_sha_value)
     files = {d.metadata["file_path"]: d.text for d in docs}
