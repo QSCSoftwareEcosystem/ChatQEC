@@ -18,6 +18,10 @@ from chatqec_mcp_tools.tools.pymatching_decode import (
     PymatchingDecodeInput,
     pymatching_decode,
 )
+from chatqec_mcp_tools.tools.qec_circuit_build import (
+    QecCircuitBuildInput,
+    qec_circuit_build,
+)
 from chatqec_mcp_tools.tools.stim_diagram import (
     StimDiagramInput,
     stim_diagram,
@@ -58,6 +62,10 @@ def _threshold_sweep_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _code_params_handler(args: dict[str, Any]) -> dict[str, Any]:
     return code_params(CodeParamsInput.model_validate(args)).model_dump()
+
+
+def _qec_circuit_build_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return qec_circuit_build(QecCircuitBuildInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -114,6 +122,18 @@ _TOOLS = [
         ),
         input_schema=CodeParamsInput.model_json_schema(),
         handler=_code_params_handler,
+    ),
+    ToolSpec(
+        name="qec_circuit_build",
+        description=(
+            "Build a Stim circuit for a QEC code family beyond Stim's built-ins — "
+            "toric code, color code, bivariate-bicycle (BB) codes, or PQRM — by "
+            "delegating to LightStim (optional `lightstim` extra); returns ok=False "
+            "with an error_message if lightstim isn't installed or the requested "
+            "distance/rounds/protocol combination isn't supported."
+        ),
+        input_schema=QecCircuitBuildInput.model_json_schema(),
+        handler=_qec_circuit_build_handler,
     ),
 ]
 

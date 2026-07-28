@@ -28,6 +28,9 @@ dev = [
   "mypy>=1.11",
   "pre-commit>=3.7",
 ]
+lightstim = [
+  "lightstim @ git+https://github.com/QuTone/LightStim@47dd74976780192ae901d91958863cced1165354",
+]
 
 [project.scripts]
 chatqec-mcp-tools = "chatqec_mcp_tools.server:main"
@@ -38,6 +41,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chatqec_mcp_tools"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.ruff]
 line-length = 100
