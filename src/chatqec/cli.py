@@ -860,6 +860,66 @@ def _ingest_pdf(  # pragma: no cover - drives Marker subprocess + disk I/O
     click.echo(f"ingested {source_id}: {len(chunks)} chunks → {chunks_dir}")
 
 
+def _ingest_github(  # pragma: no cover - drives a GitHub API pull
+    github_repo_value: str,
+    commit_sha_value: str,
+    github_paths_value: tuple[str, ...],
+    *,
+    sink: ChunkSink,
+    reg: Registry,
+    now: datetime,
+) -> None:
+    """Pull curated docs from ``org/repo`` at a pinned commit sha and ingest them.
+
+    Uses LlamaIndex's ``GithubRepositoryReader`` scoped to ``github_paths_value``
+    (curated docs only, never the full source tree), then hands the resulting
+    ``{path: text}`` map to the existing, unit-tested chunker.
+    """
+    import os
+
+    from llama_index.readers.github import GithubClient, GithubRepositoryReader
+
+    from chatqec.ingestion.fetchers.github import GitHubMetadata, files_to_chunks
+
+    org, _, repo = github_repo_value.partition("/")
+    client = GithubClient(github_token=os.environ["GITHUB_TOKEN"])
+    reader = GithubRepositoryReader(
+        github_client=client,
+        owner=org,
+        repo=repo,
+        filter_directories=(
+            list(github_paths_value),
+            GithubRepositoryReader.FilterType.INCLUDE,
+        ),
+    )
+    docs = reader.load_data(commit_sha=commit_sha_value)
+    files = {d.metadata["file_path"]: d.text for d in docs}
+    md = GitHubMetadata(org=org, repo=repo, commit_sha=commit_sha_value, license="Apache-2.0")
+    chunks = files_to_chunks(md, files=files)
+    if not chunks:
+        click.echo(f"no chunks produced from {github_repo_value} — extraction empty", err=True)
+        raise SystemExit(1)
+    source_id = chunks[0].source_id
+    sink.write_many(source_id, chunks)
+    reg.append(
+        SourceRecord(
+            id=source_id,
+            type=SourceType.GITHUB,
+            url=f"https://github.com/{org}/{repo}",
+            title=f"{org}/{repo}",
+            license=md.license,
+            authority_tier="blog",
+            ingested_at=now,
+            last_checked_at=now,
+            status=SourceStatus.PENDING_REVIEW,
+            chunk_count=len(chunks),
+            chunk_ids=[c.chunk_id for c in chunks],
+            notes=f"commit_sha={commit_sha_value} paths={','.join(github_paths_value)}",
+        )
+    )
+    click.echo(f"ingested {source_id}: {len(chunks)} chunks → github")
+
+
 @main.command("ingest")
 @click.option(
     "--chunks-dir",
@@ -938,6 +998,26 @@ def _ingest_pdf(  # pragma: no cover - drives Marker subprocess + disk I/O
     default=True,
     help="Run the local vision model to describe extracted figures.",
 )
+@click.option(
+    "--github",
+    "github_repo_value",
+    default=None,
+    help="Ingest curated docs from an org/repo (use with --commit-sha).",
+)
+@click.option(
+    "--commit-sha",
+    "commit_sha_value",
+    default=None,
+    help="Exact commit to pin the --github ingest to (required with --github).",
+)
+@click.option(
+    "--github-paths",
+    "github_paths_value",
+    multiple=True,
+    default=("docs/api", "skills"),
+    show_default=True,
+    help="Subpaths to pull (repeatable) — curated docs only, not full source.",
+)
 def ingest(
     chunks_dir: Path,
     registry_path: Path,
@@ -954,11 +1034,27 @@ def ingest(
     tier_value: str,
     license_value: str | None,
     describe_figures: bool,
+    github_repo_value: str | None,
+    commit_sha_value: str | None,
+    github_paths_value: tuple[str, ...],
 ) -> None:
     """Ingest one source. Writes chunks to disk and a pending_review record."""
     sink = ChunkSink(chunks_dir)
     reg = Registry(registry_path)
     now = datetime.now(tz=UTC)
+
+    if github_repo_value:
+        if not commit_sha_value:
+            raise click.UsageError("--github requires --commit-sha (pin, never a branch)")
+        _ingest_github(
+            github_repo_value,
+            commit_sha_value,
+            github_paths_value,
+            sink=sink,
+            reg=reg,
+            now=now,
+        )
+        return
 
     if pdf_path_value:
         _ingest_pdf(

@@ -37,6 +37,7 @@ github:
   - repo: errorcorrectionzoo/eczoo_data
   - repo: microsoft/QuantumKatas
   - repo: qiskit-community/qiskit-textbook
+  - repo: QuTone/LightStim
 
 youtube:
   channels:
