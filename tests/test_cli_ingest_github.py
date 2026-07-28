@@ -1,7 +1,7 @@
 """CLI tests for `chatqec ingest --github`.
 
-No network access or GITHUB_TOKEN is required here: `ingest()` validates
---commit-sha presence/format, GITHUB_TOKEN presence, and --github's org/repo
+No network access or GITHUB_PERSONAL_ACCESS_TOKEN is required here: `ingest()` validates
+--commit-sha presence/format, GITHUB_PERSONAL_ACCESS_TOKEN presence, and --github's org/repo
 shape *before* any llama_index import or network call is attempted, so all of
 these are exercisable offline.
 """
@@ -41,19 +41,24 @@ def test_ingest_github_requires_commit_sha(tmp_path: Path):
 
 
 def test_ingest_github_requires_github_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    # `main()`'s group callback calls `load_dotenv()` on every invocation, which
+    # would silently resurrect a real GITHUB_PERSONAL_ACCESS_TOKEN from a
+    # developer's local .env after delenv below — neutralize it so this test
+    # verifies the "no token" branch regardless of the local .env's contents.
+    monkeypatch.setattr("chatqec.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.delenv("GITHUB_PERSONAL_ACCESS_TOKEN", raising=False)
     result = _invoke(
         tmp_path,
         ["--github", "QuTone/LightStim", "--commit-sha", _VALID_SHA],
     )
     assert result.exit_code != 0
-    assert "GITHUB_TOKEN" in result.output
+    assert "GITHUB_PERSONAL_ACCESS_TOKEN" in result.output
 
 
 def test_ingest_github_rejects_non_hex_commit_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # A branch name (not a pinned commit sha) must be rejected before any
-    # network call, regardless of whether GITHUB_TOKEN is set.
-    monkeypatch.setenv("GITHUB_TOKEN", "dummy")
+    # network call, regardless of whether GITHUB_PERSONAL_ACCESS_TOKEN is set.
+    monkeypatch.setenv("GITHUB_PERSONAL_ACCESS_TOKEN", "dummy")
     result = _invoke(
         tmp_path,
         ["--github", "QuTone/LightStim", "--commit-sha", "main"],
@@ -63,7 +68,7 @@ def test_ingest_github_rejects_non_hex_commit_sha(tmp_path: Path, monkeypatch: p
 
 
 def test_ingest_github_rejects_malformed_org_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GITHUB_TOKEN", "dummy")
+    monkeypatch.setenv("GITHUB_PERSONAL_ACCESS_TOKEN", "dummy")
     result = _invoke(
         tmp_path,
         ["--github", "LightStim", "--commit-sha", _VALID_SHA],

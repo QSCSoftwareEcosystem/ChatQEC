@@ -878,7 +878,7 @@ def _ingest_github(  # pragma: no cover - drives a GitHub API pull
     (curated docs only, never the full source tree), then hands the resulting
     ``{path: text}`` map to the existing, unit-tested chunker.
 
-    Preconditions (``GITHUB_TOKEN`` present, ``commit_sha_value`` a full 40-char
+    Preconditions (``GITHUB_PERSONAL_ACCESS_TOKEN`` present, ``commit_sha_value`` a full 40-char
     hex sha, ``github_repo_value`` a valid ``org/repo``) are validated by
     ``ingest()`` before this function is ever called, so they're not re-checked
     here — this keeps that validation logic testable without network access.
@@ -888,7 +888,7 @@ def _ingest_github(  # pragma: no cover - drives a GitHub API pull
     from chatqec.ingestion.fetchers.github import GitHubMetadata, files_to_chunks
 
     org, _, repo = github_repo_value.partition("/")
-    github_token = os.environ["GITHUB_TOKEN"]
+    github_token = os.environ["GITHUB_PERSONAL_ACCESS_TOKEN"]
     client = GithubClient(github_token=github_token)
     reader = GithubRepositoryReader(
         github_client=client,
@@ -1064,8 +1064,10 @@ def ingest(
                 "--commit-sha must be a full 40-character hex commit sha, not a "
                 f"branch name; got {commit_sha_value!r}"
             )
-        if not os.environ.get("GITHUB_TOKEN"):
-            raise click.UsageError("--github requires a GITHUB_TOKEN environment variable")
+        if not os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN"):
+            raise click.UsageError(
+                "--github requires a GITHUB_PERSONAL_ACCESS_TOKEN environment variable"
+            )
         _ingest_github(
             github_repo_value,
             commit_sha_value,
