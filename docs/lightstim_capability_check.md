@@ -29,7 +29,9 @@ PQRM. Same format as
    is set up to use — `chatqec ask --mcp-server ...` requires the
    `anthropic`, `gemini`, or `auto` provider per `src/chatqec/cli.py`).
 3. Run each prompt below and record the tool(s) actually called and the
-   verdict, exactly as the Stim capability-check doc does.
+   verdict, exactly as the Stim capability-check doc does. Save raw stdout
+   per prompt under `docs/lightstim_capability_check_raw_logs/` (create it
+   at that point — nothing to log yet, so it doesn't exist in this commit).
 
 ## Prompts
 
@@ -49,21 +51,23 @@ uv run chatqec ask --mcp-server chatqec-mcp-tools \
 `qec_circuit_build` gets called (not a hand-rolled circuit) for any family
 only LightStim supports (toric/color/BB/PQRM), and the returned
 `num_qubits`/`num_detectors` match the family's known values at that
-distance. Known-good reference values (from Task 1's tests, run against the
-real pinned LightStim commit — use these to sanity-check the model's
-answer, they are NOT themselves model output):
+distance **and rounds** (`num_detectors` scales with `rounds`; `num_qubits`
+does not — e.g. `toric_code` distance 3 gives 56/92/182 detectors at
+rounds=3/5/10 respectively, always 36 qubits). All reference values below
+use **`rounds = distance`**, matching prompt #1's implicit assumption —
+re-derive if you run a different rounds count.
 
-| Family | Distance | num_qubits | num_detectors | num_observables |
-|---|---|---|---|---|
-| `toric_code` | 3 | 36 | 56 | 2 |
-| `color_code_666` | 3 | 13 | 18 | 1 |
-| `color_code_666` | 5 | 37 | 90 | 1 |
-| `bb_code` | 6 | 144 | 444 | 12 |
-| `pqrm` | 3 | 25 | 40 | 1 |
+Reference values (computed directly from `qec_circuit_build` against the
+real pinned LightStim commit, in this worktree's venv — NOT model output,
+use these to sanity-check whatever the model reports for prompts #1 and #2):
 
-(All computed directly from `qec_circuit_build` against the real pinned
-LightStim commit in this worktree's venv — not model output, use these to
-sanity-check whatever the model reports for prompts #1 and #2.)
+| Family | Distance | Rounds | num_qubits | num_detectors | num_observables |
+|---|---|---|---|---|---|
+| `toric_code` | 3 | 3 | 36 | 56 | 2 |
+| `color_code_666` | 3 | 3 | 13 | 18 | 1 |
+| `color_code_666` | 5 | 5 | 37 | 90 | 1 |
+| `bb_code` | 6 | 6 | 144 | 444 | 12 |
+| `pqrm` | 3 | 3 | 25 | 40 | 1 |
 
 ## Verdict table (fill in after running)
 
