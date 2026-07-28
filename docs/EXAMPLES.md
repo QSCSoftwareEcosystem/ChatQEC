@@ -309,6 +309,26 @@ imperatively (name the **code family + distance + error rate**; use verbs like
 > rendered artifact** (a simulated number, a circuit image, a decoded rate, a threshold
 > plot, or a code's parameters).
 
+### LightStim knowledge base (docs + paper, ingested 2026-07-28)
+
+Two sources were pinned to the same LightStim commit used by the MCP tool:
+
+```bash
+chatqec ingest --github QuTone/LightStim --commit-sha 47dd74976780192ae901d91958863cced1165354 \
+  --github-paths docs/api --github-paths skills
+# → ingested github:QuTone/LightStim@47dd7497: 79 chunks (12 curated .md files: docs/api/*, skills/*/SKILL.md)
+
+chatqec ingest --arxiv 2604.21472 --full-text
+# → ingested arxiv:2604.21472: 39 chunks (LaTeX source, TRUSTED id — verified against
+#   CITATION.cff's preferred-citation before ingesting)
+```
+
+Both `active` in `sources/registry.jsonl`, 118 chunks embedded
+(`chatqec embed --all-pending --provider gemini`). Retrieval sanity check —
+`chatqec retrieve --query "What does LightStim's QECSystem class do?"` —
+returns `github:QuTone/LightStim@47dd7497` chunks at the top with
+similarity scores 0.71–0.85.
+
 ### LightStim via `qec_circuit_build`
 
 A 6th tool, `qec_circuit_build`, was added to the `chatqec-mcp-tools` sibling to
@@ -352,12 +372,23 @@ qec_circuit_build bb_code          d=7 r=7: ok=False error_message="bb_code only
 > reports the **data+ancilla total** in its superdense layout — the two
 > numbers legitimately disagree by design, not by bug.
 >
-> **Live model-call verification is pending.** These numbers are from calling
-> `qec_circuit_build` directly against the real pinned LightStim commit — not
-> from a `chatqec ask --mcp-server chatqec-mcp-tools "..."` run, which needs an
-> `ANTHROPIC_API_KEY` this environment didn't have when the tool was added. See
-> [`docs/lightstim_capability_check.md`](lightstim_capability_check.md) for the
-> ready-to-run prompts, runbook, and reference values.
+**Live capability check (2026-07-28):** 4 of a 20-prompt benchmark set were run
+via real `chatqec ask --mcp-server chatqec-mcp-tools` calls (`claude-sonnet-4-6`)
+against the corpus above (LightStim's paper + curated docs now ingested, see
+below). All 3 build/comparison prompts got correct numbers straight from the
+tool — no hand-rolled circuits:
+
+```text
+"Build a distance-3 toric code memory circuit..."     → qec_circuit_build(toric_code, d=3, r=3) + stim_diagram → 56 detectors, 2 observables ✅
+"I need a distance-6 BB code circuit..."               → qec_circuit_build(bb_code, d=6, r=6) → 144 qubits, 12 observables, 444 detectors ✅
+"Compare a d=3 surface code (Stim) vs toric code..."   → code_params(surface_code_rotated, d=3) + qec_circuit_build(toric_code, d=3, r=3) → correctly attributed to 18 vs 8 stabilizers / k=2 vs k=1 ✅
+```
+
+See [`docs/lightstim_capability_check.md`](lightstim_capability_check.md) for
+the full verdict table (incl. one edge-case prompt), raw logs, and the
+remaining 16 prompts kept in
+[`eval/lightstim_qec_prompts.json`](../eval/lightstim_qec_prompts.json) for
+later benchmarking.
 
 | Tool | What triggers it | Example questions |
 |---|---|---|

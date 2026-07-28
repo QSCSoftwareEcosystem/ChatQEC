@@ -1,0 +1,158 @@
+{
+  "description": "Benchmark prompts for ChatQEC's LightStim integration — covers the qec_circuit_build MCP tool (toric/color/BB/PQRM circuit construction) and the ingested LightStim paper (arXiv:2604.21472) + curated docs (docs/api/, skills/). Not run in bulk; a subset is spot-checked in docs/lightstim_capability_check.md with raw logs. Kept here as the full prompt set for later benchmarking runs.",
+  "sources": {
+    "github": "github:QuTone/LightStim@47dd7497",
+    "arxiv": "arxiv:2604.21472",
+    "pinned_commit": "47dd74976780192ae901d91958863cced1165354"
+  },
+  "categories": {
+    "tool_build": "Should invoke qec_circuit_build and report real numbers from it",
+    "tool_edge_case": "Should invoke qec_circuit_build (or fail schema validation) and report the failure gracefully, not a hand-rolled fallback",
+    "tool_vs_corpus": "Tests whether the model correctly distinguishes qec_circuit_build's LightStim-backed families from Stim-native code_params",
+    "retrieval_paper": "Corpus-only — should cite arxiv:2604.21472 and/or the ingested docs, no tool call needed",
+    "retrieval_docs": "Corpus-only — should cite github:QuTone/LightStim@47dd7497 (docs/api or skills), no tool call needed",
+    "combined": "Should both retrieve cited background and invoke the tool for a concrete number"
+  },
+  "prompts": [
+    {
+      "id": "ls-tool-001",
+      "category": "tool_build",
+      "question": "Build a distance-3 toric code memory circuit and tell me its [[n,k,d]] and detector count.",
+      "expected_tool": "qec_circuit_build",
+      "reference": {"code_family": "toric_code", "distance": 3, "rounds": 3, "num_qubits": 36, "num_detectors": 56, "num_observables": 2}
+    },
+    {
+      "id": "ls-tool-002",
+      "category": "tool_build",
+      "question": "I need a distance-6 BB code circuit — can you build it and tell me how many qubits and observables it has?",
+      "expected_tool": "qec_circuit_build",
+      "reference": {"code_family": "bb_code", "distance": 6, "rounds": 6, "num_qubits": 144, "num_detectors": 444, "num_observables": 12}
+    },
+    {
+      "id": "ls-tool-003",
+      "category": "tool_build",
+      "question": "Construct a distance-3 PQRM code circuit for 3 rounds and report its qubit count and detector count.",
+      "expected_tool": "qec_circuit_build",
+      "reference": {"code_family": "pqrm", "distance": 3, "rounds": 3, "num_qubits": 25, "num_detectors": 40, "num_observables": 1}
+    },
+    {
+      "id": "ls-tool-004",
+      "category": "tool_build",
+      "question": "I need a distance-5 color code circuit for 5 rounds — can you build it and diagram it?",
+      "expected_tool": "qec_circuit_build",
+      "reference": {"code_family": "color_code_666", "distance": 5, "rounds": 5, "num_qubits": 37, "num_detectors": 90, "num_observables": 1},
+      "notes": "May also/instead invoke stim_diagram on the resulting circuit_text; color_code_666 is not LightStim-exclusive, see ls-cmp-002."
+    },
+    {
+      "id": "ls-tool-005",
+      "category": "tool_build",
+      "question": "Build a distance-10 BB code memory circuit for 20 rounds.",
+      "expected_tool": "qec_circuit_build",
+      "reference": {"code_family": "bb_code", "distance": 10, "rounds": 20}
+    },
+    {
+      "id": "ls-edge-001",
+      "category": "tool_edge_case",
+      "question": "Build a distance-7 BB code circuit.",
+      "expected_tool": "qec_circuit_build",
+      "expected_outcome": "ok=False, error_message naming the supported bb_code presets {6, 10, 12}",
+      "notes": "7 is a valid distance value per schema but not a real BB preset."
+    },
+    {
+      "id": "ls-edge-002",
+      "category": "tool_edge_case",
+      "question": "Build a distance-4 color code circuit.",
+      "expected_tool": "qec_circuit_build",
+      "expected_outcome": "ok=False — color_code_666 requires odd distance"
+    },
+    {
+      "id": "ls-edge-003",
+      "category": "tool_edge_case",
+      "question": "Build a distance-20 toric code circuit for 5 rounds.",
+      "expected_tool": "qec_circuit_build",
+      "expected_outcome": "Pydantic validation error before the tool body runs — distance 20 is outside the tool's schema range [3, 15], not an ok=False payload."
+    },
+    {
+      "id": "ls-edge-004",
+      "category": "tool_edge_case",
+      "question": "Build a distance-6 BB code circuit for the 'distillation' protocol instead of memory.",
+      "expected_tool": "qec_circuit_build",
+      "expected_outcome": "Rejected — protocol is a Literal[\"memory\"], 'distillation' isn't accepted."
+    },
+    {
+      "id": "ls-cmp-001",
+      "category": "tool_vs_corpus",
+      "question": "Compare a distance-3 surface code (Stim) against a distance-3 toric code (LightStim) — same physical error rate, which has more detectors?",
+      "expected_tool": ["code_params", "qec_circuit_build"],
+      "reference": {"surface_code_rotated_d3": {"n": 9, "k": 1}, "toric_code_d3_r3": {"num_qubits": 36, "num_detectors": 56}}
+    },
+    {
+      "id": "ls-cmp-002",
+      "category": "tool_vs_corpus",
+      "question": "How many physical qubits does a distance-3 color code have? I've seen different numbers in different tools — which is right?",
+      "expected_tool": ["code_params", "qec_circuit_build"],
+      "reference": {"code_params_color_code_d3_data_qubits_only": 7, "qec_circuit_build_color_code_666_d3_total": 13},
+      "notes": "Tests whether the model explains the data-only vs data+ancilla convention difference rather than declaring one number wrong."
+    },
+    {
+      "id": "ls-retrieval-001",
+      "category": "retrieval_paper",
+      "question": "How does LightStim automate detector error model construction, and why does that matter compared to manual annotation?",
+      "expected_source_id_prefixes": ["arxiv:2604.21472"]
+    },
+    {
+      "id": "ls-retrieval-002",
+      "category": "retrieval_paper",
+      "question": "What is the heterogeneous cross-code lattice surgery design LightStim demonstrates between surface and punctured quantum Reed-Muller codes?",
+      "expected_source_id_prefixes": ["arxiv:2604.21472"]
+    },
+    {
+      "id": "ls-retrieval-003",
+      "category": "retrieval_paper",
+      "question": "What protocols does the LightStim paper benchmark, from memory experiments to end-to-end distillation circuits?",
+      "expected_source_id_prefixes": ["arxiv:2604.21472"]
+    },
+    {
+      "id": "ls-retrieval-004",
+      "category": "retrieval_paper",
+      "question": "How did the LightStim authors cross-validate their detector and observable counts against public implementations?",
+      "expected_source_id_prefixes": ["arxiv:2604.21472"]
+    },
+    {
+      "id": "ls-retrieval-005",
+      "category": "retrieval_docs",
+      "question": "What is the contract a new decoder must implement to be added to LightStim's decoder backend?",
+      "expected_source_id_prefixes": ["github:QuTone/LightStim@47dd7497"],
+      "notes": "Should draw on skills/extend-new-decoder/SKILL.md."
+    },
+    {
+      "id": "ls-retrieval-006",
+      "category": "retrieval_docs",
+      "question": "According to LightStim's own API docs, what does QECSystem provide over a single QECPatch?",
+      "expected_source_id_prefixes": ["github:QuTone/LightStim@47dd7497"],
+      "notes": "Should draw on docs/api/ir.md."
+    },
+    {
+      "id": "ls-retrieval-007",
+      "category": "retrieval_docs",
+      "question": "What's the difference between LightStim's ExternalDecoder facade and writing a custom sinter.CompiledDecoder from scratch?",
+      "expected_source_id_prefixes": ["github:QuTone/LightStim@47dd7497"]
+    },
+    {
+      "id": "ls-combined-001",
+      "category": "combined",
+      "question": "Explain LightStim's automated DEM construction approach, then build a distance-3 toric code circuit as a concrete example and report its detector count.",
+      "expected_source_id_prefixes": ["arxiv:2604.21472"],
+      "expected_tool": "qec_circuit_build",
+      "reference": {"code_family": "toric_code", "distance": 3, "rounds": 3, "num_detectors": 56}
+    },
+    {
+      "id": "ls-combined-002",
+      "category": "combined",
+      "question": "The LightStim paper mentions cross-validating logical error rates against public implementations — can you build a distance-6 BB code circuit so I can see its structure?",
+      "expected_source_id_prefixes": ["arxiv:2604.21472"],
+      "expected_tool": "qec_circuit_build",
+      "reference": {"code_family": "bb_code", "distance": 6, "rounds": 6, "num_qubits": 144}
+    }
+  ]
+}

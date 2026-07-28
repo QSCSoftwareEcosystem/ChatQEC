@@ -471,11 +471,13 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
   (pinned to an exact commit, never a branch — reuses the existing
   `GitHubMetadata`/`files_to_chunks` fetcher); `QuTone/LightStim` added to
   `sources/watchlist.yaml` so `chatqec watch refresh` surfaces upstream moves.
+  First live run seeded `github:QuTone/LightStim@47dd7497` (79 chunks) +
+  the full LightStim paper (`arxiv:2604.21472`, 39 chunks).
 - Populate the corpus with **code repos** and **video/lecture transcripts** —
-  the GitHub fetcher is now wired to `chatqec ingest`; the YouTube fetcher
-  already exists (`src/chatqec/ingestion/fetchers/`) and the watchlist tracks
-  both, but the registry isn't seeded with either yet — the first live
-  `--github` run (LightStim's `docs/api/` + `skills/`) is still pending.
+  the GitHub fetcher is now wired to `chatqec ingest` and seeded with one repo
+  (LightStim); the YouTube fetcher already exists
+  (`src/chatqec/ingestion/fetchers/`) and the watchlist tracks it, but the
+  registry isn't seeded with any YouTube sources yet.
 
 **v1.0 — production:**
 

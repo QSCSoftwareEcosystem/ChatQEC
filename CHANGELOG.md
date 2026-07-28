@@ -12,20 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   <sha> [--github-paths ...]` (`cli.py`), reusing the existing
   `GitHubMetadata`/`files_to_chunks` fetcher (`ingestion/fetchers/github.py`).
   `--commit-sha` is mandatory and validated as a 40-char hex commit — never a
-  branch — before any network call. `QuTone/LightStim` added to
+  branch — before any network call; reads `GITHUB_PERSONAL_ACCESS_TOKEN`
+  (this repo's established token env var, not `GITHUB_TOKEN`). Restricted to
+  `.md` files (`filter_file_extensions`) so root-level repo plumbing
+  (`Dockerfile`, `requirements.txt`, ...) doesn't ride along with the curated
+  docs `--github-paths` targets. `QuTone/LightStim` added to
   `sources/watchlist.yaml` so `chatqec watch refresh` surfaces upstream moves.
-  The first live run (LightStim's `docs/api/` + `skills/`) is documented but
-  not yet executed pending a `GITHUB_TOKEN`.
+  Live-run: `github:QuTone/LightStim@47dd7497` (79 chunks, `docs/api/` +
+  `skills/`) and `arxiv:2604.21472` (39 chunks, full LaTeX source of the
+  LightStim paper) both ingested and embedded — see
+  [`docs/EXAMPLES.md`](docs/EXAMPLES.md#lightstim-knowledge-base-docs--paper-ingested-2026-07-28).
 - `qec_circuit_build` MCP tool in the sibling `chatqec-mcp-tools` repo: builds
   circuits for code families Stim doesn't ship built-in (toric code, BB codes,
   PQRM, LightStim's construction of the 6.6.6 color code) by delegating to
   [LightStim](https://github.com/QuTone/LightStim), pinned to an exact commit
   via an optional `lightstim` extra (`chatqec-mcp-tools[lightstim]`) so the
-  five existing Stim-backed tools keep working unmodified if it's absent. See
+  five existing Stim-backed tools keep working unmodified if it's absent.
+  Also fixed an `mcp` dependency cap (`>=0.9,<2`) — an unconstrained upper
+  bound let `uv tool install` resolve a breaking `mcp==2.0.0` whose `Server`
+  class dropped the `list_tools`/`call_tool` API the real stdio server uses.
+  Live capability check: 4 of a 20-prompt benchmark set
+  (`eval/lightstim_qec_prompts.json`) run via real `chatqec ask` calls, all
+  correct. See
   [`docs/EXAMPLES.md`](docs/EXAMPLES.md#lightstim-via-qec_circuit_build) and
-  [`docs/lightstim_capability_check.md`](docs/lightstim_capability_check.md)
-  (scaffolded, live model-call verification still pending an
-  `ANTHROPIC_API_KEY`).
+  [`docs/lightstim_capability_check.md`](docs/lightstim_capability_check.md).
 - Full-text arXiv ingestion via `chatqec ingest --arxiv <id> --full-text`:
   - LaTeX-source path (`ingestion/latex.py`, `fetchers/arxiv_source.py`) — cleans
     source while preserving math/code environments verbatim, keeps figure
