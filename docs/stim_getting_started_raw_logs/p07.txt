@@ -1,0 +1,94 @@
+/home/pza/chatQEC/.venv/lib/python3.11/site-packages/qdrant_client/qdrant_remote.py:282: UserWarning: Qdrant client version 1.18.0 is incompatible with server version 1.12.0. Major versions should match and minor version difference must not exceed 1. Set check_compatibility=False to skip version check.
+  show_warning(
+[chatqec] backend=anthropic model=claude-haiku-4-5
+[chatqec] backend=anthropic model=claude-haiku-4-5
+Loading weights:   0%|          | 0/202 [00:00<?, ?it/s]Loading weights: 100%|██████████| 202/202 [00:00<00:00, 9218.35it/s]
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+Excellent — all four results are in. Here is a full analysis.
+
+---
+
+## Code Parameters
+
+| $d$ | $n$ | $k$ | Stabilizers | Detectors ($3d$ rounds) |
+|-----|-----|-----|-------------|------------------------|
+| 3 | 3 | 1 | 2 | 8 |
+| 5 | 5 | 1 | 4 | 24 |
+| 7 | 7 | 1 | 6 | 48 |
+
+Each is a $[[n,1,d]]$ classical-style repetition code protecting one logical qubit.
+
+---
+
+## Logical Error Rate Table
+
+| $p$ | $d=3$ | $d=5$ | $d=7$ |
+|-----|-------|-------|-------|
+| 0.10 | 0.201 | 0.218 | **0.246** |
+| 0.20 | 0.393 | 0.443 | **0.463** |
+| 0.30 | 0.465 | 0.492 | **0.501** |
+| 0.40 | 0.503 | 0.489 | 0.496 |
+| 0.50 | 0.499 | 0.502 | 0.502 |
+
+See the rendered threshold-sweep plot above for the log–log view.
+
+---
+
+## Analysis
+
+### 1. Where does the "threshold" appear?
+
+The curves for $d=3,5,7$ **do not cross** in the usual below-threshold sense; instead, they **converge near $p \approx 0.5$** from below, and all saturate near $p_L \approx 0.5$ (random guessing). The data also show a pathological feature: **at fixed $p$, increasing $d$ makes $p_L$ worse, not better** — e.g. at $p=0.10$, going from $d=3$ to $d=7$ raises $p_L$ from 0.20 to 0.25. This is the opposite of below-threshold scaling.
+
+This means **the entire swept range $p \in [0.1, 0.5]$ is above the code's threshold** for this noise model and round count.
+
+The true threshold of the repetition code under independent bit-flip noise per round is analytically $p_{\text{th}} = 0.5$ for a 1D chain (the error model reduces to a bond-percolation problem). Under phenomenological (space-time) depolarizing noise as used here, the threshold is typically quoted around $p_{\text{th}} \approx 10$–$11\%$ for the 2D spacetime syndrome graph decoded with MWPM [^7]. The crossing point, if it exists, would be visible only at $p \lesssim 0.1$ with sufficient shot statistics. The data at $p = 0.10$ are already in the regime where larger $d$ is performing worse due to the large round count ($\text{rounds} = 3d$), which amplifies the time-like error channel.
+
+### 2. Does the repetition code have a "threshold" in the usual QEC sense?
+
+**Partially — with important caveats:**
+
+**(a) Classical vs. quantum protection.** The repetition code only protects against *bit-flip* ($X$) errors, not *phase-flip* ($Z$) errors [^5]. It encodes $k=1$ classical bit into $n$ physical qubits with no quantum coherence protection. It is therefore **not a true quantum error-correcting code** in the full sense; it lacks the ability to correct both complementary error types simultaneously.
+
+**(b) Threshold theorem applicability.** The threshold theorem states that below $p < p_{\text{th}}$, increasing $d$ exponentially suppresses $p_L$ [^1][^2]. The repetition code *does* satisfy this in 1D under purely classical noise: $p_L \propto \binom{d}{(d+1)/2} p^{(d+1)/2}$ for bit-flips only, with $p_{\text{th}} = 50\%$. Theoretically, logical error is suppressed as
+
+$$p_L \propto \left(\frac{p}{p_{\rm th}}\right)^{(d+1)/2}$$
+
+for $p < p_{\rm th}$ [^6]. Google's experiment confirms this exponential suppression with an error suppression factor $\Lambda = 8.4 \pm 0.1$ at realistic hardware noise levels [^4].
+
+**(c) What this sweep reveals.** The phenomenological noise model here injects depolarization that also flips the syndrome measurements themselves (not just data qubits). With $\text{rounds} = 3d$, the spacetime volume grows with $d$, and at $p = 10\%$–$50\%$, the time-like syndrome-measurement errors overwhelm the code. One would need to go to $p \ll 10\%$ to observe the exponential suppression regime.
+
+### Summary
+
+| Property | Repetition Code |
+|---|---|
+| Protects against | Bit-flips only (not full quantum noise) |
+| Analytical $p_{\text{th}}$ (bit-flip, no meas. error) | $50\%$ |
+| $p_{\text{th}}$ under phenomenological noise (MWPM) | $\sim 3\%$–$11\%$ depending on model [^7] |
+| Below-threshold exponential suppression seen? | Not in this $p\in[0.1,0.5]$ sweep (all above threshold) |
+| Meaningful full-QEC threshold? | No — only classical 1-bit protection [^5] |
+
+**Bottom line:** The repetition code has a *pseudo-threshold* in the classical sense, but it is **not a meaningful quantum threshold** because it corrects only one error type. The swept range $p\in[0.1,0.5]$ is entirely at or above threshold; exponential below-threshold suppression (as observed in hardware [^4]) requires $p\lesssim 5\%$ for this noise model.
+
+---
+
+Tool calls:
+  - threshold_sweep({'code_family': 'repetition_code', 'distances': [3, 5, 7], 'p_values': [0.1, 0.2, 0.3, 0.4, 0.5], 'shots': 10000})
+  - code_params({'code_family': 'repetition_code', 'distance': 3})
+  - code_params({'code_family': 'repetition_code', 'distance': 5})
+  - code_params({'code_family': 'repetition_code', 'distance': 7})
+
+Sources:
+  - [arxiv:1907.11157] Quantum Error Correction: An Introductory Guide
+    https://arxiv.org/abs/1907.11157
+  - [arxiv:1907.11157] Quantum Error Correction: An Introductory Guide
+    https://arxiv.org/abs/1907.11157
+  - [canonical:below-threshold-scaling] Below-Threshold Scaling
+  - [canonical:fault-tolerance] Fault Tolerance
+  - [arxiv:2312.03982] Logical quantum processor based on reconfigurable atom arrays
+    https://arxiv.org/abs/2312.03982
+  - [arxiv:2408.13687] Quantum error correction below the surface code threshold
+    https://arxiv.org/abs/2408.13687
+
+(confidence: high)

@@ -1,0 +1,53 @@
+/home/pza/chatQEC/.venv/lib/python3.11/site-packages/qdrant_client/qdrant_remote.py:282: UserWarning: Qdrant client version 1.18.0 is incompatible with server version 1.12.0. Major versions should match and minor version difference must not exceed 1. Set check_compatibility=False to skip version check.
+  show_warning(
+[chatqec] backend=anthropic model=claude-haiku-4-5
+[chatqec] backend=anthropic model=claude-haiku-4-5
+Loading weights:   0%|          | 0/202 [00:00<?, ?it/s]Loading weights: 100%|██████████| 202/202 [00:00<00:00, 7733.48it/s]
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+The simulations ran cleanly. Here are the results, with a sweep plot rendered above.
+
+---
+
+## Results: Distance-9 Repetition Code, 100 Rounds, 10,000 Shots
+
+| Configuration | $p_{\text{data}}$ | $p_{\text{meas}}$ | Logical Error Rate |
+|---|---|---|---|
+| Low noise | 0.03 | 0.01 | **3.42%** |
+| High noise | 0.13 | 0.01 | **49.2%** |
+
+Yes — the higher noise strength produces drastically more logical errors, exactly as expected.
+
+---
+
+## Interpretation
+
+**Low noise ($p = 0.03$):** The distance-9 repetition code has minimum distance $d = 9$, so it can correct $t = \lfloor 9/2 \rfloor = 4$ errors. With $p_{\text{data}} = 0.03 \ll p_{\text{th}}$, the code is operating below threshold and MWPM successfully suppresses most error patterns. The ~3.4% logical error rate over 100 rounds reflects the accumulated probability that uncorrectable chains span the code.
+
+**High noise ($p = 0.13$):** At $p_{\text{data}} = 0.13$, the code is operating well above threshold. Weight-$\lceil d/2 \rceil = 5$ error chains become likely in every round, and MWPM cannot reliably match them correctly. The logical error rate of ~49% is near the 50% random-guess limit — the code has essentially ceased to provide protection. This is consistent with the known phenomenology: for $p > p_{\text{th}}$, logical error rate *increases* with code size and rounds [^4].
+
+**The threshold** for the bit-flip repetition code (under independent bit-flip + measurement noise) is well-known to be around $p_{\text{th}} \approx 10\%$ (the intersection of the logical error-rate vs. $p$ curves for different distances). Both $p = 0.03$ (below) and $p = 0.13$ (above) are consistent with this picture [^1][^5].
+
+**MWPM** is the natural decoder here: each bit-flip error flips at most two adjacent parity checks, making the syndrome graph perfectly graphlike and MWPM exact (up to degeneracy) [^1].
+
+Tool calls:
+  - pymatching_decode({'circuit': '\nREPEAT 100 {\n    DEPOLARIZE1(0.03) 0 1 2 3 4 5 6 7 8\n    R 9 10 11 12 13 14 15 16\n    CX 0 9 2 10 4 11 6 12 8 13\n    CX 1 9 3 10 5 11 7 12\n    CX 2 10 4 11 6 12 8 13\n    CX 1 9 3 10 5 11 7 12 2 14 4 15 6 16\n    M(0.01) 9 10 11 12 13 14 15 16\n    DETECTOR(0) rec[-8]\n    DETECTOR(1) rec[-7]\n    DETECTOR(2) rec[-6]\n    DETECTOR(3) rec[-5]\n    DETECTOR(4) rec[-4]\n    DETECTOR(5) rec[-3]\n    DETECTOR(6) rec[-2]\n    DETECTOR(7) rec[-1]\n}\nOBSERVABLE_INCLUDE(0) rec[-1]\n', 'shots': 10000})
+  - pymatching_decode({'circuit': '\nREPEAT 100 {\n    DEPOLARIZE1(0.13) 0 1 2 3 4 5 6 7 8\n    R 9 10 11 12 13 14 15 16\n    CX 0 9 2 10 4 11 6 12 8 13\n    CX 1 9 3 10 5 11 7 12\n    CX 2 10 4 11 6 12 8 13\n    CX 1 9 3 10 5 11 7 12 2 14 4 15 6 16\n    M(0.01) 9 10 11 12 13 14 15 16\n    DETECTOR(0) rec[-8]\n    DETECTOR(1) rec[-7]\n    DETECTOR(2) rec[-6]\n    DETECTOR(3) rec[-5]\n    DETECTOR(4) rec[-4]\n    DETECTOR(5) rec[-3]\n    DETECTOR(6) rec[-2]\n    DETECTOR(7) rec[-1]\n}\nOBSERVABLE_INCLUDE(0) rec[-1]\n', 'shots': 10000})
+  - stim_simulate({'circuit': '\n# Distance-9, 100-round repetition code, p_data=0.03, p_meas=0.01\n# Data qubits: 0,1,...,8  Measure qubits: 9,10,...,16\n# Round structure: measure -> detect -> repeat\n\n# --- First round (no prior measurement to diff against) ---\nDEPOLARIZE1(0.03) 0 1 2 3 4 5 6 7 8\nCX 0 9 2 10 4 11 6 12 8 13\nCX 1 9 3 10 5 11 7 12\nM(0.01) 9 10 11 12 13 14 15 16\nDETECTOR rec[-8]\nDETECTOR rec[-7]\nDETECTOR rec[-6]\nDETECTOR rec[-5]\nDETECTOR rec[-4]\nDETECTOR rec[-3]\nDETECTOR rec[-2]\nDETECTOR rec[-1]\n\nREPEAT 99 {\n    DEPOLARIZE1(0.03) 0 1 2 3 4 5 6 7 8\n    CX 0 9 2 10 4 11 6 12 8 13\n    CX 1 9 3 10 5 11 7 12\n    M(0.01) 9 10 11 12 13 14 15 16\n    DETECTOR rec[-16] rec[-8]\n    DETECTOR rec[-15] rec[-7]\n    DETECTOR rec[-14] rec[-6]\n    DETECTOR rec[-13] rec[-5]\n    DETECTOR rec[-12] rec[-4]\n    DETECTOR rec[-11] rec[-3]\n    DETECTOR rec[-10] rec[-2]\n    DETECTOR rec[-9] rec[-1]\n}\nM 0 1 2 3 4 5 6 7 8\nOBSERVABLE_INCLUDE(0) rec[-9]\n', 'shots': 1})
+  - pymatching_decode({'circuit': '\n# Distance-9, 100-round repetition code\n# p_data = 0.03, p_meas = 0.01\n\n# --- Round 1 (no prior measurement; initialize detectors absolutely) ---\nDEPOLARIZE1(0.03) 0 1 2 3 4 5 6 7 8\nCX 0 9 1 9 1 10 2 10 2 11 3 11 3 12 4 12 4 13 5 13 5 14 6 14 6 15 7 15 7 16 8 16\nM(0.01) 9 10 11 12 13 14 15 16\nDETECTOR(0,0,0) rec[-8]\nDETECTOR(1,0,0) rec[-7]\nDETECTOR(2,0,0) rec[-6]\nDETECTOR(3,0,0) rec[-5]\nDETECTOR(4,0,0) rec[-4]\nDETECTOR(5,0,0) rec[-3]\nDETECTOR(6,0,0) rec[-2]\nDETECTOR(7,0,0) rec[-1]\n\nREPEAT 99 {\n    DEPOLARIZE1(0.03) 0 1 2 3 4 5 6 7 8\n    CX 0 9 1 9 1 10 2 10 2 11 3 11 3 12 4 12 4 13 5 13 5 14 6 14 6 15 7 15 7 16 8 16\n    M(0.01) 9 10 11 12 13 14 15 16\n    SHIFT_COORDS(0, 0, 1)\n    DETECTOR(0,0,0) rec[-16] rec[-8]\n    DETECTOR(1,0,0) rec[-15] rec[-7]\n    DETECTOR(2,0,0) rec[-14] rec[-6]\n    DETECTOR(3,0,0) rec[-13] rec[-5]\n    DETECTOR(4,0,0) rec[-12] rec[-4]\n    DETECTOR(5,0,0) rec[-11] rec[-3]\n    DETECTOR(6,0,0) rec[-10] rec[-2]\n    DETECTOR(7,0,0) rec[-9] rec[-1]\n}\nM 0 1 2 3 4 5 6 7 8\nOBSERVABLE_INCLUDE(0) rec[-9]\n', 'shots': 10000})
+  - pymatching_decode({'circuit': '\n# Distance-9, 100-round repetition code\n# p_data = 0.13, p_meas = 0.01\n\n# --- Round 1 ---\nDEPOLARIZE1(0.13) 0 1 2 3 4 5 6 7 8\nCX 0 9 1 9 1 10 2 10 2 11 3 11 3 12 4 12 4 13 5 13 5 14 6 14 6 15 7 15 7 16 8 16\nM(0.01) 9 10 11 12 13 14 15 16\nDETECTOR(0,0,0) rec[-8]\nDETECTOR(1,0,0) rec[-7]\nDETECTOR(2,0,0) rec[-6]\nDETECTOR(3,0,0) rec[-5]\nDETECTOR(4,0,0) rec[-4]\nDETECTOR(5,0,0) rec[-3]\nDETECTOR(6,0,0) rec[-2]\nDETECTOR(7,0,0) rec[-1]\n\nREPEAT 99 {\n    DEPOLARIZE1(0.13) 0 1 2 3 4 5 6 7 8\n    CX 0 9 1 9 1 10 2 10 2 11 3 11 3 12 4 12 4 13 5 13 5 14 6 14 6 15 7 15 7 16 8 16\n    M(0.01) 9 10 11 12 13 14 15 16\n    SHIFT_COORDS(0, 0, 1)\n    DETECTOR(0,0,0) rec[-16] rec[-8]\n    DETECTOR(1,0,0) rec[-15] rec[-7]\n    DETECTOR(2,0,0) rec[-14] rec[-6]\n    DETECTOR(3,0,0) rec[-13] rec[-5]\n    DETECTOR(4,0,0) rec[-12] rec[-4]\n    DETECTOR(5,0,0) rec[-11] rec[-3]\n    DETECTOR(6,0,0) rec[-10] rec[-2]\n    DETECTOR(7,0,0) rec[-9] rec[-1]\n}\nM 0 1 2 3 4 5 6 7 8\nOBSERVABLE_INCLUDE(0) rec[-9]\n', 'shots': 10000})
+  - pymatching_decode({'circuit': '\n# Distance-9 bit-flip repetition code, 100 rounds\n# p_data=0.03 (X errors only), p_meas=0.01\n# Data qubits: 0-8   Measure (ancilla) qubits: 9-16\n# Check_i = qubit_i XOR qubit_{i+1}  for i=0..7\n\n# Round 1 — no prior ancilla measurement to compare against\nX_ERROR(0.03) 0 1 2 3 4 5 6 7 8\nCX 0 9 1 9\nCX 1 10 2 10\nCX 2 11 3 11\nCX 3 12 4 12\nCX 4 13 5 13\nCX 5 14 6 14\nCX 6 15 7 15\nCX 7 16 8 16\nM(0.01) 9 10 11 12 13 14 15 16\nDETECTOR(0,0,0) rec[-8]\nDETECTOR(1,0,0) rec[-7]\nDETECTOR(2,0,0) rec[-6]\nDETECTOR(3,0,0) rec[-5]\nDETECTOR(4,0,0) rec[-4]\nDETECTOR(5,0,0) rec[-3]\nDETECTOR(6,0,0) rec[-2]\nDETECTOR(7,0,0) rec[-1]\n\nREPEAT 99 {\n    X_ERROR(0.03) 0 1 2 3 4 5 6 7 8\n    CX 0 9 1 9\n    CX 1 10 2 10\n    CX 2 11 3 11\n    CX 3 12 4 12\n    CX 4 13 5 13\n    CX 5 14 6 14\n    CX 6 15 7 15\n    CX 7 16 8 16\n    M(0.01) 9 10 11 12 13 14 15 16\n    SHIFT_COORDS(0, 0, 1)\n    DETECTOR(0,0,0) rec[-16] rec[-8]\n    DETECTOR(1,0,0) rec[-15] rec[-7]\n    DETECTOR(2,0,0) rec[-14] rec[-6]\n    DETECTOR(3,0,0) rec[-13] rec[-5]\n    DETECTOR(4,0,0) rec[-12] rec[-4]\n    DETECTOR(5,0,0) rec[-11] rec[-3]\n    DETECTOR(6,0,0) rec[-10] rec[-2]\n    DETECTOR(7,0,0) rec[-9] rec[-1]\n}\nM 0 1 2 3 4 5 6 7 8\nOBSERVABLE_INCLUDE(0) rec[-9]\n', 'shots': 10000})
+  - pymatching_decode({'circuit': '\n# Distance-9 bit-flip repetition code, 100 rounds\n# p_data=0.13 (X errors only), p_meas=0.01\n\nX_ERROR(0.13) 0 1 2 3 4 5 6 7 8\nCX 0 9 1 9\nCX 1 10 2 10\nCX 2 11 3 11\nCX 3 12 4 12\nCX 4 13 5 13\nCX 5 14 6 14\nCX 6 15 7 15\nCX 7 16 8 16\nM(0.01) 9 10 11 12 13 14 15 16\nDETECTOR(0,0,0) rec[-8]\nDETECTOR(1,0,0) rec[-7]\nDETECTOR(2,0,0) rec[-6]\nDETECTOR(3,0,0) rec[-5]\nDETECTOR(4,0,0) rec[-4]\nDETECTOR(5,0,0) rec[-3]\nDETECTOR(6,0,0) rec[-2]\nDETECTOR(7,0,0) rec[-1]\n\nREPEAT 99 {\n    X_ERROR(0.13) 0 1 2 3 4 5 6 7 8\n    CX 0 9 1 9\n    CX 1 10 2 10\n    CX 2 11 3 11\n    CX 3 12 4 12\n    CX 4 13 5 13\n    CX 5 14 6 14\n    CX 6 15 7 15\n    CX 7 16 8 16\n    M(0.01) 9 10 11 12 13 14 15 16\n    SHIFT_COORDS(0, 0, 1)\n    DETECTOR(0,0,0) rec[-16] rec[-8]\n    DETECTOR(1,0,0) rec[-15] rec[-7]\n    DETECTOR(2,0,0) rec[-14] rec[-6]\n    DETECTOR(3,0,0) rec[-13] rec[-5]\n    DETECTOR(4,0,0) rec[-12] rec[-4]\n    DETECTOR(5,0,0) rec[-11] rec[-3]\n    DETECTOR(6,0,0) rec[-10] rec[-2]\n    DETECTOR(7,0,0) rec[-9] rec[-1]\n}\nM 0 1 2 3 4 5 6 7 8\nOBSERVABLE_INCLUDE(0) rec[-9]\n', 'shots': 10000})
+  - threshold_sweep({'code_family': 'repetition_code', 'distances': [9], 'p_values': [0.03, 0.13], 'rounds': 100, 'shots': 10000})
+
+Sources:
+  - [arxiv:1208.0928] Surface codes: Towards practical large-scale quantum computation
+    https://arxiv.org/abs/1208.0928
+  - [canonical:mwpm-decoder] MWPM Decoder
+  - [canonical:mwpm-decoder] MWPM Decoder
+
+(confidence: high)

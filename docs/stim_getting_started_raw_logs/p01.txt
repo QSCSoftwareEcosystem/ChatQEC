@@ -1,0 +1,63 @@
+/home/pza/chatQEC/.venv/lib/python3.11/site-packages/qdrant_client/qdrant_remote.py:282: UserWarning: Qdrant client version 1.18.0 is incompatible with server version 1.12.0. Major versions should match and minor version difference must not exceed 1. Set check_compatibility=False to skip version check.
+  show_warning(
+[chatqec] backend=anthropic model=claude-haiku-4-5
+[chatqec] backend=anthropic model=claude-haiku-4-5
+Loading weights:   0%|          | 0/202 [00:00<?, ?it/s]Loading weights: 100%|██████████| 202/202 [00:00<00:00, 8471.73it/s]
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+See the rendered circuit diagram above. Here is a breakdown of the circuit and results.
+
+---
+
+## Circuit: Bell Pair Preparation & Measurement
+
+The three-instruction circuit is:
+
+$$\text{H} \otimes I \;\longrightarrow\; |+\rangle|0\rangle \xrightarrow{\text{CNOT}_{0\to1}} \frac{|00\rangle + |11\rangle}{\sqrt{2}} \xrightarrow{M_{ZZ}} \{00,\,11\}$$
+
+| Step | Instruction | Effect |
+|------|-------------|--------|
+| 1 | `H 0` | Puts qubit 0 into $\|{+}\rangle = \tfrac{1}{\sqrt{2}}(\|0\rangle+\|1\rangle)$ |
+| 2 | `CNOT 0 1` | Entangles qubits: state becomes $\tfrac{1}{\sqrt{2}}(\|00\rangle+\|11\rangle)$ |
+| 3 | `M 0 1` | Collapses to $\|00\rangle$ or $\|11\rangle$ with equal probability |
+
+---
+
+## Sampled Results (10 shots)
+
+| Shot | q0 | q1 |
+|------|----|----|
+| 1    | 1  | 1  |
+| 2    | 0  | 0  |
+| 3    | 0  | 0  |
+| 4    | 1  | 1  |
+| 5    | 1  | 1  |
+| 6    | 0  | 0  |
+| 7    | 0  | 0  |
+| 8    | 1  | 1  |
+
+(10 shots total; first 8 shown above — all are perfectly correlated.)
+
+---
+
+## Key Observations
+
+- **Perfect correlation**: every shot yields either $00$ or $11$ — **never** $01$ or $10$. This is the defining signature of the Bell state $|\Phi^+\rangle$.[^4]
+- **Roughly 50/50 split** between $00$ and $11$, consistent with the equal-amplitude superposition.
+- This is the foundational entangled resource used in superdense coding, teleportation, and as the elementary link in many QEC encoding circuits — e.g., the CNOT-based encoding of the repetition code.[^3]
+
+Tool calls:
+  - stim_simulate({'circuit': '\nH 0\nCNOT 0 1\nM 0 1\n', 'shots': 10})
+  - stim_diagram({'circuit': '\nH 0\nCNOT 0 1\nM 0 1\n'})
+
+Sources:
+  - [pdf:02f9b2bd] Lidar & Brun — Introduction to Quantum Error Correction
+  - [arxiv:0905.2794] Quantum Error Correction for Beginners
+    https://arxiv.org/abs/0905.2794
+
+Figures:
+  data/figures/arxiv_1208.0928/_page_23_Picture_12.jpeg
+  data/figures/arxiv_quant-ph_0110143/_page_29_Picture_3.jpeg
+  data/figures/arxiv_0905.2794/_page_21_Figure_1.jpeg
+
+(confidence: medium)

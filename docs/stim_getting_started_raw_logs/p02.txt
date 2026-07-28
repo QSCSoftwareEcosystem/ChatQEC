@@ -1,0 +1,65 @@
+/home/pza/chatQEC/.venv/lib/python3.11/site-packages/qdrant_client/qdrant_remote.py:282: UserWarning: Qdrant client version 1.18.0 is incompatible with server version 1.12.0. Major versions should match and minor version difference must not exceed 1. Set check_compatibility=False to skip version check.
+  show_warning(
+[chatqec] backend=anthropic model=claude-haiku-4-5
+[chatqec] backend=anthropic model=claude-haiku-4-5
+Loading weights:   0%|          | 0/202 [00:00<?, ?it/s]Loading weights: 100%|██████████| 202/202 [00:00<00:00, 7462.25it/s]
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+[chatqec] backend=anthropic model=claude-sonnet-4-6
+See the rendered circuit diagram above. Now let me tabulate the results clearly.
+
+---
+
+## Analysis
+
+### Noiseless Truth Table
+
+Without any errors, the circuit prepares $\frac{|00\rangle + |11\rangle}{\sqrt{2}}$, so measuring both qubits always yields either $00$ or $11$ — the two outcomes are **always equal**. Therefore:
+
+$$\text{DETECTOR} = M_0 \oplus M_1 = 0 \quad \text{(always, no noise)}$$
+
+### What X errors do
+
+The `X_ERROR(0.2)` flips each qubit **independently** with probability $p = 0.2$. There are four scenarios per shot:
+
+| Error on q0 | Error on q1 | Effect on state | $M_0 \oplus M_1$ | Detector fires? |
+|:-----------:|:-----------:|:----------------|:----------------:|:---------------:|
+| No | No | $\frac{\|00\rangle+\|11\rangle}{\sqrt{2}}$ | $0$ | ❌ |
+| Yes | No | $\frac{\|10\rangle+\|01\rangle}{\sqrt{2}}$ | $1$ | ✅ |
+| No | Yes | $\frac{\|01\rangle+\|10\rangle}{\sqrt{2}}$ | $1$ | ✅ |
+| Yes | Yes | $\frac{\|10\rangle+\|01\rangle \to \|00\rangle+\|11\rangle}{\sqrt{2}}$ | $0$ | ❌ |
+
+The detector fires whenever **exactly one** of the two qubits is flipped. The probability of this is:
+$$P(\text{detector fires}) = 2p(1-p) = 2(0.2)(0.8) = 0.32$$
+
+So roughly **~3 out of 10 shots** should show the detector firing, matching our simulation results. The detector is **blind to correlated (both-qubit) X errors** — this is exactly the *hook error* / degeneracy phenomenon relevant to circuit-level noise models.[^5]
+
+---
+
+## Summary
+
+| Concept | Meaning |
+|---|---|
+| `DETECTOR rec[-1] rec[-2]` | Computes $M_0 \oplus M_1$; should be 0 noiseless [^2] |
+| Fires (= 1) | At least one unexpected error flipped the parity [^2] |
+| Doesn't fire (= 0) | Either no error, or an **undetectable even-weight error** [^5] |
+
+Detectors are the building blocks of syndrome extraction; their firing pattern is exactly what gets passed to a decoder like MWPM.[^2]
+
+Tool calls:
+  - stim_simulate({'circuit': '\nH 0\nCX 0 1\nX_ERROR(0.2) 0 1\nM 0 1\nDETECTOR rec[-1] rec[-2]\n', 'shots': 10})
+  - stim_simulate({'circuit': '\nH 0\nCX 0 1\nX_ERROR(0.2) 0 1\nM 0 1\nDETECTOR rec[-1] rec[-2]\n', 'shots': 10})
+  - stim_diagram({'circuit': '\nH 0\nCX 0 1\nX_ERROR(0.2) 0 1\nM 0 1\nDETECTOR rec[-1] rec[-2]\n'})
+
+Sources:
+  - [canonical:circuit-level-noise] Circuit-Level Noise Models
+  - [arxiv:2409.17595] Magic state cultivation: growing T states as cheap as CNOT gates
+    https://arxiv.org/abs/2409.17595
+
+Figures:
+  data/figures/pdf_fd245cf9_pp459-533/_page_523_Picture_3.jpeg
+  data/figures/pdf_fd245cf9_pp459-533/_page_525_Figure_8.jpeg
+  data/figures/pdf_fd245cf9_pp459-533/_page_526_Figure_2.jpeg
+
+(confidence: medium)
