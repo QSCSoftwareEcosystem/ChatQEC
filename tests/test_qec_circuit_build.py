@@ -153,3 +153,74 @@ def test_pqrm_unsupported_distance_returns_ok_false():
     assert out.ok is False
     assert "pqrm" in out.error_message
     assert "3" in out.error_message and "7" in out.error_message
+
+
+def test_lightstim_api_error_returns_ok_false(monkeypatch):
+    """Simulates upstream LightStim renaming/removing something so an
+    ImportError/TypeError/AttributeError escapes the submodule-import layer
+    inside the builder functions (executed *after* the top-level `import
+    lightstim` availability gate passes). These must still surface as
+    ok=False, not raise, per the tool's own advertised contract -- and with a
+    message distinguishable from ordinary domain-validation ValueErrors."""
+    import chatqec_mcp_tools.lightstim_adapter as mod
+
+    monkeypatch.setattr(
+        mod,
+        "build_circuit",
+        lambda **_: (_ for _ in ()).throw(
+            AttributeError("module 'lightstim.ir.qec_system' has no attribute 'QECSystem'")
+        ),
+    )
+    from chatqec_mcp_tools.tools.qec_circuit_build import (
+        QecCircuitBuildInput,
+        qec_circuit_build,
+    )
+
+    out = qec_circuit_build(
+        QecCircuitBuildInput(code_family="toric_code", distance=3, rounds=3)
+    )
+    assert out.ok is False
+    assert "lightstim api error" in out.error_message.lower()
+
+
+def test_work_ceiling_rejects_toric_code_worst_case_with_real_lightstim():
+    """The reported worst case (toric_code d=15, r=200) measured ~3.6 minutes
+    to build and, since qec_circuit_build's handler runs synchronously inside
+    the MCP server's async call_tool, blocked the whole server for that
+    duration. Must now be rejected up front (near-instantly) instead of
+    actually attempted."""
+    import pytest
+
+    pytest.importorskip("lightstim")
+
+    from chatqec_mcp_tools.tools.qec_circuit_build import (
+        QecCircuitBuildInput,
+        qec_circuit_build,
+    )
+
+    out = qec_circuit_build(
+        QecCircuitBuildInput(code_family="toric_code", distance=15, rounds=200)
+    )
+    assert out.ok is False
+    assert "work ceiling" in out.error_message.lower()
+
+
+def test_circuit_text_size_cap_with_real_lightstim():
+    """toric_code at distance=11 builds quickly (well under the work ceiling)
+    but its circuit_text (~76 KB) exceeds stim_diagram's 64 KB input cap --
+    must be rejected here too, so a build-then-diagram follow-up call doesn't
+    silently receive an unusable circuit_text."""
+    import pytest
+
+    pytest.importorskip("lightstim")
+
+    from chatqec_mcp_tools.tools.qec_circuit_build import (
+        QecCircuitBuildInput,
+        qec_circuit_build,
+    )
+
+    out = qec_circuit_build(
+        QecCircuitBuildInput(code_family="toric_code", distance=11, rounds=3)
+    )
+    assert out.ok is False
+    assert "too large" in out.error_message.lower()
