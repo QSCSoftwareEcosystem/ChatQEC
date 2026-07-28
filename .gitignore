@@ -229,3 +229,4 @@ yarn-error.log*
 *.rej
 .directory
 .fuse_hidden*
+.worktrees/
