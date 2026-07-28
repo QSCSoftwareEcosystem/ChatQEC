@@ -868,6 +868,7 @@ def _ingest_github(  # pragma: no cover - drives a GitHub API pull
     sink: ChunkSink,
     reg: Registry,
     now: datetime,
+    chunks_dir: Path,
 ) -> None:
     """Pull curated docs from ``org/repo`` at a pinned commit sha and ingest them.
 
@@ -882,7 +883,10 @@ def _ingest_github(  # pragma: no cover - drives a GitHub API pull
     from chatqec.ingestion.fetchers.github import GitHubMetadata, files_to_chunks
 
     org, _, repo = github_repo_value.partition("/")
-    client = GithubClient(github_token=os.environ["GITHUB_TOKEN"])
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        raise click.UsageError("--github requires a GITHUB_TOKEN environment variable")
+    client = GithubClient(github_token=github_token)
     reader = GithubRepositoryReader(
         github_client=client,
         owner=org,
@@ -917,7 +921,7 @@ def _ingest_github(  # pragma: no cover - drives a GitHub API pull
             notes=f"commit_sha={commit_sha_value} paths={','.join(github_paths_value)}",
         )
     )
-    click.echo(f"ingested {source_id}: {len(chunks)} chunks → github")
+    click.echo(f"ingested {source_id}: {len(chunks)} chunks → {chunks_dir}")
 
 
 @main.command("ingest")
@@ -1053,6 +1057,7 @@ def ingest(
             sink=sink,
             reg=reg,
             now=now,
+            chunks_dir=chunks_dir,
         )
         return
 
