@@ -58,11 +58,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rejects out-of-range qubit targets with `ok=False` rather than encoding a
   malformed link.
   Live capability check: 5 prompts (`eval/tsim_prompts.json`) run via real
-  `chatqec ask` calls, all correct once past the off-topic classifier — 2 of
-  the 5 (`glcb-build-001`, `ts-edge-003`), worded exactly (byte-for-byte,
-  verified via `json.load` + Python `==`) as in the eval file, were
-  classified off-topic before reaching the tool — see the capability-check
-  doc for the full re-verification history. See
+  `chatqec ask` calls, all correct once past the off-topic classifier. Every
+  one of the 5 (not just the ones categorized `tool_edge_case`/`glcb_build` —
+  an earlier draft of this note scoped the check that way, which is exactly
+  what let `ts-combined-001` go untested-as-literal for two prior fix rounds)
+  had its exact eval-file wording re-tried and byte-for-byte verified
+  (`json.load` + Python `==` against the logged `ask.question`): 2 of the 5
+  (`glcb-build-001`, `ts-edge-003`) were classified off-topic on that literal
+  wording and needed a QEC-framed rephrasing to reach the tool; the other 3
+  (`ts-nonclifford-001`, `ts-magic-002`, `ts-combined-001`) pass classification
+  on their literal wording as directly confirmed in this pass — see the
+  capability-check doc for the full re-verification history. See
   [`docs/EXAMPLES.md`](docs/EXAMPLES.md#tsim--glcb-via-tsim_simulate--glcb_visualize_url)
   and [`docs/tsim_glcb_capability_check.md`](docs/tsim_glcb_capability_check.md).
 - Tsim knowledge-base ingestion: `arxiv:2604.01059` (24 chunks, full LaTeX

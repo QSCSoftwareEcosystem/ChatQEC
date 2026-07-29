@@ -106,10 +106,12 @@ uv run chatqec ask --mcp-server chatqec-mcp-tools \
 
 The model **decides on its own** when a question needs simulation and calls the
 MCP tools — `stim_simulate`, `stim_diagram`, `pymatching_decode`,
-`threshold_sweep`, `code_params`, `qec_circuit_build`, `tsim_simulate`,
-`glcb_visualize_url` — which run in a subprocess sandbox with memory and
-wall-clock limits. Reported numbers come from the tool's actual output, not
-the model's guess.
+`threshold_sweep`, `code_params`, `qec_circuit_build`, `tsim_simulate` — which
+run in a subprocess sandbox with memory and wall-clock limits.
+`glcb_visualize_url` is the one exception: it's pure string/URL encoding with
+no external process, no network call, and no dependency, so no sandbox
+applies. Reported numbers come from the tool's actual output, not the model's
+guess.
 
 > **`qec_circuit_build` needs the sibling's optional `lightstim` extra.**
 > The tool is always registered, but without `lightstim` installed it returns
@@ -329,9 +331,10 @@ the fallback kicks in — eval headline numbers should still be run with
 | MCP tools       | [`chatqec-mcp-tools`](https://code.ornl.gov/qsc-as/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) over MCP stdio |
 
 Full corpus breakdown (chunk counts, per-source stats) lives in
-[`docs/EXAMPLES.md`](docs/EXAMPLES.md); as of v0.4 the store has ~2,689
-embedded chunks across 104 sources (60 canonical, 28 arXiv, 6 book chapters,
-10 blog/vendor).
+[`docs/EXAMPLES.md`](docs/EXAMPLES.md); as of 2026-07-28 the store has 2,935
+embedded chunks across 123 sources (60 canonical, 30 arXiv, 6 book chapters,
+25 blog/vendor, 2 pinned GitHub-doc sources) — computed live from
+`sources/registry.jsonl`, not estimated.
 
 ---
 

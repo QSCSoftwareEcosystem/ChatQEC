@@ -1,5 +1,5 @@
 {
-  "description": "Benchmark prompts for ChatQEC's Tsim + GLCB integration — covers the tsim_simulate MCP tool (GPU-accelerated Stim-superset simulator supporting non-Clifford gates via stabilizer rank decomposition) and glcb_visualize_url (shareable QuEra Gemini Logical Circuit Builder links, pure URL-encoding, no network call). Companion file to eval/lightstim_qec_prompts.json and eval/stim_qec_prompts.json, same shape. All reference values were computed live by calling tsim_simulate/glcb_visualize_url directly against bloqade-tsim==0.1.5 installed from the quera-tsim-glcb worktree (uv tool install --force '.[tsim]'); nothing here is fabricated. A load-bearing quirk discovered while computing these: tsim_simulate always calls Circuit.compile_detector_sampler() internally, so a circuit with M but no DETECTOR/OBSERVABLE_INCLUDE returns samples_preview with shape (shots, 0) — it does NOT return raw measurement bits the way stim_simulate does for the identical circuit text (see ts-clifford-001, ts-magic-001). Not run in bulk; a subset should be spot-checked the same way docs/stim_getting_started_capability_check.md does for the sibling benchmarks.",
+  "description": "Benchmark prompts for ChatQEC's Tsim + GLCB integration — covers the tsim_simulate MCP tool (GPU-accelerated Stim-superset simulator supporting non-Clifford gates via stabilizer rank decomposition) and glcb_visualize_url (shareable QuEra Gemini Logical Circuit Builder links, pure URL-encoding, no network call). Companion file to eval/lightstim_qec_prompts.json and eval/stim_qec_prompts.json, same shape. All reference values were computed live by calling tsim_simulate/glcb_visualize_url directly against bloqade-tsim==0.1.5 installed from the quera-tsim-glcb worktree (uv tool install --force '.[tsim]'); nothing here is fabricated. A load-bearing quirk discovered while computing these: tsim_simulate always calls Circuit.compile_detector_sampler() internally, so a circuit with M but no DETECTOR/OBSERVABLE_INCLUDE returns samples_preview with shape (shots, 0) — it does NOT return raw measurement bits the way stim_simulate does for the identical circuit text (see ts-clifford-001, ts-magic-001). 5 of the 20 prompts are spot-checked in docs/tsim_glcb_capability_check.md with raw logs under docs/tsim_glcb_capability_check_raw_logs/, including a byte-for-byte (json.load + Python ==) check of each run prompt's literal wording against the ask.question logged for it — see that doc for which prompts' literal wording is accepted vs rejected by the off-topic classifier. The remaining 15 should be spot-checked the same way docs/stim_getting_started_capability_check.md does for the sibling benchmarks.",
   "sources": {
     "arxiv": "arxiv:2604.01059",
     "github": "github:QuEraComputing/tsim@21757967",
@@ -140,7 +140,8 @@
       "reference": {
         "circuit": "FOO_BAR_NOT_A_GATE 0\nM 0",
         "verified_outcome": "ok=False, error_message=\"tsim error: Gate not found: 'FOO_BAR_NOT_A_GATE'\""
-      }
+      },
+      "notes": "Literal wording, byte-for-byte verified (json.load + Python ==), was rejected pre-tool-call by the off-topic classifier (claude-haiku-4-5) — see docs/tsim_glcb_capability_check.md. A milder QEC-flavored paraphrase was also rejected; only an explicit rephrasing naming 'quantum error correction circuit simulation' / 'stabilizer circuit' passed. Anyone benchmarking against this prompt's literal text should expect a real chance of an off-topic refusal before the tool is ever called."
     },
     {
       "id": "glcb-build-001",
@@ -151,7 +152,7 @@
         "ok": true,
         "url": "https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}"
       },
-      "notes": "Exact byte-for-byte match to test_bell_pair_matches_known_url_exactly in tests/test_glcb_visualize.py (chatqec-mcp-tools repo)."
+      "notes": "Exact byte-for-byte match to test_bell_pair_matches_known_url_exactly in tests/test_glcb_visualize.py (chatqec-mcp-tools repo). Separately: this prompt's literal wording, byte-for-byte verified (json.load + Python ==), was rejected pre-tool-call by the off-topic classifier (claude-haiku-4-5) on two live attempts — see docs/tsim_glcb_capability_check.md. A QEC-framed rephrasing ('For a QEC stabilizer-code demo, ...') passed. Anyone benchmarking against this prompt's literal text should expect a real chance of an off-topic refusal before the tool is ever called."
     },
     {
       "id": "glcb-build-002",

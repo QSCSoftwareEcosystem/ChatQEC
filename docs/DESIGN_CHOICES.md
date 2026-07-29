@@ -192,14 +192,18 @@ stable) can change class names, module layout, or content underneath an
 ingested chunk with no version bump to notice.
 
 So `--commit-sha` is **mandatory**, validated as a 40-character hex commit
-before any network call — never a branch name, never `main` — and the same
-sha is reused as the *dependency* pin wherever the repo also ships code
-ChatQEC calls (e.g. `chatqec-mcp-tools`'s `qec_circuit_build` tool, pinned to
+before any network call — never a branch name, never `main` — and, *for a
+repo whose code dependency has no independent versioning of its own* (i.e.
+it's installed straight from a git ref rather than from PyPI), the same sha
+is reused as the *dependency* pin wherever the repo also ships code ChatQEC
+calls (e.g. `chatqec-mcp-tools`'s `qec_circuit_build` tool, pinned to
 LightStim `47dd7497...` in its `pyproject.toml`). One version string, two
 consumers: the knowledge base never describes an API surface the running code
 doesn't actually have, and vice versa. Bumping either without the other is a
 deliberate, reviewed act — not something a routine re-ingest or dependency
-update can silently do.
+update can silently do. (See the Tsim section below for the contrast case,
+where the code dependency *does* have its own PyPI versioning and this
+same-sha reuse doesn't apply.)
 
 The "is a new version available" question is answered by the existing
 watchlist mechanism (`sources/watchlist.yaml`'s `github:` list +

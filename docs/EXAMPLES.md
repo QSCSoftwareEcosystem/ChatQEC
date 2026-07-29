@@ -68,21 +68,36 @@ the paired backing paper, `ask` synthesizes both):
 
 | Metric | Value |
 |---|---|
-| Total points | **2689** |
+| Total points | **2935** |
 | Canonical (`canonical`) | 314 |
 | Book chapters (`peer_reviewed`) | 247 |
-| arXiv papers (`preprint`) | 1980 |
-| Blogs / vendor pages (`blog`) | 148 |
+| arXiv papers (`preprint`) | 2043 |
+| Blogs / vendor pages (`blog`) | 331 |
 | Collection status | green |
 
-Exact tier counts via Qdrant `points/count` (filter on `authority_tier`): canonical
-314 · peer_reviewed 247 · preprint 1980 · blog 148 = **2689** (canonical grew +20
-when the 4 new v0.4 pages were embedded).
+Exact tier counts via Qdrant `points/count` (filter on `authority_tier`, current as of
+2026-07-28 after the LightStim + Tsim ingestion below): canonical 314 · peer_reviewed
+247 · preprint 2043 · blog 331 = **2935**.
+
+**Registry totals (current, `sources/registry.jsonl`, 2026-07-28):** **123 sources /
+2935 chunks** — 60 canonical, 30 arXiv, 6 book chapters (`pdf`), 25 blog/vendor
+(`blog`, incl. the 15 Tsim mintlify docs pages below), 2 pinned GitHub-doc sources
+(`github`, LightStim + Tsim). Reproduce with:
+```bash
+python3 -c "
+import json
+from collections import Counter
+recs = [json.loads(l) for l in open('sources/registry.jsonl')]
+print(len(recs), 'sources /', sum(r['chunk_count'] for r in recs), 'chunks')
+print(Counter(r['type'] for r in recs))
+"
+```
 
 ### v0.4 corpus detail (added 2026-07-12)
 
 **+665 chunks / 16 sources**, reproducible via `scripts/seed_corpus_v0_4.sh`.
-Registry now: **28 arXiv · 6 book chapters · 10 blog/vendor · 60 canonical = 104 sources**
+Registry as of v0.4 (2026-07-12, now stale — see the current totals above):
+**28 arXiv · 6 book chapters · 10 blog/vendor · 60 canonical = 104 sources**
 (the 4 v0.4 canonical pages are registered too).
 
 **11 fault-tolerance / QEC papers** — full LaTeX (Marker-PDF fallback where arXiv has
@@ -416,16 +431,34 @@ chatqec ingest --github QuEraComputing/tsim --commit-sha 21757967c971643a94722dd
   --github-paths docs
 # → ingested github:QuEraComputing/tsim@21757967: 6 chunks (docs/*.md)
 
-chatqec ingest --url https://tsim.mintlify.app/index.md \
-  --url https://tsim.mintlify.app/install.md \
-  --url https://tsim.mintlify.app/contributing.md \
-  --url https://tsim.mintlify.app/tutorials/overview.md \
-  --url https://tsim.mintlify.app/tutorials/encoding_demo.md \
-  --url https://tsim.mintlify.app/tutorials/from_stim_to_tsim.md \
-  --url https://tsim.mintlify.app/tutorials/magic_state_distillation.md \
-  --url https://tsim.mintlify.app/api-reference/index.md \
-  ... # 15 mintlify docs pages total (tutorials/, api-reference/, incl. noise/ and utils/ subpages)
+for url in \
+  https://tsim.mintlify.app/index.md \
+  https://tsim.mintlify.app/tutorials/overview.md \
+  https://tsim.mintlify.app/tutorials/encoding_demo.md \
+  https://tsim.mintlify.app/tutorials/from_stim_to_tsim.md \
+  https://tsim.mintlify.app/tutorials/magic_state_distillation.md \
+  https://tsim.mintlify.app/install.md \
+  https://tsim.mintlify.app/contributing.md \
+  https://tsim.mintlify.app/api-reference/index.md \
+  https://tsim.mintlify.app/api-reference/circuit.md \
+  https://tsim.mintlify.app/api-reference/sampler.md \
+  https://tsim.mintlify.app/api-reference/noise/channels.md \
+  https://tsim.mintlify.app/api-reference/noise/dem.md \
+  https://tsim.mintlify.app/api-reference/utils/encoder.md \
+  https://tsim.mintlify.app/api-reference/utils/diagram.md \
+  https://tsim.mintlify.app/api-reference/utils/program_text.md \
+; do
+  chatqec ingest --url "$url"
+done
+# → 15 mintlify docs pages total (tutorials/, api-reference/, incl. noise/ and utils/ subpages)
 ```
+
+> **Do not repeat `--url` in a single `chatqec ingest` invocation.** `--url` is
+> not `multiple=True` in `cli.py` — Click silently keeps only the *last*
+> repeated value (`--url A --url B --url C` ingests only `C`). The shell `for`
+> loop above is what was actually run for all 15 pages (confirmed via
+> `sources/registry.jsonl`'s `ingested_at` timestamps: 10 of the 15 share one
+> identical batch timestamp).
 
 All `active` in `sources/registry.jsonl`, embedded via
 `chatqec embed --all-pending --provider gemini`. Unlike the GitHub pin, these
@@ -503,7 +536,7 @@ against the corpus above:
 "Add a DETECTOR ... magic-state prep step ..." (2000 shots)            → tsim_simulate(R/R_X/T_DAG/DEPOLARIZE1/M/DETECTOR, 2000) → shape=(2000,1), mix of 0/1 ✅
 "Build a GLCB link for the Bell-pair circuit ..."                      → glcb_visualize_url(h@0, cx@1) → exact reference URL ✅ (2 earlier attempts of the exact eval wording were rejected pre-tool-call by the off-topic classifier — see the capability-check doc)
 "Simulate FOO_BAR_NOT_A_GATE 0/M 0 for 10 shots"                       → tsim_simulate(...) → ok=False, "Gate not found: 'FOO_BAR_NOT_A_GATE'" ✅ (the exact eval wording, byte-for-byte verified with json.load, and a milder QEC-framed paraphrase were also both rejected pre-tool-call — see the capability-check doc)
-"Simulate the Bell pair ... then build a GLCB link for the same circuit" → tsim_simulate(...) + glcb_visualize_url(...) → all-zero detector (perfect correlation) + exact reference URL, same gate order in both calls ✅
+"Simulate the Bell pair ... then build a GLCB link for the same circuit" → tsim_simulate(...) + glcb_visualize_url(...) → all-zero detector (perfect correlation) + same H/CX circuit encoded ✅ (originally run in this file with an undisclosed "For a QEC circuit-tooling demo:" prefix, never disclosed as such; the literal eval wording — byte-for-byte verified with json.load — was separately re-tested directly and also passed classification with a correct result — see the capability-check doc)
 ```
 
 See [`docs/tsim_glcb_capability_check.md`](tsim_glcb_capability_check.md) for
