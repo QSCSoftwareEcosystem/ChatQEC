@@ -156,9 +156,11 @@ _TOOLS = [
         description=(
             "Run a Tsim circuit (Stim syntax plus non-Clifford gates — T, T_DAG, "
             "R_X/R_Y/R_Z, U3, TPP/TPP_DAG, R_XX/R_YY/R_ZZ/R_PAULI, CCZ, CCX) and "
-            "return measurement/detector samples; enables magic-state distillation/"
-            "cultivation circuits that plain Stim cannot simulate at all. Optional "
-            "`tsim` extra — returns ok=False with an error_message if not installed."
+            "return detector/observable samples (not raw measurement bits — the "
+            "circuit must contain a DETECTOR or OBSERVABLE_INCLUDE instruction); "
+            "enables magic-state distillation/cultivation circuits that plain Stim "
+            "cannot simulate at all. Optional `tsim` extra — returns ok=False with "
+            "an error_message if not installed."
         ),
         input_schema=TsimSimulateInput.model_json_schema(),
         handler=_tsim_simulate_handler,
