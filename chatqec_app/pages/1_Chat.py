@@ -22,10 +22,11 @@ st.title("Chat")
 # --- verbose trace toggle ---
 verbose = st.sidebar.toggle(
     "🔍 Verbose trace",
-    value=False,
+    value=True,
     help="Write every pipeline step (classify, rewrite, retrieve, synthesize, "
     "model/provider, MCP tool calls) with full payloads to a timestamped file "
-    "under logs/ — same as the CLI --log-file. Not shown inline.",
+    "under logs/ — same as the CLI --log-file. Not shown inline. On by default "
+    "so every prompt run leaves a dated trace for debugging.",
 )
 
 # --- session state ---

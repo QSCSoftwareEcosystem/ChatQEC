@@ -9,16 +9,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.title("ChatQEC")
-st.write(
-    "Open-source Quantum Error Correction research assistant. " "Pick a page on the left to start."
-)
-
-st.markdown(
-    """
-- **Chat** — ask QEC questions with cited evidence and sandboxed Stim execution.
-- **Sources** — browse the knowledge base.
-- **Watchlist** — see which arxiv categories, GitHub repos, and channels we track.
-- **About** — what's inside, license, how to self-host.
-"""
-)
+# Chat is the page users actually want on load; land there instead of this
+# intro screen. st.switch_page runs once per script execution, so this fires
+# immediately on every visit to the bare app URL.
+st.switch_page("pages/1_Chat.py")
