@@ -10,6 +10,12 @@ Tools:
 - `code_params` — report a code's [[n,k]] + stabilizer count and a Stim-computed distance
 - `qec_circuit_build` — build a stim.Circuit for a code family plain Stim doesn't ship
   built-in (toric code, color code, BB codes, PQRM), via the optional `lightstim` extra
+- `tsim_simulate` — run a Tsim circuit (Stim syntax plus non-Clifford gates: T, T_DAG,
+  R_X/R_Y/R_Z, U3, TPP/TPP_DAG, R_XX/R_YY/R_ZZ/R_PAULI, CCZ, CCX) and return
+  detector/observable samples, via the optional `tsim` extra
+- `glcb_visualize_url` — build a shareable QuEra GLCB
+  (gemini-logical-circuit-builder.vercel.app) visualization link for a small circuit;
+  pure string encoding, no network call, no external dependency
 
 Superseded: `qiskit_qec_run` (code construction via qiskit-qec) — replaced by the
 Stim-based `code_params`, since qiskit-qec is unshippable (not on PyPI; abandoned,
@@ -33,6 +39,19 @@ pip install "chatqec-mcp-tools[lightstim]"
 
 Without it installed, `qec_circuit_build` is still registered but always returns
 `ok=False` with a message explaining the extra is required.
+
+`tsim_simulate` additionally requires the optional `tsim` extra:
+
+```bash
+pip install "chatqec-mcp-tools[tsim]"
+# or: uv sync --extra tsim
+```
+
+Without it installed, `tsim_simulate` is still registered but always returns
+`ok=False` with a message explaining the extra is required.
+
+`glcb_visualize_url` has zero dependencies beyond this package itself (pure string
+encoding, no network call) — no extra required.
 
 ## License
 
