@@ -409,6 +409,9 @@ question  ──▶ Haiku ──▶│  off-topic?  │── no ──▶ refus
        └────────────────┘         │  → pymatching_decode  │
                                    │  → threshold_sweep    │
                                    │  → code_params        │
+                                   │  → qec_circuit_build  │
+                                   │  → tsim_simulate      │
+                                   │  → glcb_visualize_url │
                                    └───────────────────────┘
 ```
 
