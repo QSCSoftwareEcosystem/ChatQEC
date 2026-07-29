@@ -403,6 +403,119 @@ later benchmarking.
 |---|---|---|
 | `qec_circuit_build` | "build / construct a toric / BB / PQRM code circuit", "distance-N color code circuit" | *"Build a distance-3 toric code memory circuit and tell me its detector count."* · *"I need a distance-6 BB code circuit — can you build it?"* |
 
+### Tsim knowledge base (paper + GitHub docs + mintlify docs, ingested 2026-07-28)
+
+Three source types were ingested for Tsim, all pinned/versioned as of the
+same date:
+
+```bash
+chatqec ingest --arxiv 2604.01059 --full-text
+# → ingested arxiv:2604.01059: 24 chunks (LaTeX source)
+
+chatqec ingest --github QuEraComputing/tsim --commit-sha 21757967c971643a94722ddeede8d4ba16c61792 \
+  --github-paths docs
+# → ingested github:QuEraComputing/tsim@21757967: 6 chunks (docs/*.md)
+
+chatqec ingest --url https://tsim.mintlify.app/index.md \
+  --url https://tsim.mintlify.app/install.md \
+  --url https://tsim.mintlify.app/contributing.md \
+  --url https://tsim.mintlify.app/tutorials/overview.md \
+  --url https://tsim.mintlify.app/tutorials/encoding_demo.md \
+  --url https://tsim.mintlify.app/tutorials/from_stim_to_tsim.md \
+  --url https://tsim.mintlify.app/tutorials/magic_state_distillation.md \
+  --url https://tsim.mintlify.app/api-reference/index.md \
+  ... # 15 mintlify docs pages total (tutorials/, api-reference/, incl. noise/ and utils/ subpages)
+```
+
+All `active` in `sources/registry.jsonl`, embedded via
+`chatqec embed --all-pending --provider gemini`. Unlike the GitHub pin, these
+mintlify `url:` sources have no version number of their own — the paper and
+docs are re-ingested wholesale if Tsim's documentation changes materially,
+same treatment as any other `url:`/`blog`-tier source (see
+[`docs/DESIGN_CHOICES.md`](DESIGN_CHOICES.md#why-tsim-needs-no-commit-pin-for-its-code-dependency-only-for-kb-ingestion)
+for why the *code* dependency below needs no commit pin even though this KB
+ingestion still pins the GitHub docs to a commit).
+
+### Tsim + GLCB via `tsim_simulate` / `glcb_visualize_url`
+
+Two more tools were added to the `chatqec-mcp-tools` sibling. `tsim_simulate`
+runs a Stim-superset circuit through
+[Tsim](https://github.com/QuEraComputing/tsim) — a GPU-accelerated simulator
+that extends Stim's instruction set with non-Clifford gates (`T`, `T_DAG`,
+`R_X`/`R_Y`/`R_Z`, `U3`, `TPP`/`TPP_DAG`, `R_XX`/`R_YY`/`R_ZZ`/`R_PAULI`,
+`CCZ`, `CCX`) via stabilizer rank decomposition — circuits plain `stim` itself
+rejects outright. `glcb_visualize_url` builds a shareable link into QuEra's
+Gemini Logical Circuit Builder for a small circuit; it is pure string
+encoding with no network call and no dependency on either `stim` or Tsim.
+
+| Registered tool | Purpose | Backend |
+|---|---|---|
+| **`tsim_simulate`** | run a Tsim circuit (Stim syntax + non-Clifford gates) → measurement/detector samples | `bloqade-tsim>=0.1.5,<0.2` (optional `tsim` extra) |
+| **`glcb_visualize_url`** | build a shareable GLCB visualization URL for a small circuit | none — pure URL encoding |
+
+**Test check-run (2026-07-28):** sibling suite **43 passed / 6 skipped**
+(`uv run pytest -q`, `tsim` extra installed, `lightstim` extra not installed —
+the 6 skips are the pre-existing `lightstim`-gated integration tests, unaffected
+by this change). Per file: `test_tsim_simulate` 3 (incl.
+`test_t_gate_circuit_with_real_tsim` against the real installed package) ·
+`test_glcb_visualize` 4 (incl. two byte-for-byte known-URL regression tests).
+
+**Functional smoke-run** (direct tool call against the real installed
+`bloqade-tsim==0.1.5`):
+
+```text
+tsim_simulate  H 0/CNOT 0 1/M 0 1 (no DETECTOR), 2000 shots:
+   ok=True  shots=2000  samples_preview shape=(2000, 0)   # measured but nothing to report — no DETECTOR/OBSERVABLE_INCLUDE
+tsim_simulate  RX 0/T 0/H 0/M 0/DETECTOR rec[-1], 200 shots:
+   ok=True  shots=200   shape=(200, 1)  preview mix of 0/1   # non-Clifford T gate; plain stim.Circuit(...) raises ValueError: Gate not found: 'T'
+tsim_simulate  H 0/M 0, 200000 shots:
+   ok=False  error_message="shots > 100,000 not permitted"
+tsim_simulate  FOO_BAR_NOT_A_GATE 0/M 0, 10 shots:
+   ok=False  error_message="tsim error: Gate not found: 'FOO_BAR_NOT_A_GATE'"
+glcb_visualize_url  H@0(col 0), CX 0->1(col 1), 2 qubits:
+   ok=True  url=https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}
+glcb_visualize_url  H targeting qubit 5 on a 2-qubit register:
+   ok=False  error_message="gate 'h' targets qubit >= qubits=2"
+```
+
+> **`tsim_simulate` always calls `Circuit.compile_detector_sampler()`
+> internally**, so a circuit that only `M`easures with no `DETECTOR`/
+> `OBSERVABLE_INCLUDE` gets an empty `(shots, 0)` preview — it does **not**
+> return raw measurement bits the way `stim_simulate` does for the identical
+> circuit text. Add a `DETECTOR` to see a result.
+>
+> **Tsim's detector convention is inverted from Stim's by default.**
+> `use_reference_sample=False` (the tool default) reports the *actual*
+> detector outcome, not a flip relative to a noiseless reference — e.g.
+> `X 0\nM 0\nDETECTOR rec[-1]` reports `True` every shot by default but
+> `False` every shot with `use_reference_sample=true` (matching Stim's
+> always-XOR-against-reference convention). See
+> [`eval/tsim_prompts.json`](../eval/tsim_prompts.json)'s
+> `tool_reference_convention` prompts.
+
+**Live capability check (2026-07-28):** 5 of a 20-prompt benchmark set
+(`eval/tsim_prompts.json`) were run via real
+`chatqec ask --mcp-server chatqec-mcp-tools` calls (`claude-sonnet-4-6`)
+against the corpus above:
+
+```text
+"Simulate ... T 0 ... If I tried plain Stim, what would happen?"      → tsim_simulate(RX 0/T 0/H 0/M 0/DETECTOR, 200) → mix of 0/1, correctly says Stim has no T gate ✅
+"Add a DETECTOR ... magic-state prep step ..." (2000 shots)            → tsim_simulate(R/R_X/T_DAG/DEPOLARIZE1/M/DETECTOR, 2000) → shape=(2000,1), mix of 0/1 ✅
+"Build a GLCB link for the Bell-pair circuit ..."                      → glcb_visualize_url(h@0, cx@1) → exact reference URL ✅ (2 earlier attempts of the exact eval wording were rejected pre-tool-call by the off-topic classifier — see the capability-check doc)
+"Simulate FOO_BAR_NOT_A_GATE 0/M 0 for 10 shots"                       → tsim_simulate(...) → ok=False, "Gate not found: 'FOO_BAR_NOT_A_GATE'" ✅
+"Simulate the Bell pair ... then build a GLCB link for the same circuit" → tsim_simulate(...) + glcb_visualize_url(...) → all-zero detector (perfect correlation) + exact reference URL, same gate order in both calls ✅
+```
+
+See [`docs/tsim_glcb_capability_check.md`](tsim_glcb_capability_check.md) for
+the full verdict table, raw logs, the off-topic-classifier finding, and the
+remaining 15 prompts kept in
+[`eval/tsim_prompts.json`](../eval/tsim_prompts.json) for later benchmarking.
+
+| Tool | What triggers it | Example questions |
+|---|---|---|
+| `tsim_simulate` | "simulate with Tsim", "T/T_DAG gate", "non-Clifford", "magic state" | *"Using Tsim, simulate a circuit with a T gate that plain Stim can't run."* · *"Simulate this magic-state preparation circuit with Tsim for 2000 shots."* |
+| `glcb_visualize_url` | "build/create a GLCB link", "visualize this circuit" | *"Build a GLCB visualization link for a Bell-pair circuit (QEC stabilizer demo)."* |
+
 ### Web-search fallback (Tavily) — why this backend
 
 When a question isn't covered by the corpus or canonical wiki, ChatQEC can fall back

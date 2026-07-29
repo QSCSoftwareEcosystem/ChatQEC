@@ -207,6 +207,45 @@ watchlist mechanism (`sources/watchlist.yaml`'s `github:` list +
 polls `pushed_at` per watched repo; `QuTone/LightStim` is just one more entry
 in a list that already existed for this purpose.
 
+### Why Tsim needs no commit-pin for its code dependency (only for KB ingestion)
+
+Tsim is the direct contrast case to the LightStim section above, and it's
+worth being explicit about which half of the "pin everything" discipline
+still applies and which half doesn't.
+
+**The code dependency is a normal versioned PyPI package.** `chatqec-mcp-tools`'s
+`tsim_simulate` tool depends on `bloqade-tsim>=0.1.5,<0.2` (`pyproject.toml`'s
+`tsim` extra) — an ordinary semver range resolved by `uv`/`pip` from PyPI, the
+same way `stim>=1.13` or `pymatching>=2.0` are. There is no `git+https://...`
+URL, no commit sha anywhere in the dependency spec, and no risk of the
+installed package's API silently drifting underneath a running server between
+releases: a version bump is a deliberate `pyproject.toml` edit, reviewed like
+any other dependency change, not something that happens by a repo's `main`
+moving. This is the opposite of LightStim's situation (not on PyPI at all,
+installed via `git+https://github.com/.../LightStim@<sha>`), and it's the
+reason `tsim_simulate` needed none of the "pin the dependency to the exact
+same sha as the KB ingestion" gymnastics `qec_circuit_build`/LightStim
+required.
+
+**Only the KB ingestion still pins a commit — because the *paper and docs*,
+unlike the *code*, have no version number of their own.** `arxiv:2604.01059`
+is a versioned preprint (fine as-is), but `github:QuEraComputing/tsim@21757967`
+follows the same `--commit-sha`-mandatory rule as any other `--github`
+ingestion (see above) — Tsim's `docs/` directory is a live, editable part of
+the same fast-moving repo, and nothing about PyPI's versioning of the
+*package* tells you whether the *documentation* chunk you embedded last week
+still matches what's on disk today. The 15 mintlify `url:` doc pages ingested
+alongside it get the *ordinary* `blog`-tier treatment every other `url:`
+source gets (no commit pin, no special mechanism) — they're a hosted docs
+site, not a git ref, and are re-ingested wholesale if their content changes
+materially, the same way any other web source is refreshed.
+
+In short: **pin the knowledge you can't otherwise verify is still current;
+don't invent a pin for a dependency that already has real, reviewable
+versioning.** Tsim needed the KB half of that discipline and none of the code
+half; LightStim needed both, because for LightStim the *code* was itself
+unversioned.
+
 ### Why authority tiers + recency in scoring (§8.5)
 
 QEC sources are *not* equally trustworthy. A peer-reviewed Nature paper, a tutorial blog, and a forum post can all match a query semantically — but should not all be cited equally.

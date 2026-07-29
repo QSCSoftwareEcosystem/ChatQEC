@@ -1,0 +1,338 @@
+
+===== ChatQEC trace @ 2026-07-28T22:19:49 =====
+
+[001] 22:19:56.545  mcp.spawn
+    server_command = chatqec-mcp-tools
+    argv = ['chatqec-mcp-tools']
+
+[002] 22:19:56.891  mcp.tools_loaded
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[003] 22:19:56.892  ask.question
+    question = For a QEC test, simulate this gate sequence with Tsim: `FOO_BAR_NOT_A_GATE 0\nM 0` for 10 shots.
+    top_k = 8
+    candidate_k = 50
+
+[004] 22:19:56.892  image.caption
+    n_images = 0
+    caption =
+
+[005] 22:19:56.892  classifier.call
+    model = claude-haiku-4-5
+    query = For a QEC test, simulate this gate sequence with Tsim: `FOO_BAR_NOT_A_GATE 0\nM 0` for 10 shots.
+
+[006] 22:19:57.494  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[007] 22:19:57.494  classifier.response
+    model = claude-haiku-4-5
+    raw = off_topic
+
+[008] 22:19:57.494  classify.verdict
+    on_topic = False
+    refusal = ChatQEC only answers Quantum Error Correction questions. Please rephrase your question to focus on QEC, fault tolerance, stabilizer codes, decoders, or related topics.
+
+===== ChatQEC trace @ 2026-07-28T22:20:03 =====
+
+[001] 22:20:08.175  mcp.spawn
+    server_command = chatqec-mcp-tools
+    argv = ['chatqec-mcp-tools']
+
+[002] 22:20:08.508  mcp.tools_loaded
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[003] 22:20:08.508  ask.question
+    question = In the context of quantum error correction circuit simulation, use Tsim to simulate this stabilizer circuit: `FOO_BAR_NOT_A_GATE 0\nM 0` for 10 shots. What happens?
+    top_k = 8
+    candidate_k = 50
+
+[004] 22:20:08.508  image.caption
+    n_images = 0
+    caption =
+
+[005] 22:20:08.508  classifier.call
+    model = claude-haiku-4-5
+    query = In the context of quantum error correction circuit simulation, use Tsim to simulate this stabilizer circuit: `FOO_BAR_NOT_A_GATE 0\nM 0` for 10 shots. What happens?
+
+[006] 22:20:09.333  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[007] 22:20:09.333  classifier.response
+    model = claude-haiku-4-5
+    raw = on_topic
+
+[008] 22:20:09.333  classify.verdict
+    on_topic = True
+    refusal =
+
+[009] 22:20:09.333  rewriter.call
+    model = claude-haiku-4-5
+    query = In the context of quantum error correction circuit simulation, use Tsim to simulate this stabilizer circuit: `FOO_BAR_NOT_A_GATE 0\nM 0` for 10 shots. What happens?
+    history_turns = 0
+
+[010] 22:20:10.980  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[011] 22:20:10.980  rewriter.response
+    model = claude-haiku-4-5
+    raw =
+        ```json
+        {
+          "rewritten": "In the context of quantum error correction circuit simulation using Tsim, what happens when attempting to simulate a stabilizer circuit containing an undefined gate 'FOO_BAR_NOT_A_GATE' applied to qubit 0 followed by a measurement on qubit 0 for 10 shots?",
+          "variants": [
+            "How does Tsim (stabilizer circuit simulator) handle invalid or unrecognized gate operations in a quantum error correction circuit?",
+            "What error or behavior results from running an undefined gate instruction in Tsim quantum error correction simulations?"
+          ],
+          "is_followup": false
+        }
+        ```
+
+[012] 22:20:10.980  rewrite.result
+    rewritten = In the context of quantum error correction circuit simulation, use Tsim to simulate this stabilizer circuit: `FOO_BAR_NOT_A_GATE 0\nM 0` for 10 shots. What happens?
+    variants = []
+    is_followup = False
+    queries = ['In the context of quantum error correction circuit simulation, use Tsim to simulate this stabilizer circuit: `FOO_BAR_NOT_A_GATE 0\\nM 0` for 10 shots. What happens?']
+
+[013] 22:20:10.980  retriever.retrieve
+    queries = ['In the context of quantum error correction circuit simulation, use Tsim to simulate this stabilizer circuit: `FOO_BAR_NOT_A_GATE 0\\nM 0` for 10 shots. What happens?']
+    top_k = 8
+    candidate_k = 50
+    per_query_k = 30
+
+[014] 22:20:11.253  retriever.embedded
+    n_dense = 1
+    n_sparse = 1
+
+[015] 22:20:11.283  retriever.searched
+    dense_hits = 30
+    bm25_hits = 30
+    unique_chunks = 54
+
+[016] 22:20:11.283  retriever.scored
+    n_candidates = 54
+    n_after_topk = 50
+    top_scored = [('arxiv:2604.01059#12', 0.9305), ('arxiv:2604.01059#0', 0.9245), ('arxiv:2604.01059#22', 0.906), ('arxiv:2604.01059#1', 0.9043), ('url:36fec51aacf0a11f#0', 0.8277), ('github:QuEraComputing/tsim@21757967#1', 0.8245), ('canonical:syndrome-extraction#0', 0.6546), ('canonical:stabilizer-formalism#4', 0.6513)]
+
+[017] 22:20:14.277  retriever.reranked
+    rerank_query = In the context of quantum error correction circuit simulation, use Tsim to simulate this stabilizer circuit: `FOO_BAR_NOT_A_GATE 0\nM 0` for 10 shots. What happens?
+    top_idx = [19, 21, 18, 23, 20, 0, 1, 36]
+
+[018] 22:20:14.282  retrieval.result
+    matched_topics = []
+    n_chunks = 8
+    debug = {'candidates_considered': 54, 'after_scoring': 50, 'after_rerank': 8, 'top_rerank_score': 0.91455078125}
+
+[019] 22:20:14.282  retrieval.chunk[0]
+    chunk_id = arxiv:1905.06903#70
+    source_id = arxiv:1905.06903
+    title = Magic State Distillation: Not as Costly as You Think
+    authority_tier = preprint
+    score = 0.5827
+    text = Figure (auto-described): The figure depicts a quantum circuit for a quantum error correction code, specifically a stabilizer code. The circuit consists of two main parts: a preparation part (a) and a decoding part (b). The preparation part involves the application of a series of gates to prepare the quantum state |ψT, while the decoding part involves the application of a series of gates to decode the quantum state |ψ. The circuit uses a combination of Hadamard gates, CNOT gates, and T gates to manipulate the quantum state and perform the error correction. The circuit is represented using a combination of quantum gates and wires, with the input and output states labeled as |ψT and |ψ, respectively. The circuit is designed to correct errors in the quantum state |ψ by applying the appropriate gates to the ancilla qubits X, Y, and Z. The circuit is a quantum circuit, which is a diagram that represents the sequence of quantum gates and their connections that are applied to a quantum state. The circuit is used to implement the quantum error correction code, which is a method for protecting a quantum state
+
+[020] 22:20:14.282  retrieval.chunk[1]
+    chunk_id = arxiv:1808.02892#95
+    source_id = arxiv:1808.02892
+    title = A Game of Surface Codes: Large-Scale Quantum Computing with Lattice Surgery
+    authority_tier = preprint
+    score = 0.5805
+    text =
+        Figure (auto-described): The figure depicts a quantum error correction circuit, specifically a quantum error-correcting code, which is a type of quantum error-correcting code that uses a combination of quantum gates and measurement to correct errors in a quantum computer.
+
+        The circuit consists of a series of quantum gates, represented by circles with letters inside, and a grid of qubits, represented by squares. The top row of the circuit shows the input qubits, while the bottom row shows the output qubits. The circuit is divided into two main parts: the top part, which is the encoding part, and the bottom part, which is the decoding part.
+
+        The top part of the circuit consists of a series of quantum gates that encode the input qubits into a larger set of qubits. The encoding process involves applying a combination of gates to the input qubits, which creates a new set of qubits that are more resistant to errors.
+
+        The bottom part of the circuit is the decoding part, which is responsible for correcting errors that may have occurred during the encoding process. This part of the circuit uses a combination of quantum gates
+
+[021] 22:20:14.282  retrieval.chunk[2]
+    chunk_id = arxiv:1208.0928#177
+    source_id = arxiv:1208.0928
+    title = Surface codes: Towards practical large-scale quantum computation
+    authority_tier = preprint
+    score = 0.5832
+    text =
+        Figure (auto-described): The figure depicts a quantum circuit for implementing a quantum error correction code, specifically a surface code. The circuit consists of a series of quantum gates and wires that represent the quantum bits (qubits) and their interactions. The circuit is structured as a lattice, with each qubit represented by a node and the interactions between them represented by the edges. The circuit includes a set of stabilizer generators, represented by the boxes labeled S_L, which are used to detect and correct errors in the qubits.
+
+        The circuit also includes a measurement device, represented by the box labeled M_Z, which is used to measure the state of the qubits. The circuit is designed to encode a logical qubit into a set of physical qubits, and the measurement device is used to extract the logical information from the physical qubits.
+
+        The circuit is a representation of the surface code, which is a type of quantum error-correcting code that is commonly used in quantum computing. The surface code is a lattice-based code, meaning that it is based on the idea of encoding a logical qubit into a set of physical
+
+[022] 22:20:14.282  retrieval.chunk[3]
+    chunk_id = arxiv:1208.0928#168
+    source_id = arxiv:1208.0928
+    title = Surface codes: Towards practical large-scale quantum computation
+    authority_tier = preprint
+    score = 0.5801
+    text = Figure (auto-described): The image depicts a circuit diagram, specifically a quantum error correction circuit. The circuit is composed of various components, including X and Z-cut gates, and is likely used to implement a specific quantum algorithm or protocol. The circuit is labeled with various symbols and notation, including X, Z, and L1, which are likely representing different types of quantum gates or operations. The circuit is likely used to perform a specific task, such as correcting errors in a quantum computation or simulation.
+
+[023] 22:20:14.282  retrieval.chunk[4]
+    chunk_id = arxiv:1808.02892#111
+    source_id = arxiv:1808.02892
+    title = A Game of Surface Codes: Large-Scale Quantum Computing with Lattice Surgery
+    authority_tier = preprint
+    score = 0.5815
+    text =
+        Figure (auto-described): The figure depicts a quantum circuit, specifically a quantum error correction code. The circuit consists of a series of qubits (represented by lines) and quantum gates (represented by boxes) that perform various operations on the qubits. The circuit is designed to correct errors that may occur in the qubits during quantum computations. The circuit is likely used in a quantum computer or quantum simulator to perform quantum error correction.
+
+        **Transcription of Axis Labels and Legends:**
+
+        * The horizontal lines represent the qubits.
+        * The vertical lines represent the control and target qubits for the quantum gates.
+        * The boxes represent the quantum gates, with the following gates used:
+        	+ X (Pauli X gate)
+        	+ Z (Pauli Z gate)
+        	+ H (Hadamard gate)
+        	+ S (phase gate)
+        	+ T (phase gate)
+        * The symbols inside the boxes represent the operations performed by each gate.
+
+        **Equations:**
+
+        * The circuit is designed to perform the following operation:
+        	+ |q1, q2, q3, q4, q5, q
+
+[024] 22:20:14.282  retrieval.chunk[5]
+    chunk_id = arxiv:2604.01059#12
+    source_id = arxiv:2604.01059
+    title = Tsim: Fast Universal Simulator for Quantum Error Correction
+    authority_tier = preprint
+    score = 0.9305
+    text =
+        Figure~\ref{fig:benchmark}(b) compares Tsim with quizx on random circuits of
+        exponentiated Pauli gates, following [kissinger2022classical]. We sampled
+        circuits of 20 qubits with Pauli strings of weight 2--4 and depth 1--21. For both Tsim and quizx, the Cat5 stabilizer rank decomposition (Eq.~\ref{eqn:cat5}) is used. For Tsim, we additionally inserted a depolarizing channel with $p=0.001$ after
+        every gate. For each random circuit, we recorded the quizx and Tsim runtime. At
+        low T count, Tsim on GPU is more than five orders of magnitude faster than
+        quizx. This speedup reflects the fact that Tsim pays the $\bigO{\ngates^3}$ ZX
+        simplification cost during compilation rather than during sampling. As the T
+        count increases, this advantage narrows, but Tsim still achieves speedups of
+        about $10^2$ on CPU and $10^4$ on GPU. Discussion
+        \label{sec:summary}
+
+        We have presented Tsim, a GPU-accelerated simulator for universal noisy quantum circuits targeting quantum error correction, based on parameterized ZX-calculus reduction and stabilizer rank decomposition. Tsim implements the Stim API for seamless integration with existing QEC simulation workflows, and further accepts circuits in other formats, including Bloqade, OpenQASM, Cirq, and QIR. The compile-once, sample-many architecture enables per-stabilizer-term sampling performance on CPU that is comparable to or faster than Stim on both Clifford and non-Clifford practical QEC gadgets. GPU acceleration can further improve throughput by up to two orders of magnitude. Compared to quizx, Tsim achieves speedups of up to five orders of magnitude by amortizing the ZX simplification cost at compile time. There are several potential directions to be explored in the future. The primary computational bottleneck of the current approach is the exponential scaling of stabilizer rank with the number of non-Clifford gates.
+
+[025] 22:20:14.282  retrieval.chunk[6]
+    chunk_id = arxiv:2604.01059#0
+    source_id = arxiv:2604.01059
+    title = Tsim: Fast Universal Simulator for Quantum Error Correction
+    authority_tier = preprint
+    score = 0.9245
+    text =
+
+
+        \title{Tsim: Fast Universal Simulator for Quantum Error Correction}
+        \date{April 1, 2026}
+
+        \author{Rafael Haenel}
+        \email{rhaenel@quera.com}
+        \affiliation{QuEra Computing Inc., Boston, USA}
+
+        \author{Xiuzhe Luo}
+        \affiliation{QuEra Computing Inc., Boston, USA}
+
+        \author{Chen Zhao}
+        \email{czhao@quera.com}
+        \affiliation{QuEra Computing Inc., Boston, USA}
+
+        \maketitle
+
+        \begin{abstract}
+          We present Tsim, an open-source high-throughput simulator for universal noisy quantum circuits targeting quantum error correction. Tsim represents quantum circuits as ZX diagrams, where Pauli channels are modeled as parameterized vertices. Diagrams are simplified via parameterized ZX rules, and then compiled for vectorized sampling with GPU acceleration. After the one-time compilation, one can sample detector or measurement shots in linear time in the number of Clifford gates and exponentially only in the number of non-Clifford gates. Tsim implements the Stim API and fully supports the Stim circuit format, extending it with T and arbitrary single-qubit rotation instructions. For low-magic circuits, Tsim throughput can match the sampling performance of Stim.
+        \end{abstract}
+
+        Introduction
+
+        \begin{figure}[t]
+          \centering
+
+          \caption{Overview of the Tsim simulation pipeline.
+            Quantum programs are translated into ZX diagrams in which Pauli noise channels appear as parameterized vertices with binary variables $e_i$.
+            ZX simplification factors the diagram into a classical part, that represents the Tanner graph, and a quantum part containing the observable circuit. Both parts define a new basis of error mechanisms $f_i = \bigoplus_j T_{ij}\,e_j$.
+            The observable diagram
+            is used to compute marginal probabilities for autoregressive sampling. Here, each diagram is decomposed into a sum of Clifford terms via stabilizer rank decomposition~[Sutcliffe_2025] and compiled into binary JAX tensors $g_{tki}$.
+            At sampling time, JIT-compiled XLA kernels contract $g_{tki}$ with batched noise configurations $f_i^{s}$ to evaluate marginal probabilities and autoregressively sample detector and observable bits.
+          }
+          \label{fig:pipeline}
+        \end{figure}
+
+        Quantum computing at utility scale requires quantum error correction (QEC) to achieve sufficiently low logical error rates. In recent years, quantum hardware has made significant strides toward this goal, with experimental demonstrations of key fault-tolerant primitives [google2023suppressing, ryan2024high, sales2025experimental, rosenfeld2025magic, bluvstein2026fault]. Despite these advances, large-scale fault-tolerant quantum computers remain beyond current hardware capabilities. Consequently, the development, benchmarking, and validation of QEC protocols continue to rely heavily on classical simulation tools. To address this need, we introduce Tsim, a GPU-accelerated universal quantum circuit simulator based on stabilizer rank decomposition and the ZX-calculus. Tsim addresses the following key requirements of a practical QEC simulator. First, QEC simulations are typically performed at the gadget level. Rather than simulating full logical algorithms, one focuses on individual components such as stabilizer extraction circuits (e.g., quantum memory), single logical operations (e.g., lattice surgery and transversal gates [horsman2012surface, zhou2024algorithmic]), or magic-state preparation protocols (e.g., magic state cultivation [gidney2024magic]). Such gadgets can involve hundreds to thousands of physical qubits, yet are predominantly---and sometimes entirely---composed of Clifford operations, reflecting the structure of stabilizer codes. A practical QEC simulator must therefore scale to large qubit counts while exploiting the low-magic structure of these circuits.
+
+[026] 22:20:14.282  retrieval.chunk[7]
+    chunk_id = arxiv:2409.17595#30
+    source_id = arxiv:2409.17595
+    title = Magic state cultivation: growing T states as cheap as CNOT gates
+    authority_tier = preprint
+    score = 0.3991
+    text =
+        Figure (auto-described): The figure is a survival plot comparing the performance of two different quantum error correction circuits: **Fault-Distance-3** and **Fault-Distance-5**. The x-axis represents the different steps of the error correction process, including **Encode**, **Stabilize**, **Check**, **Stabilize**, **Escaped**, **Wait for Gap**, **Wait for Gap**, and **Ready**. The y-axis represents the proportion of surviving shots out of the total number of shots, ranging from 0 to 1. The plot shows that the **Surviving Shots** and **Qubits Activated** lines are represented by blue and orange lines, respectively. The expected qubit-rounds are also provided for each circuit, with **1.5 x 10^4** for **Fault-Distance-3** and **6.6 x 10^4** for **Fault-Distance-5**.
+
+        The plot is a line graph with a grid background, showing the performance of the two circuits over time. The **Surviving Shots** line is generally higher than
+
+[027] 22:20:14.282  canonical.injected
+    matched_topics = []
+    injected = []
+
+[028] 22:20:14.282  synthesizer.call
+    model = claude-sonnet-4-6
+    mcp_enabled = True
+    n_retrieved = 8
+    n_canonical = 0
+    n_history = 0
+
+[029] 22:20:14.282  tool_loop.start
+    model = claude-sonnet-4-6
+    max_iterations = 5
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[030] 22:20:16.501  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-sonnet-4-6
+    model = claude-sonnet-4-6
+
+[031] 22:20:16.501  tool_loop.iteration
+    iteration = 0
+    stop_reason = tool_use
+
+[032] 22:20:16.501  tool_loop.tool_use
+    name = tsim_simulate
+    input = {'circuit': 'FOO_BAR_NOT_A_GATE 0\nM 0', 'shots': 10}
+
+[033] 22:20:16.501  mcp.call_tool
+    name = tsim_simulate
+    args = {'circuit': 'FOO_BAR_NOT_A_GATE 0\nM 0', 'shots': 10}
+
+[034] 22:20:17.911  mcp.call_result
+    name = tsim_simulate
+    output = {'ok': False, 'shots': 0, 'summary': '', 'samples_preview': [], 'error_message': "tsim error: Gate not found: 'FOO_BAR_NOT_A_GATE'"}
+
+[035] 22:20:17.912  tool_loop.tool_result
+    name = tsim_simulate
+    output = {'ok': False, 'shots': 0, 'summary': '', 'samples_preview': [], 'error_message': "tsim error: Gate not found: 'FOO_BAR_NOT_A_GATE'"}
+
+[036] 22:20:28.484  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-sonnet-4-6
+    model = claude-sonnet-4-6
+
+[037] 22:20:28.484  tool_loop.iteration
+    iteration = 1
+    stop_reason = end_turn
+
+[038] 22:20:28.484  tool_loop.final
+    iteration = 1
+    n_tool_calls = 1
+
+[039] 22:20:28.484  synthesize.result
+    confidence = medium
+    n_citations = 1
+    citations = [('arxiv:2604.01059', 'Tsim: Fast Universal Simulator for Quantum Error Correction')]
+    n_tool_calls = 1
+    input_tokens = 0
+    output_tokens = 0

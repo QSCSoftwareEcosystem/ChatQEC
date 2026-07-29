@@ -92,7 +92,7 @@ uv run chatqec ask --mcp-server chatqec-mcp-tools \
 > reinstall** or the new tools won't be exposed:
 >
 > ```bash
-> uv tool install --force ~/chatqec-mcp-tools   # re-expose e.g. pymatching_decode, code_params, qec_circuit_build
+> uv tool install --force ~/chatqec-mcp-tools   # re-expose e.g. pymatching_decode, code_params, qec_circuit_build, tsim_simulate, glcb_visualize_url
 > ```
 >
 > Check what tools the model can actually see:
@@ -101,14 +101,15 @@ uv run chatqec ask --mcp-server chatqec-mcp-tools \
 > uv run python -c "from chatqec.cli import _build_chatqec; \
 >   b=_build_chatqec(mcp_server='chatqec-mcp-tools'); \
 >   print([t.name for t in b.synthesizer.mcp_adapter.client.list_tools()])"
-> # → ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build']
+> # → ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
 > ```
 
 The model **decides on its own** when a question needs simulation and calls the
 MCP tools — `stim_simulate`, `stim_diagram`, `pymatching_decode`,
-`threshold_sweep`, `code_params`, `qec_circuit_build` — which run in a
-subprocess sandbox with memory and wall-clock limits. Reported numbers come
-from the tool's actual output, not the model's guess.
+`threshold_sweep`, `code_params`, `qec_circuit_build`, `tsim_simulate`,
+`glcb_visualize_url` — which run in a subprocess sandbox with memory and
+wall-clock limits. Reported numbers come from the tool's actual output, not
+the model's guess.
 
 > **`qec_circuit_build` needs the sibling's optional `lightstim` extra.**
 > The tool is always registered, but without `lightstim` installed it returns
@@ -118,6 +119,21 @@ from the tool's actual output, not the model's guess.
 > plus LightStim's own construction of the 6.6.6 color code) — see
 > [`docs/EXAMPLES.md`](docs/EXAMPLES.md#lightstim-via-qec_circuit_build) and
 > [`docs/lightstim_capability_check.md`](docs/lightstim_capability_check.md).
+
+> **`tsim_simulate` needs the sibling's optional `tsim` extra.** Like
+> `qec_circuit_build`, the tool is always registered but returns `ok=False`
+> for every call without it. Reinstall with the extra to actually use it:
+> `uv tool install --force "~/chatqec-mcp-tools[tsim]"`. Unlike `lightstim`,
+> `tsim` is a normal versioned PyPI dependency (`bloqade-tsim>=0.1.5,<0.2`,
+> no commit-pin needed — see
+> [`docs/DESIGN_CHOICES.md`](docs/DESIGN_CHOICES.md#why-tsim-needs-no-commit-pin-for-its-code-dependency-only-for-kb-ingestion)).
+> It runs Stim-superset circuits — including non-Clifford gates (`T`,
+> `T_DAG`, `R_X`/`R_Y`/`R_Z`, ...) plain Stim rejects outright — via
+> [Tsim](https://github.com/QuEraComputing/tsim). `glcb_visualize_url` (no
+> extra needed) builds a shareable QuEra Gemini Logical Circuit Builder link
+> for a small circuit. See
+> [`docs/EXAMPLES.md`](docs/EXAMPLES.md#tsim--glcb-via-tsim_simulate--glcb_visualize_url)
+> and [`docs/tsim_glcb_capability_check.md`](docs/tsim_glcb_capability_check.md).
 
 **Provider:** tool use works with the `anthropic`, `gemini`, or `auto` provider
 (set `models.provider` in `conf/config.yaml`). Under `auto`, ChatQEC tries
@@ -310,7 +326,7 @@ the fallback kicks in — eval headline numbers should still be run with
 | Conversation    | [`src/chatqec/conversation/`](src/chatqec/conversation/)              | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop                                                                                                                                                                                           |
 | Guards          | [`src/chatqec/guards/`](src/chatqec/guards/)                          | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                              |
 | Eval            | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)          | 50-pair Q&A set across 6 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                            |
-| MCP tools       | [`chatqec-mcp-tools`](https://code.ornl.gov/qsc-as/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance) over MCP stdio |
+| MCP tools       | [`chatqec-mcp-tools`](https://code.ornl.gov/qsc-as/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) over MCP stdio |
 
 Full corpus breakdown (chunk counts, per-source stats) lives in
 [`docs/EXAMPLES.md`](docs/EXAMPLES.md); as of v0.4 the store has ~2,689

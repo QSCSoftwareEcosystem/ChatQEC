@@ -1,0 +1,601 @@
+
+===== ChatQEC trace @ 2026-07-28T22:17:55 =====
+
+[001] 22:18:01.092  mcp.spawn
+    server_command = chatqec-mcp-tools
+    argv = ['chatqec-mcp-tools']
+
+[002] 22:18:01.403  mcp.tools_loaded
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[003] 22:18:01.403  ask.question
+    question = Add a DETECTOR so we can actually see the outcome: `R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]`, 2000 shots.
+    top_k = 8
+    candidate_k = 50
+
+[004] 22:18:01.403  image.caption
+    n_images = 0
+    caption =
+
+[005] 22:18:01.403  classifier.call
+    model = claude-haiku-4-5
+    query = Add a DETECTOR so we can actually see the outcome: `R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]`, 2000 shots.
+
+[006] 22:18:02.192  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[007] 22:18:02.192  classifier.response
+    model = claude-haiku-4-5
+    raw = on_topic
+
+[008] 22:18:02.192  classify.verdict
+    on_topic = True
+    refusal =
+
+[009] 22:18:02.192  rewriter.call
+    model = claude-haiku-4-5
+    query = Add a DETECTOR so we can actually see the outcome: `R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]`, 2000 shots.
+    history_turns = 0
+
+[010] 22:18:04.587  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[011] 22:18:04.587  rewriter.response
+    model = claude-haiku-4-5
+    raw =
+        ```json
+        {
+          "rewritten": "How do I add a DETECTOR instruction to a Stim circuit to observe measurement outcomes? Specifically, how do I execute this circuit with a Depolarizing error channel: R 0, R_X(-0.3040867239846964) 0, T_DAG 0, DEPOLARIZE1(0.05) 0, M 0, DETECTOR rec[-1], running 2000 shots and interpreting the detector results?",
+          "variants": [
+            "What is the syntax and purpose of the DETECTOR instruction in Stim, and how do I use it to record and analyze measurement results from a quantum circuit with noise?",
+            "How do I use Stim's DETECTOR command to create detection events from measurement records in a circuit with single-qubit depolarizing noise?"
+          ],
+          "is_followup": false
+        }
+        ```
+
+[012] 22:18:04.588  rewrite.result
+    rewritten = Add a DETECTOR so we can actually see the outcome: `R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]`, 2000 shots.
+    variants = []
+    is_followup = False
+    queries = ['Add a DETECTOR so we can actually see the outcome: `R 0\\nR_X(-0.3040867239846964) 0\\nT_DAG 0\\nDEPOLARIZE1(0.05) 0\\nM 0\\nDETECTOR rec[-1]`, 2000 shots.']
+
+[013] 22:18:04.588  retriever.retrieve
+    queries = ['Add a DETECTOR so we can actually see the outcome: `R 0\\nR_X(-0.3040867239846964) 0\\nT_DAG 0\\nDEPOLARIZE1(0.05) 0\\nM 0\\nDETECTOR rec[-1]`, 2000 shots.']
+    top_k = 8
+    candidate_k = 50
+    per_query_k = 30
+
+[014] 22:18:04.931  retriever.embedded
+    n_dense = 1
+    n_sparse = 1
+
+[015] 22:18:04.955  retriever.searched
+    dense_hits = 30
+    bm25_hits = 30
+    unique_chunks = 52
+
+[016] 22:18:04.955  retriever.scored
+    n_candidates = 52
+    n_after_topk = 50
+    top_scored = [('url:36fec51aacf0a11f#2', 0.8853), ('url:7d7ed5d40ed8121f#5', 0.8611), ('url:36fec51aacf0a11f#1', 0.8488), ('url:120344a774571cbe#5', 0.8302), ('url:7d7ed5d40ed8121f#6', 0.8197), ('url:120344a774571cbe#4', 0.8024), ('url:7d7ed5d40ed8121f#4', 0.8014), ('url:120344a774571cbe#1', 0.7913)]
+
+[017] 22:18:07.927  retriever.reranked
+    rerank_query = Add a DETECTOR so we can actually see the outcome: `R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]`, 2000 shots.
+    top_idx = [7, 4, 30, 44, 45, 21, 0, 2]
+
+[018] 22:18:07.935  retrieval.result
+    matched_topics = []
+    n_chunks = 8
+    debug = {'candidates_considered': 52, 'after_scoring': 50, 'after_rerank': 8, 'top_rerank_score': 0.1077880859375}
+
+[019] 22:18:07.935  retrieval.chunk[0]
+    chunk_id = url:120344a774571cbe#1
+    source_id = url:120344a774571cbe
+    title = https://tsim.mintlify.app/tutorials/magic_state_distillation.md
+    authority_tier = blog
+    score = 0.7913
+    text =
+        This showcases Tsim's ability to simulate large non-Clifford circuits that would be impossible to simulate using a state vector simulator.
+        ### Magic states
+        We start by preparing a particular magic state, the eigenstate of the "SH" operator. To simulate noise, we add a depolarizing channel after state preparation:
+        ```python theme={null}
+        theta = -np.arccos(np.sqrt(1 / 3)) / np.pi # Distillation angle
+        c = tsim.Circuit(f"R 0 \n R_X({theta}) 0 \n T_DAG 0 \n DEPOLARIZE1(0.05) 0 \n")
+        c.diagram("timeline-svg", height=100)
+        ```
+        By undoing the state preparation at the end, we can measure the infidelity:
+        ```python theme={null}
+        p = 0.05
+        c = tsim.Circuit(f"""
+        R 0
+        R_X({theta}) 0
+        T_DAG 0
+        DEPOLARIZE1({p}) 0
+        T 0
+        R_X({-theta}) 0
+        M 0
+        """)
+        sampler = c.compile_sampler()
+        samples = sampler.sample(100_000, batch_size=100_000)
+        print(f"Infidelity: {np.count_nonzero(samples) / len(samples)}")
+        c.diagram("timeline-svg", height=100)
+        ```
+        ```text title="Output" theme={null}
+        Infidelity: 0.0325
+        ```
+        The noisy state preparation process produces a magic state with 97% fidelity.
+        ### Magic state distillation: The ideal case
+        Given multiple noisy magic states of low fidelity, we can distill a single high-fidelity magic state using a distillation circuit:
+        ```python theme={null}
+        def make_logical_distillation_circuit(angle: float):
+        return tsim.Circuit(f"""
+        # initial state
+        R 0 1 2 3 4
+        R_X({angle}) 0 1 2 3 4
+        T_DAG 0 1 2 3 4
+        DEPOLARIZE1({p}) 0 1 2 3 4
+        # distillation
+        SQRT_X 0 1 4
+        CZ 0 1 2 3
+        SQRT_Y 0 3
+        CZ 0 2 3 4
+        TICK
+        SQRT_X_DAG 0
+        CZ 0 4 1 3
+        TICK
+        SQRT_X_DAG 0 1 2 3 4
+        # undo
+        T 0
+        R_X({-angle}) 0
+        M 0 1 2 3 4
+        """)
+        c = make_logical_distillation_circuit(theta)
+        c.diagram("timeline-svg", height=240)
+        ```
+        In this distillation circuit, qubits \[q1, q2, q3, q4] are the distillation syndrome. If we measure them in the state \[1,0,1,1], we know that distillation was successful and the first qubit q0 is in a magic state with higher fidelity. We can simulate this using Tsim.
+
+[020] 22:18:07.935  retrieval.chunk[1]
+    chunk_id = url:7d7ed5d40ed8121f#6
+    source_id = url:7d7ed5d40ed8121f
+    title = https://tsim.mintlify.app/tutorials/overview.md
+    authority_tier = blog
+    score = 0.8197
+    text =
+        This will sample detector events and observable values. Detector and observable bits can always be obtained by linear transformations of the measurement bits as return by the measurement sampler. In practice, however, it can be much more efficient to sample detector events directly.
+        ```python theme={null}
+        c = Circuit("""
+        RX 0
+        R 1
+        CNOT 0 1
+        M 0 1
+        DETECTOR rec[-1] rec[-2]
+        OBSERVABLE_INCLUDE(0) rec[-1]
+        """)
+        sampler = c.compile_detector_sampler()
+        c.diagram("timeline-svg", height=170)
+        ```
+        ```python theme={null}
+        detectors, observables = sampler.sample(5, separate_observables=True)
+        print(detectors)
+        print(observables)
+        ```
+        ```text title="Output" theme={null}
+        [[False]
+        [False]
+        [False]
+        [False]
+        [False]]
+        [[False]
+        [ True]
+        [False]
+        [False]
+        [ True]]
+        ```
+        Finally, Tsim allows to compute probability values for target states via the `CompiledStateProbs` sampler.
+        ```python theme={null}
+        import numpy as np
+        from tsim.sampler import CompiledStateProbs
+        sampler = CompiledStateProbs(c)
+        ```
+        ```python theme={null}
+        sampler.probability_of(np.array([0, 0]), batch_size=1)
+        ```
+        ```text title="Output" theme={null}
+        array([0.5], dtype=float32)
+        ```
+        ```python theme={null}
+        sampler.probability_of(np.array([0, 1]), batch_size=1)
+        ```
+        ```text title="Output" theme={null}
+        array([0.], dtype=float32)
+        ```
+        ```python theme={null}
+        sampler.probability_of(np.array([1, 0]), batch_size=1)
+        ```
+        ```text title="Output" theme={null}
+        array([0.], dtype=float32)
+        ```
+        ```python theme={null}
+        sampler.probability_of(np.array([1, 1]), batch_size=1)
+        ```
+        ```text title="Output" theme={null}
+        array([0.5], dtype=float32)
+        ```
+        ## Visualization
+        Tsim supports multiple ways of visualizing quantum circuits.
+
+[021] 22:18:07.935  retrieval.chunk[2]
+    chunk_id = arxiv:2604.01059#3
+    source_id = arxiv:2604.01059
+    title = Tsim: Fast Universal Simulator for Quantum Error Correction
+    authority_tier = preprint
+    score = 0.4531
+    text =
+        In Sec.~\ref{sec:benchmarks}, we present performance benchmarks. We conclude in Sec.~\ref{sec:summary}. Additionally, we provide a summary of the ZX-calculus, a more detailed description of the simulation strategy, and the Tsim API in the Appendix. Methods
+        \label{sec:pipeline}
+
+        Tsim is distributed as a Python package (bloqade-tsim) and mirrors the full Stim Python API~[gidney2021stim]. All Stim features are supported, including Clifford gates, single-qubit measurements and resets, Pauli product measurements, classically controlled Pauli gates, correlated Pauli noise channels, and detector and observable annotations. Tsim extends the instruction set with non-Clifford gates T, T\_DAG, R\_X, R\_Y, R\_Z, and U3. For many existing Stim-based workflows, a good starting point is to replace import stim with import tsim. The following listing illustrates Tsim on a minimal noisy non-Clifford circuit. Additionally, Tsim is tightly integrated into the Bloqade framework [bloqade2025] (see Appendix~\ref{sec:frontend}).
+
+        \begin{lstlisting}[caption={Minimal Tsim detector-sampling example.}, label={lst:detector_sampling}]
+          import tsim
+
+          c = tsim.Circuit("""
+            RX 0
+            R 1
+            R_Z(0.125) 0  # 0.125*pi rotation around Z
+            PAULI_CHANNEL_1(0.1, 0.1, 0.2) 0 1
+            H 0
+            CNOT 0 1
+            DEPOLARIZE2(0.01) 0 1
+            M 0 1
+            DETECTOR rec[-1] rec[-2]
+          """)
+
+          sampler = c.compile_detector_sampler()
+          samples = sampler.sample(shots=1_000_000)
+        \end{lstlisting}
+
+        The simulation workflow follows a compile-once, sample-many pattern (Fig.~\ref{fig:pipeline}). Tsim accepts quantum programs specified in Stim,
+        Bloqade~[bloqade2025],
+        OpenQASM~[cross2017open],
+        Cirq~[cirq2025],
+        and QIR (Quantum Intermediate Representation)~[qir2026spec]; these front-end formats are translated to Tsim's intermediate representation (IR). The noisy circuit in the IR is converted into a parameterized ZX diagram, where Pauli noise channels enter as symbolic parameters rather than concrete gates. Diagrammatic reduction rules (via PyZX) then simplify the parameterized diagram, usually resulting in disconnected detector and observable components. The reduced diagram is assembled into a contiguous array data structure, the compiled sampler, which is reused across noise configurations and sampling calls. At sampling time, the compiled sampler draws shots by evaluating the reduced diagram for many independent noise realizations in parallel, accelerated by JAX/XLA~[jax2018github] on CPU or GPU.
+
+[022] 22:18:07.935  retrieval.chunk[3]
+    chunk_id = github:QuEraComputing/tsim@21757967#2
+    source_id = github:QuEraComputing/tsim@21757967
+    title = QuEraComputing/tsim
+    authority_tier = blog
+    score = 0.3346
+    text =
+        Here, each diagram is decomposed into a sum of Clifford terms via stabilizer rank decomposition, following [Sutcliffe and Kissinger (2024)](https://arxiv.org/abs/2403.06777), and compiled into binary JAX tensors $g_{tki}$. At sampling time, JIT-compiled XLA kernels contract $g_{tki}$ with batched noise configurations $f_i^{s}$ to evaluate marginal probabilities and autoregressively sample detector and observable bits.
+
+        ## Differences from Stim
+
+        Tsim supports non-deterministic detectors and observables. An important consequence is that
+        Tsim will simulate actual detector samples, whereas Stim only reports detection flips (i.e. detection samples XORed with
+        a noiseless reference sample). Concretely,
+        ```python
+        c = tsim.Circuit(
+            """
+            X 0
+            M 0
+            DETECTOR rec[-1]
+            """
+        )
+        sampler = c.compile_detector_sampler()
+        samples = sampler.sample(shots=100)
+        print(samples)
+        ```
+        will report `True` values, whereas the same circuit would result in `False` values in Stim. To reproduce the behavior of Stim, you can use the following:
+        ```python
+        samples = sampler.sample(
+            shots=100,
+            use_detector_reference_sample=True,
+            use_observable_reference_sample=True,
+        )
+        ```
+        When set to `True`, a noiseless reference sample is computed and XORed with the
+        results, so that output values represent deviations from the noiseless baseline. Note that this feature should be used carefully. If detectors or observables are not deterministic, this may lead to incorrect statistics.
+
+        ## Postselected simulations
+
+        For postselected QEC experiments, pass a boolean mask to
+        `CompiledDetectorSampler.sample`.
+
+[023] 22:18:07.935  retrieval.chunk[4]
+    chunk_id = url:482217e16477bb99#1
+    source_id = url:482217e16477bb99
+    title = https://tsim.mintlify.app/index.md
+    authority_tier = blog
+    score = 0.3274
+    text =
+        Both parts define a new basis of *error mechanisms* $f_i = \bigoplus_j T_{ij}\,e_j$. The observable diagram is used to compute marginal probabilities for autoregressive sampling. Here, each diagram is decomposed into a sum of Clifford terms via stabilizer rank decomposition, following [Sutcliffe and Kissinger (2024)](https://arxiv.org/abs/2403.06777), and compiled into binary JAX tensors $g_{tki}$. At sampling time, JIT-compiled XLA kernels contract $g_{tki}$ with batched noise configurations $f_i^{s}$ to evaluate marginal probabilities and autoregressively sample detector and observable bits.
+        ## Differences from Stim
+        tsim supports non-deterministic detectors and observables. An important consequence is that
+        tsim will simulate actual detector samples, whereas Stim only reports detection flips (i.e. detection samples XORed with
+        a noiseless reference sample). Concretely,
+        ```python theme={null}
+        c = tsim.Circuit(
+        """
+        X 0
+        M 0
+        DETECTOR rec[-1]
+        """
+        )
+        sampler = c.compile_detector_sampler()
+        samples = sampler.sample(shots=100)
+        print(samples)
+        ```
+        will report `True` values, whereas the same circuit would result in `False` values in Stim. To reproduce the behavior of Stim, you can use the following:
+        ```python theme={null}
+        samples = sampler.sample(
+        shots=100,
+        use_detector_reference_sample=True,
+        use_observable_reference_sample=True,
+        )
+        ```
+        When set to `True`, a noiseless reference sample is computed and XORed with the
+        results, so that output values represent deviations from the noiseless baseline. Note that this feature should be used carefully. If detectors or observables are not deterministic, this may lead to incorrect statistics.
+        ## Postselected simulations
+        For postselected QEC experiments, pass a boolean mask to
+        `CompiledDetectorSampler.sample`.
+
+[024] 22:18:07.935  retrieval.chunk[5]
+    chunk_id = url:120344a774571cbe#6
+    source_id = url:120344a774571cbe
+    title = https://tsim.mintlify.app/tutorials/magic_state_distillation.md
+    authority_tier = blog
+    score = 0.5718
+    text =
+        While this is a simplification for this tutorial, it does not introduce any qualitative changes. We can think of this as an abstract preparation protocol that produces 5 encoded magic states, each with 97% fidelity.
+        * **Distill 5 encoded magic states into a single logical qubit.** We use the transversal encoding of the distillation circuit shown above. This includes depolarization noise with strength `noise`.
+        * **Perform post-selection** We will perform two stages of post-selection: (a) post-select on perfect stabilizers, and (b) post-select on the \[1,0,1,1] distillation syndrome of logical bits.
+        * **Quantum state tomography** We will perform quantum state tomography on the output logical qubit to estimate its magic state fidelity.
+        ```python theme={null}
+        def sample_and_post_select(circ: tsim.Circuit, shots: int = 35_000):
+        sampler = circ.compile_detector_sampler(seed=42)
+        det_samples, obs_samples = sampler.sample(
+        shots=shots, batch_size=shots, separate_observables=True
+        )
+        # post-select on perfect stabilizers
+        perfect_stabilizers = np.all(det_samples == 0, axis=1)
+        obs_samples = obs_samples[perfect_stabilizers]
+        post_selected_observables = post_select(obs_samples)
+        p1 = np.count_nonzero(post_selected_observables) / len(post_selected_observables)
+        eval = 1 - 2 * p1
+        print(
+        f"Expectation value: {eval:.4f}, percentage kept: {len(post_selected_observables) / shots * 100:.2f}%"
+        )
+        return eval
+        ```
+        ```python theme={null}
+        circ_x, circ_y, circ_z = (
+        make_circuit("X", p, p / 5),
+        make_circuit("Y", p, p / 5),
+        make_circuit("Z", p, p / 5),
+        )
+        vx = sample_and_post_select(circ_x)
+        vy = sample_and_post_select(circ_y)
+        vz = sample_and_post_select(circ_z)
+        ```
+        ```text title="Output" theme={null}
+        Expectation value: 0.5935, percentage kept: 1.05%
+        Expectation value: 0.5625, percentage kept: 1.19%
+        Expectation value: 0.5869, percentage kept: 1.13%
+        ```
+        It would be impossible to simulate an 85-qubit circuit using a state vector simulator. But with Tsim, we can compute hundreds of thousands of shots in a few seconds.
+
+[025] 22:18:07.935  retrieval.chunk[6]
+    chunk_id = url:36fec51aacf0a11f#2
+    source_id = url:36fec51aacf0a11f
+    title = https://tsim.mintlify.app/tutorials/encoding_demo.md
+    authority_tier = blog
+    score = 0.8853
+    text =
+        Let's look at a simple example. We'll insert a depolarizing channel `DEPOLARIZE1(0.01)` before the final stabilizer measurements.
+        ```python theme={null}
+        def make_circuit(p):
+        return Circuit(f"""
+        RX 6
+        T 6
+        H 6
+        R 0 1 2 3 4 5
+        TICK
+        SQRT_Y_DAG 0 1 2 3 4 5
+        DEPOLARIZE1({p}) 0 1
+        TICK
+        CZ 1 2 3 4 5 6
+        DEPOLARIZE2({p}) 1 2
+        TICK
+        SQRT_Y 6
+        DEPOLARIZE1({p}) 6
+        TICK
+        CZ 0 3 2 5 4 6
+        TICK
+        SQRT_Y 2 3 4 5 6
+        DEPOLARIZE1({p}) 2 4 6
+        TICK
+        CZ 0 1 2 3 4 5
+        TICK
+        DEPOLARIZE1({p}) 0 1 2 3 4 5 6
+        SQRT_Y 1 2 4
+        X 3
+        TICK
+        M 0 1 2 3 4 5 6
+        DETECTOR rec[-7] rec[-6] rec[-5] rec[-4]
+        DETECTOR rec[-6] rec[-5] rec[-3] rec[-2]
+        DETECTOR rec[-5] rec[-4] rec[-3] rec[-1]
+        OBSERVABLE_INCLUDE(0) rec[-7] rec[-6] rec[-2]
+        """)
+        c = make_circuit(0.01)
+        ```
+        ```python theme={null}
+        c.diagram("timeline-svg", height=350)
+        ```
+        In the ZX diagram, the noise is represented by parametrized vertices with binary parameters `e0`, `e1`, etc. Since a depolarizing channel either applies X, Y, Z gates, each channel requires two bits, i.e. an X and a Z vertex.
+        ```python theme={null}
+        c.diagram("pyzx");
+        ```
+        Now we compile the sampler for the noisy circuit.
+        ```python theme={null}
+        det_sampler = c.compile_detector_sampler()
+        ```
+        Sampling from the noisy circuit, we expect to see some non-zero detector events.
+        ```python theme={null}
+        det_samples, obs_samples = det_sampler.sample(shots=10_000, separate_observables=True)
+        print(det_samples[:5], "\nTriggered detection events:", np.count_nonzero(det_samples))
+        print(obs_samples[:5])
+        ```
+        ```text title="Output" theme={null}
+        [[False False False]
+        [False False False]
+        [False False False]
+        [False False False]
+        [False False False]]
+        Triggered detection events: 1478
+        [[False]
+        [False]
+        [False]
+        [False]
+        [False]]
+        ```
+        We again calculate the probability of measuring a logical $|\bar{1}\rangle$.
+
+[026] 22:18:07.935  retrieval.chunk[7]
+    chunk_id = url:36fec51aacf0a11f#1
+    source_id = url:36fec51aacf0a11f
+    title = https://tsim.mintlify.app/tutorials/encoding_demo.md
+    authority_tier = blog
+    score = 0.8488
+    text =
+        This circuit prepares the logical state
+        $\frac{1}{2}\Big[(1 + e^{i\pi/4})|\bar{0}\rangle + (1 - e^{i\pi/4})|\bar{1}\rangle\Big]$
+        ```python theme={null}
+        c = Circuit("""
+        RX 6
+        T 6
+        H 6
+        R 0 1 2 3 4 5
+        SQRT_Y_DAG 0 1 2 3 4 5
+        CZ 1 2 3 4 5 6
+        SQRT_Y 6
+        CZ 0 3 2 5 4 6
+        SQRT_Y 2 3 4 5 6
+        CZ 0 1 2 3 4 5
+        SQRT_Y 1 2 4
+        X 3
+        TICK
+        M 0 1 2 3 4 5 6
+        DETECTOR rec[-7] rec[-6] rec[-5] rec[-4]
+        DETECTOR rec[-6] rec[-5] rec[-3] rec[-2]
+        DETECTOR rec[-5] rec[-4] rec[-3] rec[-1]
+        OBSERVABLE_INCLUDE(0) rec[-7] rec[-6] rec[-2]
+        """)
+        ```
+        tsim supports multiple visualization methods. The default makes use of `stim`'s "timeline-svg" visualization function:
+        ```python theme={null}
+        c.diagram(height=350)
+        ```
+        Tsim also supports visualization as a ZX diagram, where measurement vertices are annotated with `rec[i]`, and detector and observable vertices are annotated with `det[i]` and `obs[i]`, respectively.
+        ```python theme={null}
+        c.diagram("pyzx");
+        ```
+        To sample detection events and logical observables, we can compile a detector sampler, similar to `stim`.
+        ```python theme={null}
+        det_sampler = c.compile_detector_sampler(seed=1)
+        ```
+        ```python theme={null}
+        det_samples, obs_samples = det_sampler.sample(shots=100_000, separate_observables=True)
+        print(det_samples[:5])
+        print(obs_samples[:5])
+        ```
+        ```text title="Output" theme={null}
+        [[False False False]
+        [False False False]
+        [False False False]
+        [False False False]
+        [False False False]]
+        [[False]
+        [False]
+        [False]
+        [ True]
+        [False]]
+        ```
+        Since the circuit is just a logical encoding of the 1-qubit circuit from the beginning of the tutorial, the logical observable should behave exactly like the physical qubit in the first example, i.e., the observable should be 1 with probability $\sin(\pi/8)^2 \approx 0.1464$. Additionally, since the circuit is noiseless, we should not observe any non-zero detection events:
+        ```python theme={null}
+        assert np.count_nonzero(det_samples) == 0
+        int(np.count_nonzero(obs_samples)) / len(obs_samples)
+        ```
+        ```text title="Output" theme={null}
+        0.14618
+        ```
+        ## Adding Noise
+        A core capability of tsim is its support for Pauli noise channels. Let's look at a simple example.
+
+[027] 22:18:07.935  canonical.injected
+    matched_topics = []
+    injected = []
+
+[028] 22:18:07.936  synthesizer.call
+    model = claude-sonnet-4-6
+    mcp_enabled = True
+    n_retrieved = 8
+    n_canonical = 0
+    n_history = 0
+
+[029] 22:18:07.936  tool_loop.start
+    model = claude-sonnet-4-6
+    max_iterations = 5
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[030] 22:18:11.228  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-sonnet-4-6
+    model = claude-sonnet-4-6
+
+[031] 22:18:11.228  tool_loop.iteration
+    iteration = 0
+    stop_reason = tool_use
+
+[032] 22:18:11.228  tool_loop.tool_use
+    name = tsim_simulate
+    input = {'circuit': 'R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]', 'shots': 2000}
+
+[033] 22:18:11.228  mcp.call_tool
+    name = tsim_simulate
+    args = {'circuit': 'R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]', 'shots': 2000}
+
+[034] 22:18:14.402  mcp.call_result
+    name = tsim_simulate
+    output = {'ok': True, 'shots': 2000, 'summary': 'shape=(2000, 1), dtype=bool; showing first 20 of 2000 rows (TRUNCATED — remaining rows were sampled but are not shown; do not state or assume their values)', 'samples_preview': [[1], [0], [0], [1], [1], [1], [0], [0], [0], [1], [0], [1], [0], [1], [0], [0], [0], [0], [1], [0]], 'error_message': ''}
+
+[035] 22:18:14.402  tool_loop.tool_result
+    name = tsim_simulate
+    output = {'ok': True, 'shots': 2000, 'summary': 'shape=(2000, 1), dtype=bool; showing first 20 of 2000 rows (TRUNCATED — remaining rows were sampled but are not shown; do not state or assume their values)', 'samples_preview': [[1], [0], [0], [1], [1], [1], [0], [0], [0], [1], [0], [1], [0], [1], [0], [0], [0], [0], [1], [0]], 'error_message': ''}
+
+[036] 22:18:29.696  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-sonnet-4-6
+    model = claude-sonnet-4-6
+
+[037] 22:18:29.696  tool_loop.iteration
+    iteration = 1
+    stop_reason = end_turn
+
+[038] 22:18:29.696  tool_loop.final
+    iteration = 1
+    n_tool_calls = 1
+
+[039] 22:18:29.697  synthesize.result
+    confidence = high
+    n_citations = 4
+    citations = [('url:120344a774571cbe', 'https://tsim.mintlify.app/tutorials/magic_state_distillation.md'), ('github:QuEraComputing/tsim@21757967', 'QuEraComputing/tsim'), ('url:482217e16477bb99', 'https://tsim.mintlify.app/index.md'), ('arxiv:2604.01059', 'Tsim: Fast Universal Simulator for Quantum Error Correction')]
+    n_tool_calls = 1
+    input_tokens = 0
+    output_tokens = 0

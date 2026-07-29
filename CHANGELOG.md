@@ -36,6 +36,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   correct. See
   [`docs/EXAMPLES.md`](docs/EXAMPLES.md#lightstim-via-qec_circuit_build) and
   [`docs/lightstim_capability_check.md`](docs/lightstim_capability_check.md).
+- `tsim_simulate` MCP tool in the sibling `chatqec-mcp-tools` repo: runs a
+  Stim-superset circuit through [Tsim](https://github.com/QuEraComputing/tsim),
+  a GPU-accelerated simulator that adds non-Clifford gates (`T`, `T_DAG`,
+  `R_X`/`R_Y`/`R_Z`, `U3`, `TPP`/`TPP_DAG`, `R_XX`/`R_YY`/`R_ZZ`/`R_PAULI`,
+  `CCZ`, `CCX`) via stabilizer rank decomposition — circuits plain `stim`
+  itself rejects (`ValueError: Gate not found`). Depends on
+  `bloqade-tsim>=0.1.5,<0.2` via an optional `tsim` extra
+  (`chatqec-mcp-tools[tsim]`), a normal versioned PyPI dependency (no
+  commit-pin needed, unlike LightStim's git-only dependency — see
+  [`docs/DESIGN_CHOICES.md`](docs/DESIGN_CHOICES.md#why-tsim-needs-no-commit-pin-for-its-code-dependency-only-for-kb-ingestion)).
+  Enforces a 256 KB circuit-size cap and a 100,000-shot cap (lower than
+  `stim_simulate`'s 1,000,000, since Tsim's ZX/JAX pipeline is far more
+  expensive per shot); supports `use_reference_sample` to switch between
+  Tsim's raw detector convention and Stim's XOR-against-noiseless-reference
+  convention.
+- `glcb_visualize_url` MCP tool in the same sibling repo: builds a shareable
+  link into QuEra's Gemini Logical Circuit Builder
+  (`gemini-logical-circuit-builder.vercel.app`) for a small circuit — pure
+  URL string encoding, no network call, no dependency on `stim` or Tsim.
+  Rejects out-of-range qubit targets with `ok=False` rather than encoding a
+  malformed link.
+  Live capability check: 5 prompts (`eval/tsim_prompts.json`) run via real
+  `chatqec ask` calls, all correct once past the off-topic classifier (2 of
+  the 5, worded exactly as in the eval file, were classified off-topic
+  before reaching the tool — see the capability-check doc). See
+  [`docs/EXAMPLES.md`](docs/EXAMPLES.md#tsim--glcb-via-tsim_simulate--glcb_visualize_url)
+  and [`docs/tsim_glcb_capability_check.md`](docs/tsim_glcb_capability_check.md).
+- Tsim knowledge-base ingestion: `arxiv:2604.01059` (24 chunks, full LaTeX
+  source of the Tsim paper), `github:QuEraComputing/tsim@21757967` (6 chunks,
+  `docs/`), and 15 mintlify documentation pages (`tutorials/`,
+  `api-reference/`, incl. `noise/` and `utils/` subpages) ingested and
+  embedded — see
+  [`docs/EXAMPLES.md`](docs/EXAMPLES.md#tsim-knowledge-base-paper--github-docs--mintlify-docs-ingested-2026-07-28).
+  `eval/tsim_prompts.json` adds a 20-prompt benchmark set across 10
+  categories (Clifford baseline, non-Clifford, magic-state prep, Stim/Tsim
+  reference-convention differences, edge cases for both new tools, combined
+  simulate+visualize, and corpus retrieval).
 - Full-text arXiv ingestion via `chatqec ingest --arxiv <id> --full-text`:
   - LaTeX-source path (`ingestion/latex.py`, `fetchers/arxiv_source.py`) — cleans
     source while preserving math/code environments verbatim, keeps figure

@@ -1,0 +1,305 @@
+
+===== ChatQEC trace @ 2026-07-28T22:20:40 =====
+
+[001] 22:20:46.399  mcp.spawn
+    server_command = chatqec-mcp-tools
+    argv = ['chatqec-mcp-tools']
+
+[002] 22:20:46.791  mcp.tools_loaded
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[003] 22:20:46.791  ask.question
+    question = For a QEC circuit-tooling demo: simulate the Bell-pair circuit with Tsim (H 0, CNOT 0 1, M 0 1, with a DETECTOR on the measurement parity) for 2000 shots to confirm the correlation, then build a GLCB visualization link for the same circuit (H, then CX).
+    top_k = 8
+    candidate_k = 50
+
+[004] 22:20:46.791  image.caption
+    n_images = 0
+    caption =
+
+[005] 22:20:46.791  classifier.call
+    model = claude-haiku-4-5
+    query = For a QEC circuit-tooling demo: simulate the Bell-pair circuit with Tsim (H 0, CNOT 0 1, M 0 1, with a DETECTOR on the measurement parity) for 2000 shots to confirm the correlation, then build a GLCB visualization link for the same circuit (H, then CX).
+
+[006] 22:20:47.345  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[007] 22:20:47.345  classifier.response
+    model = claude-haiku-4-5
+    raw = on_topic
+
+[008] 22:20:47.345  classify.verdict
+    on_topic = True
+    refusal =
+
+[009] 22:20:47.345  rewriter.call
+    model = claude-haiku-4-5
+    query = For a QEC circuit-tooling demo: simulate the Bell-pair circuit with Tsim (H 0, CNOT 0 1, M 0 1, with a DETECTOR on the measurement parity) for 2000 shots to confirm the correlation, then build a GLCB visualization link for the same circuit (H, then CX).
+    history_turns = 0
+
+[010] 22:20:53.342  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[011] 22:20:53.343  rewriter.response
+    model = claude-haiku-4-5
+    raw =
+        ```json
+        {
+          "rewritten": "How do I simulate a Bell-pair circuit using Tsim with a Hadamard gate on qubit 0, a CNOT gate between qubits 0 and 1, and measurements on both qubits, including a DETECTOR on the measurement parity outcome, for 2000 shots to verify entanglement correlation? Additionally, how do I generate a GLCB (Google Linear Circuit Benchmark) visualization link for the same Bell-pair circuit with Hadamard and CX gates?",
+          "variants": [
+            "Simulate a Bell state preparation circuit (H gate on qubit 0 followed by CNOT with qubit 1) in Tsim for 2000 shots with parity detection, and create a GLCB visualization for the circuit to confirm entanglement correlations.",
+            "Using Tsim, run 2000 shots of a Bell-pair quantum circuit with Hadamard, CNOT, measurement, and parity DETECTOR instructions, then generate a GLCB circuit visualization link for the same entangling gates."
+          ],
+          "is_followup": false
+        }
+        ```
+
+[012] 22:20:53.343  rewrite.result
+    rewritten = For a QEC circuit-tooling demo: simulate the Bell-pair circuit with Tsim (H 0, CNOT 0 1, M 0 1, with a DETECTOR on the measurement parity) for 2000 shots to confirm the correlation, then build a GLCB visualization link for the same circuit (H, then CX).
+    variants = []
+    is_followup = False
+    queries = ['For a QEC circuit-tooling demo: simulate the Bell-pair circuit with Tsim (H 0, CNOT 0 1, M 0 1, with a DETECTOR on the measurement parity) for 2000 shots to confirm the correlation, then build a GLCB visualization link for the same circuit (H, then CX).']
+
+[013] 22:20:53.343  retriever.retrieve
+    queries = ['For a QEC circuit-tooling demo: simulate the Bell-pair circuit with Tsim (H 0, CNOT 0 1, M 0 1, with a DETECTOR on the measurement parity) for 2000 shots to confirm the correlation, then build a GLCB visualization link for the same circuit (H, then CX).']
+    top_k = 8
+    candidate_k = 50
+    per_query_k = 30
+
+[014] 22:20:53.631  retriever.embedded
+    n_dense = 1
+    n_sparse = 1
+
+[015] 22:20:53.659  retriever.searched
+    dense_hits = 30
+    bm25_hits = 30
+    unique_chunks = 53
+
+[016] 22:20:53.659  retriever.scored
+    n_candidates = 53
+    n_after_topk = 50
+    top_scored = [('url:7d7ed5d40ed8121f#7', 0.8576), ('url:36fec51aacf0a11f#1', 0.8528), ('url:36fec51aacf0a11f#0', 0.8391), ('url:7d7ed5d40ed8121f#5', 0.8343), ('url:7d7ed5d40ed8121f#6', 0.8334), ('github:QuEraComputing/tsim@21757967#1', 0.8203), ('url:482217e16477bb99#0', 0.8028), ('arxiv:2604.01059#0', 0.6367)]
+
+[017] 22:20:56.842  retriever.reranked
+    rerank_query = For a QEC circuit-tooling demo: simulate the Bell-pair circuit with Tsim (H 0, CNOT 0 1, M 0 1, with a DETECTOR on the measurement parity) for 2000 shots to confirm the correlation, then build a GLCB visualization link for the same circuit (H, then CX).
+    top_idx = [12, 9, 14, 21, 19, 11, 23, 38]
+
+[018] 22:20:56.847  retrieval.result
+    matched_topics = []
+    n_chunks = 8
+    debug = {'candidates_considered': 53, 'after_scoring': 50, 'after_rerank': 8, 'top_rerank_score': 0.183837890625}
+
+[019] 22:20:56.847  retrieval.chunk[0]
+    chunk_id = arxiv:2604.21472#0
+    source_id = arxiv:2604.21472
+    title = LightStim: A Framework for QEC Protocol Evaluation and Prototyping with Automated DEM Construction
+    authority_tier = preprint
+    score = 0.6299
+    text =
+
+
+        \title{\frameworkname: A Framework for QEC Protocol Evaluation and Prototyping with Automated DEM Construction}
+
+        \author{
+        Xiang Fang\textsuperscript{1}, Ming Wang\textsuperscript{2}, Yue Wu\textsuperscript{3}, Sharanya Prabhu\textsuperscript{1}, Dean Tullsen\textsuperscript{1}, Narasinga Rao Miniskar\textsuperscript{4}, Frank Mueller\textsuperscript{2}, Travis Humble\textsuperscript{4}, Yufei Ding\textsuperscript{1}}
+
+
+        \affiliation{
+            \institution{
+            \textsuperscript{1}University of California, San Diego, CA, USA \\
+            \textsuperscript{2}North Carolina State University, Raleigh, NC, USA \\
+            \textsuperscript{3}Yale University, New Haven, CT, USA \\
+            \textsuperscript{4}Oak Ridge National Laboratory, Oak Ridge, TN, USA}
+            \country{}
+        }
+
+        \begin{abstract}
+          Fault-tolerant quantum computing increasingly demands
+          rigorous, circuit-level evaluation of diverse quantum
+          error correction (QEC) protocols and efficient
+          prototyping of new ones. Such evaluation requires both
+          the physical circuit and its Detector Error Model
+          (DEM) to simulate end-to-end logical error rates. However, DEM construction today is performed by
+          manual annotation, a tedious and error-prone process
+          that effectively limits evaluation to simple memory
+          experiments. We present \textbf{\frameworkname{}}, a
+          framework that automates DEM construction concurrently
+          with circuit compilation by maintaining a Pauli tableau
+          augmented with measurement records, with no
+          protocol-specific input required. We benchmark
+          \frameworkname{} across protocols from memory
+          experiments to end-to-end distillation circuits;
+          cross-validation against public implementations confirms
+           exact detector and observable counts and consistent
+          logical error rates. Additionally, we
+          demonstrate a novel heterogeneous cross-code
+          lattice surgery design between surface and punctured
+          quantum Reed-Muller codes. These capabilities together
+          make \frameworkname{} a unified infrastructure for
+          systematic QEC protocol evaluation and exploration.
+          \frameworkname{} is open-sourced at
+          \url{https://github.com/QuTone/LightStim}.
+          \end{abstract}
+        \maketitle
+
+
+        Introduction\label{sec:intro}
+
+        Quantum computing (QC) is entering the fault-tolerant (FT) era~[shor1996fault, preskill2025beyond], where quantum error correction (QEC)~[gottesman2002introduction, knill1996threshold] is integrated to protect fragile quantum states from physical noise. In recent years, multiple hardware platforms have successfully demonstrated quantum memory with multi-round error correction across diverse code families~[google2023suppressing, acharya2024quantumerrorcorrectionsurface, bluvstein2024logical, zhao2022realization, bluvstein2025architectural, wang2026demonstration, reichardt2411logical, mayer2024benchmarking]. Building on these successes, the community is increasingly turning toward the next frontier: implementing logical operation primitives~[kang2023quantum, postler2022demonstration, rodriguez2024experimental, besedin2025realizing, daguerre2025experimental, postler2024demonstration, dasu2025breaking, kim2024magic] and composing them into larger-scale logical circuits for practical quantum algorithms~[cao2019quantum, daley2022practical, bauer2020quantum, pearson2020simulating, liu2024toward, alexeev2025perspective].
+
+[020] 22:20:56.847  retrieval.chunk[1]
+    chunk_id = arxiv:2604.01059#1
+    source_id = arxiv:2604.01059
+    title = Tsim: Fast Universal Simulator for Quantum Error Correction
+    authority_tier = preprint
+    score = 0.6337
+    text = A practical QEC simulator must therefore scale to large qubit counts while exploiting the low-magic structure of these circuits. Tsim supports low-magic circuit simulation via stabilizer rank decomposition, yielding runtimes that scale polynomially in the number of qubits and exponentially only in the non-Clifford gate count. Second, QEC protocols must be evaluated under realistic noise models. In practice, much of the community's simulation effort focuses on Pauli noise at the circuit level~[derks2025designing]. This approximation is often well justified: stabilizer measurements effectively project general noise channels onto discrete bit and phase flips. As a result, an efficient QEC simulator must handle Pauli errors with minimal overhead. Tsim addresses this by representing Pauli errors as parameterized ZX vertices, so that the expensive diagrammatic reduction needs only be performed once and is reused across noise configurations~[Sutcliffe_2025]. This allows Tsim to reach linear-time sampling as in Stim for Clifford circuits with deterministic detectors. Third, simulators demand extremely high throughput to support Monte Carlo sampling at low error rates [gidney2021stim]. For example, estimating the logical error rate of a QEC gadget at $10^{-9}$--$10^{-12}$ requires generating billions to trillions of shots from the probability distribution of its quantum circuit. Consequently, an ideal QEC simulator must support extremely high-throughput sampling. Tsim leverages JAX~[jax2018github] and XLA compilation to vectorize shot execution on CPU and GPU, enabling high-throughput Monte Carlo sampling. In the landscape of existing QEC simulators, Stim~[gidney2021stim] has emerged as the de facto standard for protocols composed entirely of Clifford gates and Pauli errors, achieving linear-time sampling via Pauli frame tracking and high throughput through vectorized execution.
+
+[021] 22:20:56.847  retrieval.chunk[2]
+    chunk_id = arxiv:2604.01059#2
+    source_id = arxiv:2604.01059
+    title = Tsim: Fast Universal Simulator for Quantum Error Correction
+    authority_tier = preprint
+    score = 0.6294
+    text = However, many practically relevant QEC gadgets contain a small number of non-Clifford operations, which require simulation techniques beyond the stabilizer formalism. Existing approaches include state-vector simulators (exponential in qubit count), tensor network methods such as matrix product states (efficient for limited entanglement), and low-magic simulation techniques such as extended tableau methods~[yoder2012generalization,li2025soft], Pauli propagation~[rall2019simulation,rudolph2025pauli], and stabilizer rank decomposition~[bravyi2019simulation]. Among these, stabilizer rank decomposition combined with ZX-calculus simplification~[kissinger2022classical,kissinger2022simulating,Sutcliffe_2025,sutcliffe2025novel,sutcliffe2024procedurally,codsi2022cutting] is particularly well suited to the high-entanglement, low-magic structure of QEC circuits, and has been shown to exploit protocol structure to achieve significantly lower stabilizer rank than previously known~[wan2025cutting,wan2026simulatingmagicstatecultivation]. Tsim builds on these advances and is implemented on top of PyZX~[kissinger2020Pyzx]. Tsim implements the Stim API for seamless integration with existing workflows and extends the Stim instruction set with non-Clifford gates. It supports sampling of either measurement outcomes or detector events. The software is available open-source under the Apache-2.0 license\footnote{\url{https://github.com/QuEraComputing/tsim}}. Tsim places strong emphasis on reliability and includes an automated test suite with more than 95\% coverage. This manuscript is organized as follows. In Sec.~\ref{sec:pipeline}, we present an overview of Tsim and describe the simulation pipeline in detail. In Sec.~\ref{sec:benchmarks}, we present performance benchmarks. We conclude in Sec.~\ref{sec:summary}. Additionally, we provide a summary of the ZX-calculus, a more detailed description of the simulation strategy, and the Tsim API in the Appendix.
+
+[022] 22:20:56.847  retrieval.chunk[3]
+    chunk_id = arxiv:quant-ph/0008040#51
+    source_id = arxiv:quant-ph/0008040
+    title = Encoding a qubit in an oscillator
+    authority_tier = preprint
+    score = 0.5808
+    text =
+        Figure (auto-described): The figure depicts a quantum circuit for a specific quantum error correction code, which is a type of quantum error-correcting code that uses a combination of quantum gates and measurements to correct errors in quantum information. The circuit consists of two parts: (a) and (b), which represent the encoding and decoding processes, respectively. The circuit uses a combination of Hadamard gates, CNOT gates, and Pauli X gates to perform the encoding and decoding operations. The circuit also includes a number of ancilla qubits, which are used to store the error syndrome information.
+
+        The circuit is represented in a graphical format, with the qubits and gates represented by lines and symbols. The circuit has a clear input and output, and the operation of the circuit can be understood by tracing the flow of the qubits and the effect of the gates on them. The circuit is a specific implementation of the quantum error correction code, and its operation can be analyzed and simulated using quantum computer software.
+
+[023] 22:20:56.847  retrieval.chunk[4]
+    chunk_id = arxiv:0905.2794#83
+    source_id = arxiv:0905.2794
+    title = Quantum Error Correction for Beginners
+    authority_tier = preprint
+    score = 0.5821
+    text =
+        Figure (auto-described): The figure depicts a quantum circuit diagram, which is a graphical representation of the steps involved in performing a quantum computation. The diagram consists of a series of gates and wires, where the gates are represented by boxes and the wires represent the flow of qubits. The input and output of the circuit are labeled as |0 and |1, respectively.
+
+        The circuit is divided into two parts: a) and b). Part a) consists of a series of gates, including a Hadamard gate (H), a CNOT gate (CNOT), and a Toffoli gate (T). The gates are connected by wires, which represent the flow of qubits. The input qubits are labeled as |0 and |1, and the output qubits are also labeled as |0 and |1.
+
+        Part b) consists of a similar series of gates, including a Hadamard gate (H), a CNOT gate (CNOT), and a Toffoli gate (T). The gates are connected by wires, which represent the flow of qubits. The input qubits are labeled as
+
+[024] 22:20:56.847  retrieval.chunk[5]
+    chunk_id = arxiv:2604.21472#7
+    source_id = arxiv:2604.21472
+    title = LightStim: A Framework for QEC Protocol Evaluation and Prototyping with Automated DEM Construction
+    authority_tier = preprint
+    score = 0.6299
+    text =
+        \noindent(3) Error Mechanism: Edges. Error mechanisms are the possible error sources in a circuit given a noise model. In the DEM, each mechanism is represented as an edge connecting the detector/observable vertices it would flip. If a mechanism flips more than two vertices, the edge becomes a hyperedge. For example, a measurement error in $m_1$ flips two temporal detectors ($D_1, D_2$), and a data qubit $X$ error flips detectors ($D_3, D_4$), forming standard edges. Each edge is weighted by the aggregated probability of its underlying physical errors. \vspace{2pt}
+        \noindentNoisy Simulation. Classical noisy simulation for QEC is usually performed using  Stim~[gidney2021stim], where users inject specific noise models into the physical operations and annotate valid detectors and observables. Stim then derives the corresponding error mechanisms and their probabilities, generating a fully compiled DEM. The simulation then proceeds in a Monte Carlo fashion: each shot corresponds to one experimental run, producing detector events and the true logical observable outcome. The detector events are fed into a decoder (configured with the DEM) to predict a correction, which is compared against the true observable to determine whether the logical state was successfully recovered. After collecting enough shots, the LER can be estimated to compare different protocols and decoders. \section{End-to-End Examples for \frameworkname{}'s Pauli Tracker}
+        \label{sec:motivation}
+
+        We illustrate the core mechanics of \frameworkname{} using two concrete examples: two-qubit teleportation circuit realized in lattice surgery (LS) and transversal gates (TG), respectively. We demonstrate how tracking Pauli propagation systematically constructs DEMs based on two decomposition schemes: (1) for mid-circuit syndrome measurements, current Paulis are decomposed into previously measured Paulis; and (2) for final data measurements, the remaining system Paulis are decomposed into single-qubit data measurements.
+
+[025] 22:20:56.847  retrieval.chunk[6]
+    chunk_id = arxiv:0905.2794#90
+    source_id = arxiv:0905.2794
+    title = Quantum Error Correction for Beginners
+    authority_tier = preprint
+    score = 0.5804
+    text = Figure (auto-described): The figure depicts a quantum circuit, consisting of a sequence of gates and lines representing the flow of quantum information. The circuit is divided into two main sections, with the first section (a) showing a series of gates and lines that represent the preparation of a quantum state, and the second section (b) showing a more complex circuit that appears to be a quantum algorithm or computation. The circuit includes various symbols and labels, such as the Hadamard gate (H), the controlled-NOT gate (CNOT), and the measurement gate (M), which are used to manipulate and manipulate the quantum state. The circuit also includes several lines and wires that represent the flow of quantum information, with some lines connecting to specific gates or other lines. The circuit is not explicitly labeled, but it appears to be a representation of a quantum algorithm or computation that involves the manipulation of a quantum state.
+
+[026] 22:20:56.847  retrieval.chunk[7]
+    chunk_id = arxiv:2604.01059#9
+    source_id = arxiv:2604.01059
+    title = Tsim: Fast Universal Simulator for Quantum Error Correction
+    authority_tier = preprint
+    score = 0.3744
+    text =
+        The advantage of sampling detectors over measurements
+        \label{sec:detector_advantage}
+
+        Weak simulation of quantum circuits, i.e.\ sampling bit strings from ZX diagrams, requires autoregressive evaluation of marginal probabilities (Algorithm~\ref{alg:autoregressive}, [kissinger2022simulating]). When sampling raw measurement outcomes, this introduces an overhead proportional to the number of measurements $N_m$, since each measurement bit requires evaluating an additional diagram. Detector sampling largely avoids this overhead. In a well-designed fault-tolerant protocol, detectors are deterministic in the absence of noise, and ZX reduction maps each detector to an individual connected component consisting of a single internal vertex. Pauli noise channels may flip detectors and introduce correlations, but these correlations are captured classically through correlated sampling of the $f_i$ phase parameters and do not add edges to the ZX graph. Consequently, detector bits are obtained directly from the sampled $f_i$ configuration via Eq.~\eqref{eqn:detector_sampling}, with no autoregressive overhead. The autoregressive procedure is then needed only for the observable bits. However, in typical QEC experiments, there are $\bigO{1}$ observables. If we had sampled measurements, instead of detectors and observables, the ZX diagram would generally be a single connected component, reflecting the correlations of measurement bits. Compared to this case, detector sampling effectively reduces the per-shot sampling cost by a factor of $N_m$. We note that this separation is a heuristic property: ZX reduction may not cleanly split all detectors from the observables in the presence of non-Clifford gates, in which case some detectors may have to be evaluated autoregressively. Complexity
+
+        Under the assumption that detectors and observables separate after ZX reduction and that the number of observables is $\bigO{1}$, we summarize the asymptotic cost of simulation.
+
+[027] 22:20:56.847  canonical.injected
+    matched_topics = []
+    injected = []
+
+[028] 22:20:56.847  synthesizer.call
+    model = claude-sonnet-4-6
+    mcp_enabled = True
+    n_retrieved = 8
+    n_canonical = 0
+    n_history = 0
+
+[029] 22:20:56.847  tool_loop.start
+    model = claude-sonnet-4-6
+    max_iterations = 5
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[030] 22:21:00.885  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-sonnet-4-6
+    model = claude-sonnet-4-6
+
+[031] 22:21:00.885  tool_loop.iteration
+    iteration = 0
+    stop_reason = tool_use
+
+[032] 22:21:00.885  tool_loop.tool_use
+    name = tsim_simulate
+    input = {'circuit': '\nH 0\nCNOT 0 1\nM 0 1\nDETECTOR rec[-1] rec[-2]\n', 'shots': 2000}
+
+[033] 22:21:00.885  mcp.call_tool
+    name = tsim_simulate
+    args = {'circuit': '\nH 0\nCNOT 0 1\nM 0 1\nDETECTOR rec[-1] rec[-2]\n', 'shots': 2000}
+
+[034] 22:21:03.346  mcp.call_result
+    name = tsim_simulate
+    output = {'ok': True, 'shots': 2000, 'summary': 'shape=(2000, 1), dtype=bool; showing first 20 of 2000 rows (TRUNCATED — remaining rows were sampled but are not shown; do not state or assume their values)', 'samples_preview': [[0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0]], 'error_message': ''}
+
+[035] 22:21:03.346  tool_loop.tool_result
+    name = tsim_simulate
+    output = {'ok': True, 'shots': 2000, 'summary': 'shape=(2000, 1), dtype=bool; showing first 20 of 2000 rows (TRUNCATED — remaining rows were sampled but are not shown; do not state or assume their values)', 'samples_preview': [[0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0]], 'error_message': ''}
+
+[036] 22:21:03.346  tool_loop.tool_use
+    name = glcb_visualize_url
+    input = {'qubits': 2, 'gates': [{'gate': 'h', 'column': 0, 'targets': [0]}, {'gate': 'cx', 'column': 1, 'targets': [0, 1]}]}
+
+[037] 22:21:03.346  mcp.call_tool
+    name = glcb_visualize_url
+    args = {'qubits': 2, 'gates': [{'gate': 'h', 'column': 0, 'targets': [0]}, {'gate': 'cx', 'column': 1, 'targets': [0, 1]}]}
+
+[038] 22:21:03.363  mcp.call_result
+    name = glcb_visualize_url
+    output = {'ok': True, 'url': 'https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}', 'error_message': ''}
+
+[039] 22:21:03.363  tool_loop.tool_result
+    name = glcb_visualize_url
+    output = {'ok': True, 'url': 'https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}', 'error_message': ''}
+
+[040] 22:21:17.482  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-sonnet-4-6
+    model = claude-sonnet-4-6
+
+[041] 22:21:17.482  tool_loop.iteration
+    iteration = 1
+    stop_reason = end_turn
+
+[042] 22:21:17.482  tool_loop.final
+    iteration = 1
+    n_tool_calls = 2
+
+[043] 22:21:17.483  synthesize.result
+    confidence = high
+    n_citations = 3
+    citations = [('arxiv:2604.01059', 'Tsim: Fast Universal Simulator for Quantum Error Correction'), ('arxiv:2604.01059', 'Tsim: Fast Universal Simulator for Quantum Error Correction'), ('arxiv:2604.01059', 'Tsim: Fast Universal Simulator for Quantum Error Correction')]
+    n_tool_calls = 2
+    input_tokens = 0
+    output_tokens = 0

@@ -1,0 +1,35 @@
+
+===== ChatQEC trace @ 2026-07-28T22:18:53 =====
+
+[001] 22:18:59.006  mcp.spawn
+    server_command = chatqec-mcp-tools
+    argv = ['chatqec-mcp-tools']
+
+[002] 22:18:59.329  mcp.tools_loaded
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[003] 22:18:59.329  ask.question
+    question = Build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.
+    top_k = 8
+    candidate_k = 50
+
+[004] 22:18:59.329  image.caption
+    n_images = 0
+    caption =
+
+[005] 22:18:59.329  classifier.call
+    model = claude-haiku-4-5
+    query = Build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.
+
+[006] 22:19:00.406  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[007] 22:19:00.406  classifier.response
+    model = claude-haiku-4-5
+    raw = off_topic
+
+[008] 22:19:00.406  classify.verdict
+    on_topic = False
+    refusal = ChatQEC only answers Quantum Error Correction questions. Please rephrase your question to focus on QEC, fault tolerance, stabilizer codes, decoders, or related topics.

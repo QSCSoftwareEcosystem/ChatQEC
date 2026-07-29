@@ -1,0 +1,466 @@
+
+===== ChatQEC trace @ 2026-07-28T22:19:14 =====
+
+[001] 22:19:20.986  mcp.spawn
+    server_command = chatqec-mcp-tools
+    argv = ['chatqec-mcp-tools']
+
+[002] 22:19:21.300  mcp.tools_loaded
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[003] 22:19:21.301  ask.question
+    question = For a QEC stabilizer-code demo, build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.
+    top_k = 8
+    candidate_k = 50
+
+[004] 22:19:21.301  image.caption
+    n_images = 0
+    caption =
+
+[005] 22:19:21.301  classifier.call
+    model = claude-haiku-4-5
+    query = For a QEC stabilizer-code demo, build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.
+
+[006] 22:19:22.215  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[007] 22:19:22.215  classifier.response
+    model = claude-haiku-4-5
+    raw = on_topic
+
+[008] 22:19:22.215  classify.verdict
+    on_topic = True
+    refusal =
+
+[009] 22:19:22.215  rewriter.call
+    model = claude-haiku-4-5
+    query = For a QEC stabilizer-code demo, build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.
+    history_turns = 0
+
+[010] 22:19:25.080  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[011] 22:19:25.080  rewriter.response
+    model = claude-haiku-4-5
+    raw =
+        ```json
+        {
+          "rewritten": "Create a Qiskit circuit visualization link using GLCB (or equivalent circuit diagram tool) for a Bell-pair entanglement circuit on a 2-qubit quantum register, where qubit 0 receives a Hadamard gate in column 0, followed by a CNOT gate with qubit 0 as control and qubit 1 as target in column 1, suitable for a stabilizer code quantum error correction demonstration.",
+          "variants": [
+            "Generate a circuit diagram link for a Bell state preparation circuit with H gate on qubit 0 and CX(0→1) on a 2-qubit system using Qiskit visualization for QEC stabilizer code educational purposes.",
+            "Build a graphical circuit visualization for the two-qubit Bell pair entanglement circuit (Hadamard then CNOT) for use in a quantum error correction stabilizer code tutorial or demo."
+          ],
+          "is_followup": false
+        }
+        ```
+
+[012] 22:19:25.080  rewrite.result
+    rewritten = For a QEC stabilizer-code demo, build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.
+    variants = []
+    is_followup = False
+    queries = ['For a QEC stabilizer-code demo, build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.']
+
+[013] 22:19:25.080  retriever.retrieve
+    queries = ['For a QEC stabilizer-code demo, build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.']
+    top_k = 8
+    candidate_k = 50
+    per_query_k = 30
+
+[014] 22:19:25.384  retriever.embedded
+    n_dense = 1
+    n_sparse = 1
+
+[015] 22:19:25.411  retriever.searched
+    dense_hits = 30
+    bm25_hits = 30
+    unique_chunks = 58
+
+[016] 22:19:25.411  retriever.scored
+    n_candidates = 58
+    n_after_topk = 50
+    top_scored = [('arxiv:0905.2794#25', 0.8921), ('arxiv:1905.06903#58', 0.8605), ('canonical:css-codes#1', 0.6711), ('arxiv:2409.17595#27', 0.6284), ('arxiv:2312.03982#83', 0.6181), ('arxiv:1808.02892#72', 0.605), ('arxiv:quant-ph/0008040#48', 0.6021), ('arxiv:quant-ph/0008040#51', 0.6008)]
+
+[017] 22:19:28.356  retriever.reranked
+    rerank_query = For a QEC stabilizer-code demo, build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.
+    top_idx = [16, 8, 34, 15, 28, 0, 6, 21]
+
+[018] 22:19:28.364  retrieval.result
+    matched_topics = []
+    n_chunks = 8
+    debug = {'candidates_considered': 58, 'after_scoring': 50, 'after_rerank': 8, 'top_rerank_score': 0.3232421875}
+
+[019] 22:19:28.364  retrieval.chunk[0]
+    chunk_id = arxiv:1905.06903#70
+    source_id = arxiv:1905.06903
+    title = Magic State Distillation: Not as Costly as You Think
+    authority_tier = preprint
+    score = 0.599
+    text = Figure (auto-described): The figure depicts a quantum circuit for a quantum error correction code, specifically a stabilizer code. The circuit consists of two main parts: a preparation part (a) and a decoding part (b). The preparation part involves the application of a series of gates to prepare the quantum state |ψT, while the decoding part involves the application of a series of gates to decode the quantum state |ψ. The circuit uses a combination of Hadamard gates, CNOT gates, and T gates to manipulate the quantum state and perform the error correction. The circuit is represented using a combination of quantum gates and wires, with the input and output states labeled as |ψT and |ψ, respectively. The circuit is designed to correct errors in the quantum state |ψ by applying the appropriate gates to the ancilla qubits X, Y, and Z. The circuit is a quantum circuit, which is a diagram that represents the sequence of quantum gates and their connections that are applied to a quantum state. The circuit is used to implement the quantum error correction code, which is a method for protecting a quantum state
+
+[020] 22:19:28.364  retrieval.chunk[1]
+    chunk_id = arxiv:1208.0928#177
+    source_id = arxiv:1208.0928
+    title = Surface codes: Towards practical large-scale quantum computation
+    authority_tier = preprint
+    score = 0.6006
+    text =
+        Figure (auto-described): The figure depicts a quantum circuit for implementing a quantum error correction code, specifically a surface code. The circuit consists of a series of quantum gates and wires that represent the quantum bits (qubits) and their interactions. The circuit is structured as a lattice, with each qubit represented by a node and the interactions between them represented by the edges. The circuit includes a set of stabilizer generators, represented by the boxes labeled S_L, which are used to detect and correct errors in the qubits.
+
+        The circuit also includes a measurement device, represented by the box labeled M_Z, which is used to measure the state of the qubits. The circuit is designed to encode a logical qubit into a set of physical qubits, and the measurement device is used to extract the logical information from the physical qubits.
+
+        The circuit is a representation of the surface code, which is a type of quantum error-correcting code that is commonly used in quantum computing. The surface code is a lattice-based code, meaning that it is based on the idea of encoding a logical qubit into a set of physical
+
+[021] 22:19:28.364  retrieval.chunk[2]
+    chunk_id = pdf:97a2013c:pp566-660#3
+    source_id = pdf:97a2013c:pp566-660
+    title = Picturing Quantum Software — Ch.12 Fault-Tolerant Quantum Computation (ZX)
+    authority_tier = peer_reviewed
+    score = 0.4087
+    text =
+        This is what Section [12.3](#page-605-0) is all about. A key technique we'll use throughout this section is 'pushing' operations through the encoder of an error correcting code:
+
+        $$\begin{array}{c|ccccccccccccccccccccccccccccccccccc$$
+
+        relating some logical operation *f* on *k* logical qubits to some physical operation *F*<sup>e</sup> on physical qubits. We'll see how we can use the tricks we learned in Chapters [5](#page-200-0) and [6](#page-252-0) to implement Clifford operations in a fault-tolerant way, and tricks from Chapter [11](#page-499-0) to get non-Clifford operations.
+
+        <span id="page-567-0"></span>We'll tie up this chapter, and indeed this book, by giving an example of how all of these ingredients can fit together into a large-scale, fault-tolerant quantum architecture capable of universal quantum computation.
+
+        # **12.1 Quantum stabiliser codes**
+
+        In this section, we'll define quantum stabiliser codes and expand on the analogy between classical linear error correcting codes and stabiliser codes alluded to in the introduction. Fix a stabiliser group S = ⟨*P⃗* <sup>1</sup>*, . . . , P⃗m*⟩ with associated stabiliser subspace *S* ⊆ (C 2 ) ⊗*n* . Since we can use stabiliser subspaces to correct errors, we will from henceforth use the terms stabiliser subspace and **stabiliser code** interchangeably. This is analogous to the classical case, where we refer to subspaces of F *n* 2 as codes.
+
+        Perhaps the most important property of a (classical or quantum) error correcting code is its **code distance**, which measures its ability to detect and correct errors. We will build up to a notion of code distance for stabiliser codes in Section [12.1.3,](#page-575-0) but first it will be useful to see how this works in the classical case.
+
+        ### <span id="page-568-0"></span>**12.1.1 Classical codes and code distance**
+
+        Let's look again at following subspace of F *n* 2 from the introduction:
+
+        <span id="page-568-1"></span>
+        $$S := \{(x, y, z, x \oplus y, y \oplus z, x \oplus z) \mid x, y, z, \in \mathbb{F}_2\} \subseteq \mathbb{F}_2^6$$
+         (12.1)
+
+        which we referred to as the **codespace** of a classical error correcting code.
+
+        We claimed that *S* can correct a single error. That is, if I start with a vector in *S* and flip 1 bit, this vector will no longer be in *S*, and furthermore, there is a unique vector in *S* that is one bit-flip way. For example, if I receive the string: (1*,* 1*,* 0*,* 0*,* 0*,* 0), I can tell there is an error somewhere, since *x* = *y* = 1 and *z* = 0, but *x* ⊕ *z* = *y* ⊕ *z* = 0. It could be that either my first 3 data bits are wrong, or it could be that the parity bits are wrong. However, there is only one way to satisfy all the parities by flipping a *single* bit, namely setting *z* := 1. Similarly, if I look at a string (0*,* 0*,* 1*,* 0*,* 1*,* 0), the only possibility for a single-bit error is that the final parity bit *x* ⊕ *z* = 0 is wrong.
+
+        Since *S* is a linear subspace, it turns out we can succinctly capture the property of being able to detect any of some family of errors (e.g. single bit-flips) and to correct those errors in a single concept called code distance.
+
+        **Definition 12.1.1** For a linear subspace *S* ⊆ F *n* 2 , the **code distance** of *S* is the smallest non-zero Hamming weight of a vector in *S*.
+
+        Suppose we could flip a single bit of a vector *⃗v* ∈ *S* and obtain another vector *⃗w* ∈ *S*. Then, their sum *⃗v* ⊕ *⃗w* is also in *S*, and it would just be a unit vector consisting of a single 1 in the location of the flipped bit, e.g.
+
+        $$(1,0,1,1) \oplus (1,1,1,1) = (0,1,0,0)$$
+
+        The same applies if we flip *d* bits: the sum will have 1's in precisely the locations of the flipped bits. So, saying that flipping *d* bits leaves *S* is the same thing as saying there is no vector in *S* with Hamming weight *d*. In other words, a space *S* with code distance *d* can detect any amount of errors strictly less than *d*.
+
+        It is also the case that being able to *correct* a given number of errors can be stated in terms of the code distance. We noted before that the code *S* in [\(12.1\)](#page-568-1) has the property that, if we take any vector *⃗v* ∈ *S* and flip a single bit, there is no other vector *⃗w* ∈ *S* that is a single bit-flip away. In other words, there are no two vectors *⃗v, ⃗w* ∈ *S* that are two bit-flips apart, or equivalently, *S* has a code distance of (at least) 3. In fact, the code distance is exactly 3, which we can see by enumerating all 8 vectors in this 3D subspace:
+
+        $$S = \left\{ \begin{pmatrix} 0 \\ 0 \\ 0 \\ 0 \\ 0 \\ 0 \end{pmatrix}, \begin{pmatrix} 0 \\ 1 \\ 0 \\ 1 \\ 1 \end{pmatrix}, \begin{pmatrix} 0 \\ 1 \\ 0 \\ 1 \\ 1 \\ 0 \end{pmatrix}, \begin{pmatrix} 1 \\ 1 \\ 0 \\ 0 \\ 1 \\ 0 \end{pmatrix}, \begin{pmatrix} 1 \\ 0 \\ 0 \\ 1 \\ 0 \\ 1 \end{pmatrix}, \begin{pmatrix} 1 \\ 1 \\ 0 \\ 0 \\ 1 \\ 1 \\ 0 \end{pmatrix}, \begin{pmatrix} 1 \\ 1 \\ 1 \\ 0 \\ 0 \\ 1 \\ 1 \end{pmatrix}, \begin{pmatrix} 1 \\ 1 \\ 1 \\ 0 \\ 0 \\ 1 \\ 1 \end{pmatrix}, \begin{pmatrix} 1 \\ 1 \\ 1 \\ 0 \\ 0 \\ 1 \\ 1 \end{pmatrix}, \begin{pmatrix} 1 \\ 1 \\ 1 \\ 0 \\ 0 \\ 1 \\ 1 \end{pmatrix}, \begin{pmatrix} 1 \\ 1 \\ 1 \\ 0 \\ 0 \\ 1 \\ 1 \end{pmatrix}, \begin{pmatrix} 1 \\ 1 \\ 1 \\ 0 \\ 0 \\ 0 \\ 1 \end{pmatrix} \right\}$$
+
+        and noting that all the non-zero vectors have Hamming weight 3 or more. This is a general feature: any code with distance *d* = 2*e* + 1 can always correct an error consisting of at most *e* bit flips.
+
+        To move toward the quantum analogue of classical linear codes, we can proceed by thinking of stabiliser measurements as analogous to classical parity checks. As we already mentioned, for classical codes, we can very quickly check whether *⃗v* ∈ *S* by taking XORs of certain bits. For the code *S* in [\(12.1\)](#page-568-1), then (*v*1*, v*2*, v*3*, v*4*, v*5*, v*6) is in *S* precisely when the following linear equations are satisfied:
+
+        $$v_1 \oplus v_2 \oplus v_4 = 0$$
+
+
+        $$v_2 \oplus v_3 \oplus v_5 = 0$$
+
+
+        $$v_1 \oplus v_3 \oplus v_6 = 0$$
+
+        As we saw in Chapter [4,](#page-153-0) given a system of homogeneous F2-linear equations fixing a linear subspace *S* the same thing as giving a spanning set for *S* ⊥. In this case, this is:
+
+        $$S^{\perp} = \operatorname{Span} \left\{ \begin{pmatrix} 1\\1\\0\\1\\0\\0 \end{pmatrix}, \begin{pmatrix} 0\\1\\1\\0\\1\\0 \end{pmatrix}, \begin{pmatrix} 1\\0\\1\\0\\0\\1 \end{pmatrix} \right\}$$
+
+        To check  $\vec{v} \in S$ , it suffices to check  $\vec{w}_i^T \vec{v} = 0$  for each of the basis vectors  $\vec{w}_i$  of  $S^{\perp}$ . If this holds, then we can be sure no error of weight < d has occurred. If  $\vec{w}_i^T \vec{v} = 1$ , this is called a **syndrome**, because it indicates that there is an error somewhere in  $\vec{v}$ .
+
+        It is convenient to organise the vectors  $\vec{w}_i^T$  into the rows of a **parity check** matrix H so we obtain a single equation  $H\vec{v} = \vec{0}$  which holds if and only if  $\vec{v} \in S$ , i.e. we detected no errors.
+
+        ### 12.1.2 Defining stabiliser codes
+
+        Thanks to the Fundamental Theorem of Stabiliser Theory from Chapter 6, we know that S is  $2^k$ -dimensional, for k := n - m. Hence, we can think of the stabiliser subspace as encoding k logical qubits in n physical qubits. This gives us quantum analogues to the parameters n and k from classical codes. To build up to the notion of code distance, let's have a look at how we can use S to detect and correct errors.
+
+        We can treat the generators of S as "quantum parity checks" in a very specific way. If we measure an arbitrary state  $|\psi\rangle \in (\mathbb{C}^2)^{\otimes n}$  with one of stabiliser generators, we can compute the Born rule probability as:
+
+        $$\operatorname{Prob}(s_j \mid \mid \psi \rangle) = \langle \psi \mid \Pi_{\vec{P}_j}^{(s_j)} \mid \psi \rangle =: \langle \psi \mid : \vec{P} \mid : \psi \rangle$$
+
+        If we restrict to the case where  $|\psi\rangle \in S$ , then  $\vec{P}_i|\psi\rangle = |\psi\rangle$ , then by
+
+        Proposition 6.2.2 we know  $\Pi_{\vec{p}_i}^{(0)}|\psi\rangle = |\psi\rangle$ . Hence:
+
+        $$\operatorname{Prob}(0 \mid \mid \psi \rangle) = \left\langle \psi \mid : \overrightarrow{P} \mid : \psi \right\rangle = \left\langle \psi \mid : \psi \right\rangle = 1$$
+
+        So, we will always get outcome  $s_j = 0$  if no error occurred on  $|\psi\rangle$ . From this, we can also conclude that we'll never get outcome  $s_j = 1$ :
+
+        ![](data/figures/pdf_97a2013c_pp566-660/_page_571_Figure_5.jpeg)
+
+        > **Figure (auto-described):** The figure depicts a quantum circuit diagram, specifically a circuit for a 5-qubit Steane code, also known as a surface code. The circuit consists of two main parts: a preparation circuit and a decoding circuit.
+
+        **Preparation Circuit**
+
+        *   The preparation circuit is represented by the left side of the circuit.
+        *   It prepares the 5-qubit code state |00000\rangle, which is a product state of five qubits in the |0\rangle state.
+        *   The preparation circuit consists of a series of Hadamard gates and CNOT gates, which are used to create a superposition of the five qubits.
+
+        **Decoding Circuit**
+
+        *   The decoding circuit is represented by the right side of the circuit.
+        *   It takes a corrupted version of the 5-qubit code state as input and outputs the original uncorrupted state.
+        *   The decoding circuit consists of a series of CNOT gates and Pauli X gates, which are used to perform the decoding operation.
+
+        **Quantum Error Correction**
+
+        *   The circuit uses the Steane code
+
+
+        Now, suppose an error does occur on  $|\psi\rangle$ . For simplicity, we'll initially assume that this error takes the form of a self-adjoint Pauli string  $\vec{Q}$ . In Section 12.1.4, we'll show that arbitrary errors can be reduced to this case. Namely, if we can detect/correct Pauli errors, then we can detect/correct arbitrary errors.
+
+        There are two possibilities, either the error commutes with  $\vec{P}$  or it anti-commutes with  $\vec{P}$ . These two possibilities translate into the following commutation rule with respect to the Pauli box  $\vec{P}$ .
+
+        <span id="page-571-0"></span>![](data/figures/pdf_97a2013c_pp566-660/_page_571_Figure_8.jpeg)
+
+        > **Figure (auto-described):** The figure illustrates a quantum circuit, specifically a quantum gate operation. The circuit consists of a series of gates, including a Hadamard gate (H), a CNOT gate (CNOT), and a phase gate (P), which are connected by wires and controlled by control bits. The circuit is designed to perform a specific quantum operation, and the figure provides a visual representation of the circuit's structure and operation.
+
+        The circuit is labeled with various symbols and labels, including the gates, wires, and control bits. The figure also includes a legend that explains the meaning of each symbol and the operation of the circuit. The circuit is designed to be a quantum gate, which is a fundamental building block of quantum computing. The figure provides a clear and concise representation of the circuit's structure and operation, making it easy to understand and analyze.
+
+        The circuit is designed to perform a specific quantum operation, which is represented by the symbols and labels on the circuit. The figure provides a detailed and technical representation of the circuit's operation, making it a valuable resource for anyone interested in quantum computing and quantum information processing.
+
+
+        As a consequence of Exercise 12.1, if a commuting error  $\vec{Q}$  happens to  $|\psi\rangle$ ,
+
+        the outcome of measuring  $\vec{P}_i$  is unaffected:
+
+        ![](data/figures/pdf_97a2013c_pp566-660/_page_572_Figure_3.jpeg)
+
+        > **Figure (auto-described):** The figure shows a quantum error correction circuit, specifically a quantum circuit for the 9-qubit Steane code. The circuit consists of a series of gates, including QFT (Quantum Fourier Transform), Toffoli, CNOT, and H (Hadamard) gates, as well as measurements and entanglement operations. The circuit is designed to correct errors that occur in a quantum computer's qubits, allowing for the recovery of the original quantum state. The circuit is represented in a graphical format, with each gate and operation clearly labeled, and the circuit's structure is designed to facilitate the correction of errors in a specific way.
+
+        There are no axis labels, legends, or equations in the figure.
+
+
+        So,  $\operatorname{Prob}(s_j | \vec{Q} | \psi) = \operatorname{Prob}(s_j | | \psi)$ . Hence, we'll again get outcome  $s_j = 0$  with certainty. However, if  $\vec{Q}$  anti-commutes with  $\vec{P}_j$ , it kicks a  $\pi$  up into the measurement outcome, so the probabilities flip:
+
+        ![](data/figures/pdf_97a2013c_pp566-660/_page_572_Figure_5.jpeg)
+
+        > **Figure (auto-described):** The figure depicts a quantum circuit for a quantum error correction code, specifically a surface code, which is a type of topological quantum code. The circuit consists of a series of qubits (represented by |Q and |Q̄) and quantum gates (represented by |ψ, |ψ̄, and |ψ̄̄). The circuit is designed to encode and decode quantum information, with the input and output qubits represented by |s and |s̄, respectively. The circuit also includes a set of quantum gates that perform specific operations on the qubits, such as |ψ, |ψ̄, and |ψ̄̄. The circuit is represented in a lattice structure, with the qubits and gates arranged in a grid-like pattern. The circuit is designed to be a surface code, which is a type of quantum error correction code that uses a two-dimensional lattice to encode and decode quantum information.
+
+        The figure also includes a set of equations and labels that describe the operation of the circuit. The equations are written in a mathematical notation, with the variables
+
+
+        Hence, we'll get outcome  $s_i = 1$  with certainty.
+
+        We can measure all m stabilisers generating S. Since all of the stabilisers commute, we can either think of doing each of these measurements in sequence (where the order doesn't matter), or equivalently, doing one big measurement whose outcome is given by:
+
+        ![](data/figures/pdf_97a2013c_pp566-660/_page_572_Figure_8.jpeg)
+
+        > **Figure (auto-described):** The figure depicts a quantum circuit for the measurement-based quantum error correction code known as the surface code, specifically a circuit for the decoding operation. The circuit consists of two stages: a preparation stage and a decoding stage. The preparation stage generates the stabilizer states, which are the states that the code protects, while the decoding stage performs the operation that maps the state of the physical qubits to the logical state of the code. The circuit is composed of a series of gates and measurements, with the physical qubits represented by the $\vec{P}_i$ and the stabilizer generators represented by the $\psi$.
+
+        The circuit is described by the following equations:
+
+        $$
+        \begin{aligned}
+        |\psi\rangle &= \prod_{i=1}^m \prod_{j=1}^m \prod_{k=1}^m \sigma_i^x \sigma_j^y \sigma_k^z |0\rangle \\
+        &= \prod_{i=1}^m \prod_{j=1}^m \prod_{k=1}^
+
+
+        If  $|\psi\rangle$  is of the form  $\vec{Q}|\phi\rangle$  for some state  $|\phi\rangle$  in the stabiliser subspace and some (possibly trivial) Pauli error  $\vec{Q}$ , this will yield some particular bitstring of outcomes with certainty. If  $\vec{Q} = I$ , the outcome will always be  $(s_1, \ldots, s_m) = (0, \ldots, 0)$ . Hence, each time  $s_j = 1$ , this indicates that (1) some non-trivial error  $\vec{Q}$  has occurred, and (2) that error anti-commutes with the j-th stabiliser  $\vec{P}_j$ . By analogy to the classical case, this vector of measurement outcomes is called the **syndrome**.
+
+        If we are lucky, this syndrome will provide us with enough information to send  $|\psi\rangle$  back to the error free state  $|\phi\rangle$ . For example, if it uniquely fixes the Pauli string  $\vec{Q}$ , that is definitely good enough, because we can then just apply  $\vec{Q}$  again to get  $\vec{Q}|\psi\rangle = \vec{Q}^2|\phi\rangle = |\phi\rangle$ . However, we don't even need to hit  $\vec{Q}$  on-the-nose, because if we correct  $|\psi\rangle$  with some  $\vec{Q}'$  that is the product
+
+        of *Q⃗* and some stabiliser *S⃗* ∈ S, we get:
+
+        $$\vec{Q}'|\psi\rangle = \vec{Q}\vec{S}\vec{Q}|\phi\rangle \propto \vec{Q}^2\vec{S}|\phi\rangle = \vec{S}|\phi\rangle = |\phi\rangle$$
+
+        So, we again recover the state |*ϕ*⟩, possibly up to an irrelevant global phase. Lets see how this works by means of a simple example. Consider the following stabiliser group on three qubits:
+
+        $$\mathcal{S} = \langle \vec{Z}_1 = Z \otimes Z \otimes I, \vec{Z}_2 = I \otimes Z \otimes Z \rangle$$
+
+        S has two independent stabilisers, so dim(Stab(S)) = 23−<sup>2</sup> = 2. Hence, this code, called the **GHZ code** encodes one qubit into three. Fixing a basis for Stab(S), we have
+
+        $$Stab(\mathcal{S}) = Span\{|000\rangle, |111\rangle\}$$
+
+        For the following discussion, it will be conventient to write Stab(S) as the image of a map from one qubit into three qubits, called the **encoder** of S. We will say more about encoders in the following sections, including how to build them from stabiliser codes. But for now, note that:
+
+        <span id="page-573-0"></span>
+        $$- \leftarrow :: |i\rangle \mapsto |iii\rangle \tag{12.2}$$
+
+        It thus follows that:
+
+        $$\operatorname{Stab}(\mathcal{S}) \ = \ \operatorname{Im}\left( \begin{array}{c} & \\ & \end{array} \right)$$
+
+        Hence, we can write a generic state |Ψ⟩ ∈ Stab(S) as:
+
+        *ψ*
+
+        As before, we can look at the Born rule probabilities associated with measuring the stabiliser generators *Z⃗* <sup>1</sup> and *Z⃗* <sup>2</sup>. As was shown in Exercise [6.7,](#page-265-0) all-*Z* and all-*X* Pauli projectors take a particularly simple form:
+
+        $$\Pi_{Z\dots Z}^{(k)} \; = \; \underbrace{\vdots} \qquad \qquad \Pi_{X\dots X}^{(k)} \; = \; \underbrace{\vdots}$$
+
+        This generalises to Pauli strings formed just from *Z* and *I* (or just *X* and *I*) by connecting the projector to just the subset of qubits were a *Z* (or *X*) appears. For example, we have:
+
+        $$\Pi_{ZZI}^{(k)} \; = \; \underbrace{\hspace{1cm}}^{k\pi} \qquad \qquad \Pi_{IZZ}^{(k)} \; = \; \underbrace{\hspace{1cm}}^{k\pi} \qquad \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad \underbrace{\hspace{1cm}}^{k\pi} \qquad
+
+[022] 22:19:28.364  retrieval.chunk[3]
+    chunk_id = arxiv:1905.06903#66
+    source_id = arxiv:1905.06903
+    title = Magic State Distillation: Not as Costly as You Think
+    authority_tier = preprint
+    score = 0.5991
+    text = Figure (auto-described): The figure depicts a quantum circuit that implements the quantum error correction code known as the Steane code, which is a stabilizer code that encodes a qubit into a 5-qubit register. The circuit consists of a series of gates, including controlled-phase gates and CNOT gates, which are applied to the qubits in a specific pattern to perform the encoding and decoding operations. The circuit is represented in a graphical format, with the qubits and gates labeled with their corresponding symbols and indices. The circuit is shown on the left, with the input and output qubits labeled and the error correction operations performed by the circuit shown on the right. The circuit is constructed using a combination of quantum gates, including controlled-phase gates and CNOT gates, which are applied to the qubits in a specific pattern to perform the encoding and decoding operations. The circuit is represented in a graphical format, with the qubits and gates labeled with their corresponding symbols and indices, allowing for easy visualization and understanding of the quantum error correction process. The circuit is designed to encode a single qubit into a 5-q
+
+[023] 22:19:28.365  retrieval.chunk[4]
+    chunk_id = arxiv:1905.06903#72
+    source_id = arxiv:1905.06903
+    title = Magic State Distillation: Not as Costly as You Think
+    authority_tier = preprint
+    score = 0.5964
+    text = Figure (auto-described): The figure depicts a lattice of 2D qubits (represented as green and orange dots) and 2D stabilizers (represented as tan and light brown regions). The stabilizers are represented as the product of the Pauli operators X, Y, and Z on the respective qubits. The figure also includes a circuit diagram on the right-hand side, which represents the stabilizer code. The circuit consists of a series of X, Y, and Z gates, with the X and Y gates represented by blue boxes and the Z gate represented by a yellow box. The circuit is connected to the lattice on the left-hand side, with the qubits and stabilizers represented by the same colors as in the lattice. The figure also includes a mathematical equation, which represents the relationship between the qubits and the stabilizers. The equation is |ψ = X/Y/Z, where ψ represents the state of the qubits, and X, Y, and Z represent the Pauli operators. The equation is written in a mathematical notation, with the qubits and stabilizers represented by symbols and the Paul
+
+[024] 22:19:28.365  retrieval.chunk[5]
+    chunk_id = arxiv:0905.2794#25
+    source_id = arxiv:0905.2794
+    title = Quantum Error Correction for Beginners
+    authority_tier = preprint
+    score = 0.8921
+    text =
+        Similarly, the four orthogonal Bell states,
+        \begin{equation}
+        \begin{aligned}
+        \ket{\Phi^{\pm}} &= \frac{\ket{00} \pm \ket{11}}{\sqrt{2}}, \\
+        \ket{\Psi^{\pm}} &= \frac{\ket{01} \pm \ket{10}}{\sqrt{2}},
+        \end{aligned}
+        \end{equation}
+        are stabilized by the operators, $K^1 = (-1)^aXX$, and $K^2 = (-1)^b ZZ$, where $[a,b] \in \{0,1\}$. Each of the
+        four Bell states correspond to the four $\pm 1$ eigenstate combinations of these two operators,
+        \begin{equation}
+        \begin{aligned}
+        &\Phi^+ \equiv  \begin{pmatrix} K^1 = XX \\ K^2 = ZZ \end{pmatrix} \quad \Phi^- \equiv  \begin{pmatrix} K^1 = -XX \\ K^2 = ZZ \end{pmatrix} \\
+        &\Psi^+ \equiv  \begin{pmatrix} K^1 = XX \\ K^2 = -ZZ \end{pmatrix} \quad \Psi^- \equiv  \begin{pmatrix} K^1 = -XX \\ K^2 = -ZZ \end{pmatrix}
+        \end{aligned}
+        \end{equation}
+
+
+        Quantum error correction with stabiliser codes\label{sec:sec:QEC2}
+        The use of the stabilizer formalism to describe quantum error correction codes is extremely useful since it
+        allows easy synthesis of correction circuits and also allows for quick determination of what logical
+        operations can be applied directly on encoded data. The link between stabilizer codes and stabilizer states comes about by defining a relevant coding {\em subspace}
+        within the larger Hilbert space of a multi-qubit system. To illustrate this reduction let us examine a simple two qubit example. A 2-qubit system has a Hilbert space dimension of
+        four, however if we require that this two qubit state is stabilized by the $XX$ operator, then there are only two orthogonal basis states
+        which satisfies this condition,
+        \begin{equation}
+        \ket{0}_L \equiv \frac{1}{\sqrt{2}} \left( \ket{01}+\ket{10}\right), \quad \ket{1}_L \equiv \frac{1}{\sqrt{2}}\left( \ket{00}+\ket{11}\right),
+        \end{equation}
+        which can be used to define a effective logical
+        qubit. Hence by using stabilizers we can reduce the size of the Hilbert space
+        for a multi-qubit system to an effective single qubit system. In the context of QEC, the stabilizers that are used to define the logical
+        subspace are utilized to detect and correct for errors. A stabilizer code is therefore a subspace defined via stabilizer
+        operators for a multi-qubit system. Returning to QEC, the example we focus on is
+        the most well known quantum code; the 7-qubit Steane code first proposed in 1996~[S96]. The 7-qubit code is
+        defined as a $[[n,k,d]] = [[7,1,3]]$
+        quantum code, where $n=7$ physical qubits encode $k=1$ logical qubit with a distance between basis states $d=3$,
+        correcting $t = \lfloor(d-1)/2\rfloor=1$ error.
+
+[025] 22:19:28.365  retrieval.chunk[6]
+    chunk_id = arxiv:quant-ph/0008040#48
+    source_id = arxiv:quant-ph/0008040
+    title = Encoding a qubit in an oscillator
+    authority_tier = preprint
+    score = 0.6021
+    text =
+        Figure (auto-described): The figure presents two quantum circuits for a stabilizer code, specifically the surface code. The first circuit, labeled (a), is for preparing the code state, and the second circuit, labeled (b), is for decoding. The circuits are depicted using a graphical notation, where boxes represent quantum gates and lines represent quantum wires.
+
+        **Circuit (a) Preparation:**
+
+        *   The top wire is initialized with the data qubit |X=1.
+        *   The bottom wire is initialized with the ancilla qubit |Z=1.
+        *   The SUM gate is applied to the two qubits, resulting in a sum of the two qubits.
+        *   The measure q operation is performed on the result of the SUM gate.
+
+        **Circuit (b) Decoding:**
+
+        *   The data qubit is initialized with the result of the measure q operation.
+        *   The SUM gate is applied to the data qubit and the ancilla qubit |Z=1.
+        *   The measure p operation is performed on the result of the SUM gate.
+
+        The circuits are designed to implement
+
+[026] 22:19:28.365  retrieval.chunk[7]
+    chunk_id = arxiv:0905.2794#87
+    source_id = arxiv:0905.2794
+    title = Quantum Error Correction for Beginners
+    authority_tier = preprint
+    score = 0.5971
+    text =
+        Figure (auto-described): The figure depicts a quantum circuit that implements the **Quantum Approximate Error Correction (QEC) code** known as the **Steane code**.
+
+        The circuit is implemented with a 7-qubit code, with 3 data qubits (|0, |1, |0) and 4 ancilla qubits (|0, |0, |0, |0). The circuit consists of two layers of Hadamard gates, a CNOT gate, and a measurement of the ancilla qubits.
+
+        The circuit is depicted as a lattice, with the qubits arranged in a 4x2 grid. The data qubits are located at the top of the lattice, while the ancilla qubits are located below them. The Hadamard gates are represented by a vertical line with a circle at the top and a cross at the bottom, while the CNOT gate is represented by a horizontal line with a circle at the top and a cross at the bottom.
+
+        The circuit is also depicted as a Tanner graph, with the qubits represented as circles and the gates represented
+
+[027] 22:19:28.365  canonical.injected
+    matched_topics = []
+    injected = []
+
+[028] 22:19:28.365  synthesizer.call
+    model = claude-sonnet-4-6
+    mcp_enabled = True
+    n_retrieved = 8
+    n_canonical = 0
+    n_history = 0
+
+[029] 22:19:28.365  tool_loop.start
+    model = claude-sonnet-4-6
+    max_iterations = 5
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[030] 22:19:32.192  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-sonnet-4-6
+    model = claude-sonnet-4-6
+
+[031] 22:19:32.192  tool_loop.iteration
+    iteration = 0
+    stop_reason = tool_use
+
+[032] 22:19:32.192  tool_loop.tool_use
+    name = glcb_visualize_url
+    input = {'qubits': 2, 'gates': [{'gate': 'h', 'column': 0, 'targets': [0]}, {'gate': 'cx', 'column': 1, 'targets': [0, 1]}]}
+
+[033] 22:19:32.192  mcp.call_tool
+    name = glcb_visualize_url
+    args = {'qubits': 2, 'gates': [{'gate': 'h', 'column': 0, 'targets': [0]}, {'gate': 'cx', 'column': 1, 'targets': [0, 1]}]}
+
+[034] 22:19:32.215  mcp.call_result
+    name = glcb_visualize_url
+    output = {'ok': True, 'url': 'https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}', 'error_message': ''}
+
+[035] 22:19:32.215  tool_loop.tool_result
+    name = glcb_visualize_url
+    output = {'ok': True, 'url': 'https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}', 'error_message': ''}
+
+[036] 22:19:39.797  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-sonnet-4-6
+    model = claude-sonnet-4-6
+
+[037] 22:19:39.797  tool_loop.iteration
+    iteration = 1
+    stop_reason = end_turn
+
+[038] 22:19:39.797  tool_loop.final
+    iteration = 1
+    n_tool_calls = 1
+
+[039] 22:19:39.798  synthesize.result
+    confidence = medium
+    n_citations = 1
+    citations = [('arxiv:0905.2794', 'Quantum Error Correction for Beginners')]
+    n_tool_calls = 1
+    input_tokens = 0
+    output_tokens = 0
