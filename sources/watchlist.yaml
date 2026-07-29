@@ -38,6 +38,7 @@ github:
   - repo: microsoft/QuantumKatas
   - repo: qiskit-community/qiskit-textbook
   - repo: QuTone/LightStim
+  - repo: QuEraComputing/tsim
 
 youtube:
   channels:
