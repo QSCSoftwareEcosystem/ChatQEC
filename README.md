@@ -24,8 +24,11 @@ broken against modern Qiskit). Future: `stabilizer_check`, `code_search`,
 
 ## Install
 
+Not published to PyPI — install straight from a clone:
+
 ```bash
-uv tool install chatqec-mcp-tools
+git clone https://github.com/QSCSoftwareThrust/chatqec-mcp-tools
+uv tool install ./chatqec-mcp-tools
 ```
 
 Then point any MCP client (Claude Desktop, Claude Code, ChatQEC) at the `chatqec-mcp-tools` entry point.
@@ -33,8 +36,8 @@ Then point any MCP client (Claude Desktop, Claude Code, ChatQEC) at the `chatqec
 `qec_circuit_build` additionally requires the optional `lightstim` extra:
 
 ```bash
-pip install "chatqec-mcp-tools[lightstim]"
-# or: uv sync --extra lightstim
+uv tool install "./chatqec-mcp-tools[lightstim]"
+# or, working inside the checkout: uv sync --extra lightstim
 ```
 
 Without it installed, `qec_circuit_build` is still registered but always returns
@@ -43,8 +46,8 @@ Without it installed, `qec_circuit_build` is still registered but always returns
 `tsim_simulate` additionally requires the optional `tsim` extra:
 
 ```bash
-pip install "chatqec-mcp-tools[tsim]"
-# or: uv sync --extra tsim
+uv tool install "./chatqec-mcp-tools[tsim]"
+# or, working inside the checkout: uv sync --extra tsim
 ```
 
 Without it installed, `tsim_simulate` is still registered but always returns
