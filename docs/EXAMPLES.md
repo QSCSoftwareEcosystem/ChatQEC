@@ -502,7 +502,7 @@ against the corpus above:
 "Simulate ... T 0 ... If I tried plain Stim, what would happen?"      → tsim_simulate(RX 0/T 0/H 0/M 0/DETECTOR, 200) → mix of 0/1, correctly says Stim has no T gate ✅
 "Add a DETECTOR ... magic-state prep step ..." (2000 shots)            → tsim_simulate(R/R_X/T_DAG/DEPOLARIZE1/M/DETECTOR, 2000) → shape=(2000,1), mix of 0/1 ✅
 "Build a GLCB link for the Bell-pair circuit ..."                      → glcb_visualize_url(h@0, cx@1) → exact reference URL ✅ (2 earlier attempts of the exact eval wording were rejected pre-tool-call by the off-topic classifier — see the capability-check doc)
-"Simulate FOO_BAR_NOT_A_GATE 0/M 0 for 10 shots"                       → tsim_simulate(...) → ok=False, "Gate not found: 'FOO_BAR_NOT_A_GATE'" ✅ (the exact eval wording and a milder QEC-framed paraphrase were also both rejected pre-tool-call — see the capability-check doc)
+"Simulate FOO_BAR_NOT_A_GATE 0/M 0 for 10 shots"                       → tsim_simulate(...) → ok=False, "Gate not found: 'FOO_BAR_NOT_A_GATE'" ✅ (the exact eval wording, byte-for-byte verified with json.load, and a milder QEC-framed paraphrase were also both rejected pre-tool-call — see the capability-check doc)
 "Simulate the Bell pair ... then build a GLCB link for the same circuit" → tsim_simulate(...) + glcb_visualize_url(...) → all-zero detector (perfect correlation) + exact reference URL, same gate order in both calls ✅
 ```
 
