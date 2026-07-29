@@ -70,6 +70,10 @@ disable_error_code = ["import-untyped"]
 module = ["lightstim.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["tsim.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
