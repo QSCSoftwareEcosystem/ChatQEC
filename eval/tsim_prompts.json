@@ -71,22 +71,22 @@
     {
       "id": "ts-magic-001",
       "category": "tool_simulate_magic_state",
-      "question": "Tsim's magic_state_distillation tutorial has this single-qubit magic-state preparation step: `R 0\\nR_X(-0.30410731536166367) 0\\nT_DAG 0\\nDEPOLARIZE1(0.05) 0\\nM 0`. Simulate it for 2000 shots and tell me what you get.",
+      "question": "Tsim's magic_state_distillation tutorial has this single-qubit magic-state preparation step: `R 0\\nR_X(-0.3040867239846964) 0\\nT_DAG 0\\nDEPOLARIZE1(0.05) 0\\nM 0`. Simulate it for 2000 shots and tell me what you get.",
       "expected_tool": "tsim_simulate",
       "reference": {
-        "circuit": "R 0\nR_X(-0.30410731536166367) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0",
+        "circuit": "R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0",
         "shots": 2000,
         "verified_outcome": "ok=True, shots=2000, but samples_preview shape is (2000, 0) — same tool-shape quirk as ts-clifford-001: the circuit measures M 0 but declares no DETECTOR/OBSERVABLE_INCLUDE, so nothing is exposed in the preview even though the tool call succeeded."
       },
-      "notes": "The angle -0.30410731536166367 = -arccos(sqrt(1/3))/pi (in units of pi, per Tsim's own tutorial), preparing an eigenstate of the 'SH' operator via R_X + T_DAG, then a 5% single-qubit depolarizing channel. This is ONE preparation step from the tutorial, not the full 85-qubit magic-state distillation/cultivation circuit the tutorial goes on to build — a correct answer should describe it as a preparation step, not overclaim it reproduces the full published protocol. A correct answer also notices the empty preview rather than inventing measurement statistics."
+      "notes": "The angle -0.3040867239846964 = -arccos(sqrt(1/3))/pi (in units of pi, per Tsim's own tutorial) — recomputed and verified in Python as `-math.acos(math.sqrt(1/3))/math.pi`, then re-run through tsim_simulate to confirm this exact literal still gives ok=True with the empty-preview quirk described below. Preparing an eigenstate of the 'SH' operator via R_X + T_DAG, then a 5% single-qubit depolarizing channel. This is ONE preparation step from the tutorial, not the full 85-qubit magic-state distillation/cultivation circuit the tutorial goes on to build — a correct answer should describe it as a preparation step, not overclaim it reproduces the full published protocol. A correct answer also notices the empty preview rather than inventing measurement statistics."
     },
     {
       "id": "ts-magic-002",
       "category": "tool_simulate_magic_state",
-      "question": "Add a DETECTOR so we can actually see the outcome: `R 0\\nR_X(-0.30410731536166367) 0\\nT_DAG 0\\nDEPOLARIZE1(0.05) 0\\nM 0\\nDETECTOR rec[-1]`, 2000 shots.",
+      "question": "Add a DETECTOR so we can actually see the outcome: `R 0\\nR_X(-0.3040867239846964) 0\\nT_DAG 0\\nDEPOLARIZE1(0.05) 0\\nM 0\\nDETECTOR rec[-1]`, 2000 shots.",
       "expected_tool": "tsim_simulate",
       "reference": {
-        "circuit": "R 0\nR_X(-0.30410731536166367) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]",
+        "circuit": "R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]",
         "shots": 2000,
         "verified_outcome": "ok=True, shape=(2000,1); previewed rows are a mix of 0/1, driven by the 5% depolarizing channel plus the non-Clifford R_X/T_DAG state prep."
       }
