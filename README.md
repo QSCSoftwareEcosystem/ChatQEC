@@ -29,8 +29,9 @@ circuit to check their own claim. ChatQEC is built specifically for QEC, with:
 - **Hybrid retrieval** (dense vectors + BM25 + cross-encoder reranking) over
   a typed source registry, with authority tiers and recency in the scoring.
 - **Inline citations** to source IDs the reader can click and verify.
-- **Sandboxed Stim** via a separate MCP tool server, so circuit-level
-  questions get a real simulator answer — not a guess.
+- **Sandboxed circuit tools** (Stim, LightStim, Tsim, GLCB) via a separate MCP
+  tool server, so circuit-level questions get a real simulator answer — not a
+  guess.
 - **Honest refusals** when the evidence isn't in the corpus, instead of
   inventing a plausible-sounding one.
 
@@ -42,7 +43,7 @@ circuit to check their own claim. ChatQEC is built specifically for QEC, with:
 
 ```bash
 git clone https://github.com/QSCSoftwareThrust/ChatQEC.git
-cd chatqec
+cd ChatQEC
 uv sync --extra dev
 
 # bring up Qdrant for the vector store (starts empty)
@@ -315,26 +316,30 @@ caps daily spend; the default is $5/day and is configurable via
 **LLM provider is configurable and falls back automatically.** The default
 config is `models.provider: "auto"` — calls go to Anthropic first; if your
 Anthropic credit is empty (or the key is missing, rate-limited, or 403s) the
-same call transparently falls through to HuggingFace open-weights (Llama-3.1-8B
-for classifier+rewriter, Llama-3.3-70B for synthesizer+judge). Every call logs
+same call transparently falls through to Gemini, then to HuggingFace
+open-weights (Llama-3.1-8B for classifier+rewriter, Llama-3.3-70B for
+synthesizer+judge) if Gemini is also unavailable. Every call logs
 which backend served it to stderr — there's no silent quality drop:
 
 ```
 $ chatqec ask "..."
 [chatqec] backend=anthropic unavailable (BadRequestError: credit balance too low) → trying next
+[chatqec] backend=gemini unavailable (PermissionDenied: API key not valid) → trying next
 [chatqec] backend=huggingface model=meta-llama/Llama-3.3-70B-Instruct
 The surface code threshold under depolarizing noise is...
 ```
 
-Three explicit values are available for `models.provider`:
+Four explicit values are available for `models.provider`:
 
 | Value                  | Behaviour                                                                                                                 |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `auto` *(default)* | Try Anthropic → fall back to HuggingFace on credit/auth/quota errors. Non-recoverable errors (5xx, network) still raise. |
+| `auto` *(default)* | Try Anthropic → Gemini → HuggingFace, falling back on credit/auth/quota errors. Non-recoverable errors (5xx, network) still raise. |
 | `anthropic`          | Anthropic only. Fails hard if no credit / no key.                                                                         |
+| `gemini`             | Gemini only. Fails hard if no credit / no key.                                                                            |
 | `huggingface`        | HuggingFace only. Useful for fully open-stack deploys.                                                                    |
 
-Provide whichever keys you have: `ANTHROPIC_API_KEY` and/or `HF_TOKEN` (the
+Provide whichever keys you have: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and/or
+`HF_TOKEN` (the
 fine-grained token needs the **"Make calls to Inference Providers"** scope).
 `auto` skips any backend whose key is missing — set just one and it works.
 
@@ -477,7 +482,7 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 **v0.1.0 (this release):**
 
 - ✅ End-to-end pipeline: classifier → rewriter → hybrid retrieval → synthesizer
-- ✅ Canonical wiki layer — full 56-page v1 roster, chunked + embedded into Qdrant (`chatqec canonical embed`)
+- ✅ Canonical wiki layer — chunked + embedded into Qdrant (`chatqec canonical embed`)
 - ✅ Multimodal image input (`chatqec ask --image` + Streamlit attach) with Gemini-Flash captioning for retrieval
 - ✅ PDF book-chapter ingestion (`chatqec ingest --pdf`) + `chatqec corpus-stats`
 - ✅ Figure ingestion: persisted images, local Llama-3.2-Vision descriptions, searchable + shown at answer time
@@ -489,13 +494,14 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 **v0.2 — content & quality:**
 
 - Populate the source registry to ~500 documents (seed via watchlist + bulk arXiv)
-- ✅ Build out the canonical wiki to the full v1 roster (56 pages)
+- ✅ Build out the canonical wiki to the full v1 roster (60 pages, per v0.4 below)
 - Publish baseline eval numbers and the methodology behind them
 - Hosted Streamlit demo
-- Distribute the prebuilt corpus as a Qdrant snapshot on a Hugging Face dataset
-  repo, so users restore an instant corpus instead of re-embedding. Dataset card
-  must pin the embedding model (`gemini-embedding-001`, 768-d), the Qdrant
-  version, and source licenses (provenance from `sources/registry.jsonl`).
+- ✅ Distribute the prebuilt corpus as a Qdrant snapshot — currently as an
+  internal GitLab repo (see Quick Start Option A above); still open: a public
+  Hugging Face dataset repo with a dataset card pinning the embedding model
+  (`gemini-embedding-001`, 768-d), the Qdrant version, and source licenses
+  (provenance from `sources/registry.jsonl`).
 
 **v0.3 — tooling:**
 
@@ -557,7 +563,7 @@ refresh keeps it current.
 
 ```bash
 uv sync --extra dev
-uv run pytest                          # v0.1.0: 231 tests, 89% line coverage
+uv run pytest                          # 416 tests, 90% line coverage
 uv run ruff check src tests chatqec_app
 uv run mypy src
 uv run chatqec canonical validate

@@ -33,7 +33,8 @@ def test_streamlit_root_renders():
     at = AppTest.from_file(str(REPO_ROOT / "chatqec_app/streamlit_app.py"), default_timeout=10)
     at.run()
     assert not at.exception
-    assert any("ChatQEC" in t.value for t in at.title)
+    # streamlit_app.py now redirects straight to the Chat page (st.switch_page)
+    assert any("Chat" in t.value for t in at.title)
 
 
 def test_about_page_renders():
