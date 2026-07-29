@@ -14,6 +14,10 @@ from chatqec_mcp_tools.tools.code_params import (
     CodeParamsInput,
     code_params,
 )
+from chatqec_mcp_tools.tools.glcb_visualize import (
+    GlcbVisualizeInput,
+    glcb_visualize_url,
+)
 from chatqec_mcp_tools.tools.pymatching_decode import (
     PymatchingDecodeInput,
     pymatching_decode,
@@ -74,6 +78,10 @@ def _qec_circuit_build_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _tsim_simulate_handler(args: dict[str, Any]) -> dict[str, Any]:
     return tsim_simulate(TsimSimulateInput.model_validate(args)).model_dump()
+
+
+def _glcb_visualize_url_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return glcb_visualize_url(GlcbVisualizeInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -154,6 +162,17 @@ _TOOLS = [
         ),
         input_schema=TsimSimulateInput.model_json_schema(),
         handler=_tsim_simulate_handler,
+    ),
+    ToolSpec(
+        name="glcb_visualize_url",
+        description=(
+            "Build a shareable QuEra GLCB (gemini-logical-circuit-builder.vercel.app) "
+            "visualization link for a small circuit. Returns a clickable URL with "
+            "circuit diagram, expected values, noise sampling, decoding, and Bloqade "
+            "code export; pure string encoding, no network call or external dependency."
+        ),
+        input_schema=GlcbVisualizeInput.model_json_schema(),
+        handler=_glcb_visualize_url_handler,
     ),
 ]
 
