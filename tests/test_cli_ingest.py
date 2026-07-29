@@ -116,7 +116,54 @@ def test_fetch_url_as_markdown_skips_trafilatura_for_md_suffix(monkeypatch):
         "https://tsim.mintlify.app/api-reference/circuit.md"
     )
     assert md_text == md_content
-    assert title == "https://tsim.mintlify.app/api-reference/circuit.md"
+    # Title comes from the content's first H1 heading, not the bare URL.
+    assert title == "Circuit API"
+
+
+def test_fetch_url_as_markdown_falls_back_to_url_when_no_title_found(monkeypatch):
+    """When already-markdown content has neither YAML frontmatter `title:` nor
+    an H1 heading, the fetcher falls back to the URL rather than leaving the
+    title empty."""
+    from chatqec.cli import _fetch_url_as_markdown
+
+    md_content = "Just a plain paragraph, no heading at all.\n"
+
+    class FakeResponse:
+        text = md_content
+        headers: ClassVar[dict[str, str]] = {}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    monkeypatch.setattr("requests.get", lambda url, timeout=30: FakeResponse())
+    monkeypatch.setattr(
+        "trafilatura.extract",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not reach trafilatura")),
+    )
+
+    title, md_text, _publish_date = _fetch_url_as_markdown("https://example.com/notes.md")
+    assert md_text == md_content
+    assert title == "https://example.com/notes.md"
+
+
+def test_fetch_url_as_markdown_uses_frontmatter_title(monkeypatch):
+    """YAML frontmatter's `title:` key takes precedence over any H1 heading."""
+    from chatqec.cli import _fetch_url_as_markdown
+
+    md_content = "---\ntitle: Frontmatter Title\n---\n\n# A Different Heading\n\nBody.\n"
+
+    class FakeResponse:
+        text = md_content
+        headers: ClassVar[dict[str, str]] = {}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    monkeypatch.setattr("requests.get", lambda url, timeout=30: FakeResponse())
+
+    title, md_text, _publish_date = _fetch_url_as_markdown("https://example.com/page.md")
+    assert md_text == md_content
+    assert title == "Frontmatter Title"
 
 
 def test_fetch_url_as_markdown_skips_trafilatura_for_markdown_content_type(monkeypatch):
@@ -142,6 +189,37 @@ def test_fetch_url_as_markdown_skips_trafilatura_for_markdown_content_type(monke
 
     _title, md_text, _publish_date = _fetch_url_as_markdown("https://example.com/raw-notes")
     assert md_text == md_content
+
+
+def test_fetch_url_as_markdown_uses_trafilatura_for_genuine_html(monkeypatch):
+    """Negative case for the two skip tests above: a real HTML response (no
+    `.md` suffix, no markdown/plain-text Content-Type) must still be piped
+    through trafilatura rather than treated as already-markdown."""
+    from chatqec.cli import _fetch_url_as_markdown
+
+    html = "<html><head><title>A Page</title></head><body><p>Hello world.</p></body></html>"
+
+    class FakeResponse:
+        text = html
+        headers: ClassVar[dict[str, str]] = {"Content-Type": "text/html; charset=utf-8"}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    monkeypatch.setattr("requests.get", lambda url, timeout=30: FakeResponse())
+
+    calls = []
+
+    def _fake_extract(*args, **kwargs):
+        calls.append((args, kwargs))
+        return "Hello world."
+
+    monkeypatch.setattr("trafilatura.extract", _fake_extract)
+    monkeypatch.setattr("trafilatura.extract_metadata", lambda text: None)
+
+    _title, md_text, _publish_date = _fetch_url_as_markdown("https://example.com/article")
+    assert len(calls) == 1
+    assert md_text == "Hello world."
 
 
 def test_ingest_arxiv_with_resolve_by_title(

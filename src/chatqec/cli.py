@@ -651,6 +651,34 @@ def canonical_embed(
     click.echo(f"embedded {len(staged)} pages, {total} chunks → {collection}")
 
 
+def _extract_markdown_title(text: str) -> str:
+    """Best-effort title extraction from raw markdown text.
+
+    Tries YAML frontmatter's `title:` key first, then the first `# ` H1
+    heading. Returns `""` (caller falls back to the URL) if neither is found —
+    this is what keeps already-markdown fetches (Docusaurus/Mintlify `.md`
+    pages) from being registered under a bare URL as their title.
+    """
+    stripped = text.lstrip("﻿")
+    if stripped.startswith("---"):
+        end = stripped.find("\n---", 3)
+        if end != -1:
+            frontmatter = stripped[3:end]
+            for line in frontmatter.splitlines():
+                m = re.match(r"^\s*title\s*:\s*(.+?)\s*$", line)
+                if m:
+                    value = m.group(1).strip().strip("'\"")
+                    if value:
+                        return value
+    for line in stripped.splitlines():
+        candidate = line.strip()
+        if candidate.startswith("# "):
+            heading = candidate[2:].strip()
+            if heading:
+                return heading
+    return ""
+
+
 def _fetch_url_as_markdown(url: str) -> tuple[str, str, str]:
     """Default URL fetcher: HTTP GET + trafilatura → markdown. Overridable in tests.
 
@@ -672,7 +700,8 @@ def _fetch_url_as_markdown(url: str) -> tuple[str, str, str]:
         ct in content_type for ct in ("text/markdown", "text/plain")
     )
     if already_markdown:
-        return url, resp.text, ""
+        title = _extract_markdown_title(resp.text) or url
+        return title, resp.text, ""
 
     import trafilatura
 
