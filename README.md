@@ -9,6 +9,7 @@ Streamlit web app. (GitHub-repo and video-transcript fetchers exist but the
 corpus isn't seeded with them yet — see [Roadmap](#roadmap).)
 
 [Stim]: https://github.com/quantumlib/Stim
+
 > **Status: v0.1.0 — first public release.** The pipeline is end-to-end and
 > testable; it ships with the full 60-page canonical wiki (chunked and embedded
 > into Qdrant) and grows via the watchlist refresh job. See [Roadmap](#roadmap).
@@ -44,14 +45,42 @@ git clone https://github.com/QSCSoftwareThrust/ChatQEC.git
 cd chatqec
 uv sync --extra dev
 
-# bring up Qdrant for the vector store
+# bring up Qdrant for the vector store (starts empty)
 docker compose up -d
 
 # set API keys (or copy to .env)
 export ANTHROPIC_API_KEY=sk-ant-...
 export GEMINI_API_KEY=...
+```
 
-# ask
+`docker compose up` gives you an **empty** Qdrant — the ingested chunks
+themselves aren't in this git repo (only source metadata in
+`sources/registry.jsonl` is). Pick one:
+
+**Option A — I have a corpus snapshot** (fastest: skip ingestion entirely)
+```bash
+git clone git@code.ornl.gov:qsc-as/qec_corpus_snapshot.git
+curl -X POST 'http://localhost:6333/collections/chatqec_chunks/snapshots/upload?priority=snapshot' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'snapshot=@qec_corpus_snapshot/chatqec_chunks.snapshot'
+```
+See that repo's README for the checksum and what commit it was built from.
+
+**Option B — I don't have a corpus** (build it yourself; takes longer, needs
+`GITHUB_PERSONAL_ACCESS_TOKEN` for GitHub sources)
+```bash
+chatqec canonical embed              # 60-page hand-curated wiki — quick, no network fetch
+# then optionally re-populate the rest of the corpus, source by source:
+chatqec ingest --arxiv <id> --full-text
+chatqec ingest --github <org/repo> --commit-sha <sha> --github-paths docs
+chatqec embed --all-pending --provider gemini
+```
+`sources/registry.jsonl` lists every source currently in the corpus if you
+want to reproduce it fully — there's no single bulk "replay the registry"
+command yet, so this is source-by-source.
+
+Either way, once the corpus is in Qdrant:
+```bash
 uv run chatqec ask "What is the surface code threshold under depolarizing noise?"
 ```
 
