@@ -197,8 +197,13 @@ class ChatQEC:
             injected=[c.source_id for c in canonical_chunks],
         )
         web_chunks = self._web_chunks(question, retrieval)
-        figure_images = images or load_chunk_figures(retrieval.chunks)
-        figure_paths = [] if images else _chunk_figure_paths(retrieval.chunks)
+        # Skip generic corpus figures when MCP tools are available: a tool-driven
+        # answer renders its own circuit/plot, and unrelated textbook figures only
+        # add noise (they'd also cost vision tokens for no benefit — see
+        # docs/stim_getting_started_capability_check.md).
+        mcp_enabled = self.synthesizer.mcp_adapter is not None
+        figure_images = images or ([] if mcp_enabled else load_chunk_figures(retrieval.chunks))
+        figure_paths = [] if images or mcp_enabled else _chunk_figure_paths(retrieval.chunks)
         result = self.synthesizer.synthesize(
             question=question,
             retrieved=retrieval.chunks + web_chunks,
@@ -268,7 +273,8 @@ class ChatQEC:
             injected=[c.source_id for c in canonical_chunks],
         )
         web_chunks = self._web_chunks(question, retrieval)
-        figure_images = images or load_chunk_figures(retrieval.chunks)
+        mcp_enabled = self.synthesizer.mcp_adapter is not None
+        figure_images = images or ([] if mcp_enabled else load_chunk_figures(retrieval.chunks))
         full_text = ""
         for delta in self.synthesizer.synthesize_stream(
             question=question,

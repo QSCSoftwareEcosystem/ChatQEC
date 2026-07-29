@@ -40,6 +40,7 @@ def _build_chatqec(on_topic: bool = True, syn_text: str = "Answer [^1]."):
     canonical_index.pages = []
 
     synthesizer = MagicMock()
+    synthesizer.mcp_adapter = None  # MCP tools off by default, matching real ChatQEC
     synthesizer.synthesize.return_value = SynthesisResult(
         text=syn_text,
         citations=[],
@@ -137,6 +138,7 @@ def test_ask_attaches_retrieved_figures_to_synthesizer(tmp_path):
     canonical_index = MagicMock()
     canonical_index.pages = []
     synthesizer = MagicMock()
+    synthesizer.mcp_adapter = None  # no MCP tools -> corpus figures are still useful
     synthesizer.synthesize.return_value = SynthesisResult(
         text="Answer.", citations=[], confidence="medium"
     )
@@ -153,6 +155,52 @@ def test_ask_attaches_retrieved_figures_to_synthesizer(tmp_path):
 
     _, kwargs = synthesizer.synthesize.call_args
     assert len(kwargs["images"]) == 1
+
+
+def test_ask_skips_corpus_figures_when_mcp_tools_enabled(tmp_path):
+    """Retrieved textbook figures are noise once tool-rendered diagrams are
+    available — see docs/stim_getting_started_capability_check.md finding #3."""
+    from PIL import Image
+
+    img_path = tmp_path / "fig.png"
+    Image.new("RGB", (4, 4), color="white").save(img_path)
+
+    classifier = MagicMock()
+    classifier.classify.return_value = TopicVerdict(on_topic=True)
+    rewriter = MagicMock()
+    rewriter.rewrite.return_value = RewriteResult(rewritten="q", variants=[])
+    retriever = MagicMock()
+    chunk = RetrievedChunk(
+        chunk_id="x#0",
+        source_id="x",
+        text="c0",
+        title="T0",
+        authority_tier="preprint",
+        score=0.5,
+        payload={"url": "https://example.com", "figures": [str(img_path)]},
+    )
+    retriever.retrieve.return_value = RetrievalResult(chunks=[chunk], matched_topics=[])
+    canonical_index = MagicMock()
+    canonical_index.pages = []
+    synthesizer = MagicMock()
+    synthesizer.mcp_adapter = MagicMock()  # MCP tools attached
+    synthesizer.synthesize.return_value = SynthesisResult(
+        text="Answer.", citations=[], confidence="medium"
+    )
+
+    bot = ChatQEC(
+        classifier=classifier,
+        rewriter=rewriter,
+        retriever=retriever,
+        synthesizer=synthesizer,
+        canonical_index=canonical_index,
+        memory=ConversationMemory(),
+    )
+    answer = bot.ask("What is the surface code?")
+
+    _, kwargs = synthesizer.synthesize.call_args
+    assert kwargs["images"] == []
+    assert answer.figure_paths == []
 
 
 def test_ask_surfaces_tool_calls_when_synthesizer_invoked_tool():
