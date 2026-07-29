@@ -45,3 +45,16 @@ def test_simulate_caps_shots():
     ))
     # Either capped silently or rejected; behavior is deterministic
     assert out.ok is False or out.shots <= 1_000_000
+
+
+def test_simulate_preview_shows_all_rows_when_shots_fit():
+    out = stim_simulate(StimSimulateInput(circuit="H 0\nCNOT 0 1\nM 0 1\n", shots=10))
+    assert len(out.samples_preview) == 10
+    assert "ALL rows shown" in out.summary
+
+
+def test_simulate_preview_flags_truncation_for_large_shots():
+    out = stim_simulate(StimSimulateInput(circuit="M 0\n", shots=1000))
+    assert len(out.samples_preview) == 20
+    assert "TRUNCATED" in out.summary
+    assert "do not state or assume their values" in out.summary

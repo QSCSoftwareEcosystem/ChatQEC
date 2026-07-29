@@ -50,11 +50,16 @@ def stim_simulate(inp: StimSimulateInput) -> StimSimulateOutput:
             ok=False, shots=0, summary="", error_message=f"stim error: {e}",
         )
 
-    preview_rows = min(samples.shape[0], 8)
+    preview_cap = min(20, _MAX_SHOTS)
+    preview_rows = min(samples.shape[0], preview_cap)
     preview = [list(map(int, samples[i].tolist())) for i in range(preview_rows)]
+    truncated = preview_rows < samples.shape[0]
     summary = (
         f"shape={samples.shape}, dtype={samples.dtype}; "
-        f"showing first {preview_rows} rows (each row = measurements in record order)"
+        f"showing first {preview_rows} of {samples.shape[0]} rows"
+        + (" (TRUNCATED — remaining rows were sampled but are not shown; "
+           "do not state or assume their values)"
+           if truncated else " (ALL rows shown — none omitted)")
     )
     return StimSimulateOutput(
         ok=True, shots=inp.shots, summary=summary, samples_preview=preview,
