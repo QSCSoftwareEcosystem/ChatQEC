@@ -112,6 +112,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   terminal to a single pointer line; the Streamlit app exposes a sidebar
   "Verbose trace" toggle that renders the trace inline.
 
+### Fixed
+- Off-topic classifier now sees recent conversation history
+  (`OffTopicClassifier.classify(query, memory=...)`), not just the bare current
+  message. A context-dependent follow-up with no QEC keywords of its own (e.g.
+  "how many rounds you have considered?" right after a surface-code simulation)
+  was being refused as off-topic since the classifier ran before the rewriter
+  (which does get history) and had no way to know it continued a QEC
+  conversation. `api.py`'s two `ask`/`ask_stream` call sites now pass
+  `self.memory`; callers that don't pass `memory` (or pass an empty one) see
+  unchanged behavior.
+
 ### Changed
 - Re-ingested the 13 foundational arXiv papers as full text (≈711 chunks vs. 13
   abstract chunks); corpus grew to ~820 embedded chunks.

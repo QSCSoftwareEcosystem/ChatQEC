@@ -167,7 +167,7 @@ class ChatQEC:
         caption = self._caption(images)
         trace("image.caption", n_images=len(images), caption=caption)
         classify_text = f"{question}\n{caption}".strip() if caption else question
-        verdict = self.classifier.classify(classify_text)
+        verdict = self.classifier.classify(classify_text, memory=self.memory)
         trace("classify.verdict", on_topic=verdict.on_topic, refusal=verdict.refusal_message)
         if not verdict.on_topic:
             self.memory.add_user(question)
@@ -238,7 +238,7 @@ class ChatQEC:
         caption = self._caption(images)
         trace("image.caption", n_images=len(images), caption=caption)
         classify_text = f"{question}\n{caption}".strip() if caption else question
-        verdict = self.classifier.classify(classify_text)
+        verdict = self.classifier.classify(classify_text, memory=self.memory)
         trace("classify.verdict", on_topic=verdict.on_topic, refusal=verdict.refusal_message)
         if not verdict.on_topic:
             self.memory.add_user(question)

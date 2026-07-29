@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 from chatqec.conversation.classifier import OffTopicClassifier, TopicVerdict
+from chatqec.conversation.memory import ConversationMemory
 
 
 def _make_anthropic_with_response(text: str):
@@ -77,3 +78,59 @@ def test_classifier_includes_model_name_in_api_call():
     call_kwargs = client.messages.create.call_args.kwargs
     assert call_kwargs["model"] == "claude-haiku-4-5"
     assert call_kwargs["max_tokens"] <= 20
+
+
+def test_classifier_without_memory_sends_bare_query_unchanged():
+    # Backward compatibility: callers that never pass `memory` (or pass an
+    # empty one) must see the exact prior behavior — a bare query, no
+    # "Recent conversation:" wrapper.
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    clf.classify("what is the surface code?")
+    content = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert content == "what is the surface code?"
+
+
+def test_classifier_with_empty_memory_sends_bare_query_unchanged():
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    clf.classify("what is the surface code?", memory=ConversationMemory())
+    content = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert content == "what is the surface code?"
+
+
+def test_classifier_includes_recent_history_when_memory_has_turns():
+    # Regression guard: a context-dependent follow-up with no QEC keywords of
+    # its own ("how many rounds you have considered?") was misclassified
+    # off_topic because the classifier never saw the conversation it
+    # continued. The API call must now include recent turns as context.
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    memory = ConversationMemory()
+    memory.add_user("What's the logical error rate of the distance-5 rotated surface code?")
+    memory.add_assistant("Here are the simulation results from 100,000 shots...")
+
+    verdict = clf.classify("how many rounds you have considered?", memory=memory)
+
+    assert verdict.on_topic is True
+    content = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert "Recent conversation:" in content
+    assert "distance-5 rotated surface code" in content
+    assert "New question: how many rounds you have considered?" in content
+
+
+def test_classifier_history_respects_history_turns_limit():
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5", history_turns=2)
+    memory = ConversationMemory()
+    memory.add_user("first on-topic question about stabilizer codes")
+    memory.add_assistant("first answer")
+    memory.add_user("second question")
+    memory.add_assistant("second answer")
+
+    clf.classify("a follow-up", memory=memory)
+
+    content = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert "first on-topic question" not in content
+    assert "second question" in content
+    assert "second answer" in content
