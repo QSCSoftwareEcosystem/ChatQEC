@@ -652,12 +652,30 @@ def canonical_embed(
 
 
 def _fetch_url_as_markdown(url: str) -> tuple[str, str, str]:
-    """Default URL fetcher: HTTP GET + trafilatura → markdown. Overridable in tests."""
+    """Default URL fetcher: HTTP GET + trafilatura → markdown. Overridable in tests.
+
+    Some doc sites (Docusaurus/Mintlify, etc.) serve already-plain-markdown at
+    their `.md` URLs. `trafilatura.extract` is an HTML-boilerplate remover and
+    can silently return `None` when fed non-HTML input, so we detect that case
+    (by URL suffix or response `Content-Type`) and use the raw response text
+    directly instead of piping it through trafilatura.
+    """
+    from urllib.parse import urlparse
+
     import requests
-    import trafilatura
 
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
+
+    content_type = resp.headers.get("Content-Type", "").lower()
+    already_markdown = urlparse(url).path.endswith(".md") or any(
+        ct in content_type for ct in ("text/markdown", "text/plain")
+    )
+    if already_markdown:
+        return url, resp.text, ""
+
+    import trafilatura
+
     extracted = trafilatura.extract(
         resp.text, output_format="markdown", include_links=True, with_metadata=True
     )
@@ -1109,6 +1127,9 @@ def ingest(
         title, md_text, publish_date = _fetch_url_as_markdown(url_value)
         md = URLMetadata(url=url_value, title=title, publish_date=publish_date)
         chunks = markdown_to_chunks(md, markdown_text=md_text, target_tokens=512, overlap_tokens=64)
+        if not chunks:
+            click.echo(f"no chunks produced from {url_value} — extraction empty", err=True)
+            raise SystemExit(1)
         source_id = chunks[0].source_id
         sink.write_many(source_id, chunks)
         reg.append(
