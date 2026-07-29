@@ -1,5 +1,6 @@
 """Chat page — streaming Q&A with cited evidence and tool output rendering."""
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -123,17 +124,43 @@ if submission and (question or uploaded):
     else:
         disable_trace()
 
+    # When MCP tools are attached, ask_stream() can't stream token-by-token anyway
+    # (run_tool_loop blocks until the whole tool loop finishes, then yields the
+    # full text as one chunk — see Synthesizer.synthesize_stream). Calling it and
+    # then bot.ask() again would re-run the entire pipeline including every tool
+    # call twice, at random-sampled Stim circuits' expense: the two runs can
+    # legitimately return different samples, so the text that streamed in and the
+    # text that gets persisted/shown could silently disagree. Skip straight to the
+    # single non-streaming call in that case. Same env var get_chatqec() uses to
+    # decide whether to attach the MCP adapter in the first place.
+    mcp_enabled = bool(os.environ.get("CHATQEC_MCP_SERVER"))
     with st.chat_message("assistant"):
-        placeholder = st.empty()
-        full = ""
-        for chunk in bot.ask_stream(question or "", images=images):
-            full += chunk.delta
-            placeholder.markdown(full + "▌")
-        placeholder.markdown(full)
+        if mcp_enabled:
+            with st.spinner("Running QEC tools…"):
+                answer = bot.ask(question or "", images=images)
+            st.markdown(answer.text)
+        else:
+            placeholder = st.empty()
+            full = ""
+            for chunk in bot.ask_stream(question or "", images=images):
+                full += chunk.delta
+                placeholder.markdown(full + "▌")
+            placeholder.markdown(full)
 
-    # Get final structured Answer from a non-stream call to harvest citations/tools
-    # (the streaming path doesn't return them yet; M9 stays explicit about this limit)
-    answer = bot.ask(question or "", images=images)
+            # Get final structured Answer from a non-stream call to harvest
+            # citations/tools (the streaming path doesn't return them yet; M9
+            # stays explicit about this limit).
+            answer = bot.ask(question or "", images=images)
+
+        # Rendered inside the same chat_message container as the answer text
+        # (not after it closes) so a blocked-on-bot.ask() rerun never leaves a
+        # prior turn's citation/tool widgets as an orphaned, stale-faded
+        # leftover sitting below the next turn's spinner.
+        for c in answer.citations:
+            citation_card.render(c)
+        for t in answer.tool_calls:
+            tool_output.render(t)
+        _render_figures(answer.figure_paths)
     if images:
         budget.charge(amount_usd=0.01 * len(images), now=now)
 
@@ -150,11 +177,6 @@ if submission and (question or uploaded):
             "figures": answer.figure_paths,
         }
     )
-    for c in answer.citations:
-        citation_card.render(c)
-    for t in answer.tool_calls:
-        tool_output.render(t)
-    _render_figures(answer.figure_paths)
 
 # --- footer: usage transparency ---
 ip = client_ip()
