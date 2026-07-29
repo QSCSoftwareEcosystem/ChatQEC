@@ -1,0 +1,39 @@
+
+===== ChatQEC trace @ 2026-07-28T22:36:13 =====
+
+[001] 22:36:19.043  mcp.spawn
+    server_command = chatqec-mcp-tools
+    argv = ['chatqec-mcp-tools']
+
+[002] 22:36:19.357  mcp.tools_loaded
+    tools = ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+
+[003] 22:36:19.357  ask.question
+    question =
+        Simulate `FOO_BAR_NOT_A_GATE 0
+        M 0` with Tsim for 10 shots.
+    top_k = 8
+    candidate_k = 50
+
+[004] 22:36:19.357  image.caption
+    n_images = 0
+    caption =
+
+[005] 22:36:19.357  classifier.call
+    model = claude-haiku-4-5
+    query =
+        Simulate `FOO_BAR_NOT_A_GATE 0
+        M 0` with Tsim for 10 shots.
+
+[006] 22:36:20.346  provider.backend_selected
+    backend = anthropic
+    requested_model = claude-haiku-4-5
+    model = claude-haiku-4-5
+
+[007] 22:36:20.346  classifier.response
+    model = claude-haiku-4-5
+    raw = off_topic
+
+[008] 22:36:20.346  classify.verdict
+    on_topic = False
+    refusal = ChatQEC only answers Quantum Error Correction questions. Please rephrase your question to focus on QEC, fault tolerance, stabilizer codes, decoders, or related topics.

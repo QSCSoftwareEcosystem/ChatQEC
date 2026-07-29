@@ -31,16 +31,23 @@ classifier `claude-haiku-4-5`. Run 2026-07-28.
 | `ts-nonclifford-001` | `T` gate on Tsim vs. plain Stim | `tsim_simulate(RX 0\nT 0\nH 0\nM 0\nDETECTOR rec[-1], shots=200)` | ✅ Correct — real stochastic mix of 0/1 in the 20-row preview (`[0,0,0,0,0,1,0,0,0,1,0,1,1,0,0,0,0,0,1,0]`, `shape=(200,1)`), matching the reference's "genuine mix, non-deterministic"; correctly stated plain Stim has no `T` gate and would reject the circuit, without inventing an exact Stim error string |
 | `ts-magic-002` | Magic-state prep step (real Tsim tutorial circuit) + DETECTOR | `tsim_simulate(R 0\nR_X(-0.3040867239846964) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1], shots=2000)` | ✅ Correct — `ok=True, shape=(2000,1)`, preview mix of 0/1 (8/20 ones in the raw log); correctly described this as one state-prep step from the tutorial, not the full protocol, and correctly flagged Tsim's raw (non-XOR) detector convention rather than assuming Stim semantics |
 | `glcb-build-001` | Bell-pair GLCB link | *(first two attempts: none — see below)*, then `glcb_visualize_url(qubits=2, gates=[h@0→[0], cx@1→[0,1]])` | ✅ Correct on the 3rd attempt — returned `https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}`, a byte-for-byte match to the reference URL. **The first two attempts (exact prompt wording from the eval file, and a verbatim retry) were both rejected pre-tool-call by the Haiku off-topic classifier** as `off_topic` ("Build a GLCB visualization link for the Bell-pair circuit...") — see Known limitations below. A third attempt prefixed with "For a QEC stabilizer-code demo, ..." passed classification and got the correct result |
-| `ts-edge-003` | Invalid gate name | *(first attempt: none — classifier rejection)*, then `tsim_simulate(FOO_BAR_NOT_A_GATE 0\nM 0, shots=10)` | ✅ Correct on the 2nd (QEC-framed) attempt — `ok=False, error_message="tsim error: Gate not found: 'FOO_BAR_NOT_A_GATE'"`, exact match to the reference; the model reported the real failure honestly rather than a hand-rolled explanation, and correctly generalized this as a compile-time gate-validation error |
+| `ts-edge-003` | Invalid gate name | *(1st + 2nd attempts: none — classifier rejection)*, then `tsim_simulate(FOO_BAR_NOT_A_GATE 0\nM 0, shots=10)` | ✅ Correct on the 3rd attempt — `ok=False, error_message="tsim error: Gate not found: 'FOO_BAR_NOT_A_GATE'"`, exact match to the reference; the model reported the real failure honestly rather than a hand-rolled explanation, and correctly generalized this as a compile-time gate-validation error. **Both the eval file's exact literal wording (re-run separately and confirmed in `ts-edge-003-literal.txt`) and an earlier QEC-prefixed paraphrase ("For a QEC test, simulate this gate sequence with Tsim: ...") were rejected pre-tool-call by the off-topic classifier**; only a more explicit rephrasing ("In the context of quantum error correction circuit simulation, use Tsim to simulate this stabilizer circuit: ...") passed classification and got the correct result |
 | `ts-combined-001` | Bell pair: simulate + visualize with the SAME circuit | `tsim_simulate(H 0\nCNOT 0 1\nM 0 1\nDETECTOR rec[-1] rec[-2], shots=2000)`, `glcb_visualize_url(qubits=2, gates=[h@0→[0], cx@1→[0,1]])` | ✅ Correct and consistent — detector preview all `[0]` across all 2000 shots (perfect noiseless ZZ correlation, matching the reference); GLCB URL byte-for-byte identical to the reference; the model kept the gate order (H then CX on qubits 0,1) consistent across both tool calls |
 
 **Bottom line:** all 5 prompts eventually got real, correct numbers/URLs from
 the actual installed `bloqade-tsim==0.1.5` and the real `glcb_visualize_url`
 encoder — no hand-rolled samples, no invented URLs, no fabricated error
-strings. The one unplanned finding: **2 of the 5 prompts, as literally worded
-in `eval/tsim_prompts.json`, were rejected by the off-topic classifier before
-any tool was ever considered** — a genuine, reproducible (reran once,
-rejected both times) limitation, not a fluke, documented honestly below
+strings. The one unplanned finding: **for both `glcb-build-001` and
+`ts-edge-003`, the eval file's exact literal wording was rejected by the
+off-topic classifier before any tool was ever considered** — confirmed for
+`glcb-build-001` by two runs of its literal wording (both rejected), and for
+`ts-edge-003` by a dedicated re-run of its literal wording after the initial
+task pass had (incorrectly) cited a paraphrased attempt as evidence — see
+`ts-edge-003-literal.txt`. A milder QEC-flavored paraphrase of `ts-edge-003`
+("For a QEC test, simulate this gate sequence with Tsim: ...") was *also*
+rejected; only a more explicit rephrasing naming "quantum error correction
+circuit simulation" and "stabilizer circuit" passed. This is a genuine,
+reproducible classifier limitation, not a fluke, documented honestly below
 rather than papered over with a "successful" run that never actually
 happened for that exact wording.
 
@@ -72,17 +79,31 @@ happened for that exact wording.
 ## Known limitations (verified against the real adapter and the real classifier)
 
 - **The off-topic classifier can reject a legitimate GLCB/Tsim tool-use
-  prompt if it doesn't read as QEC-flavored.** Two of the five prompts run
-  here (`glcb-build-001`'s exact eval wording, `ts-edge-003`'s exact eval
-  wording) were rejected pre-tool-call with `classifier.response = off_topic`
-  from `claude-haiku-4-5` — reproduced twice for `glcb-build-001` before a
-  QEC-framed rephrasing ("For a QEC stabilizer-code demo, ...") passed. This
-  is a real behavior of the shipped classifier prompt, not a bug in either
-  MCP tool — both tools worked correctly once the question was classified
-  on-topic. Worth knowing when writing prompts for these two tools in
-  particular: circuit-building/visualization requests that don't mention
-  QEC, stabilizers, fault tolerance, or decoding by name are at real risk of
-  being turned away before they reach the tool-use loop.
+  prompt if it doesn't read as QEC-flavored — even the eval file's own
+  literal wording.** Both of the five run prompts that have a `tool_edge_case`
+  or `glcb_build` category (`glcb-build-001`, `ts-edge-003`) had their exact,
+  unmodified `eval/tsim_prompts.json` question text rejected pre-tool-call
+  with `classifier.response = off_topic` from `claude-haiku-4-5`:
+  - `glcb-build-001`: rejected twice on the literal wording
+    (`glcb-build-001.txt`, `glcb-build-001-retry.txt`); a QEC-framed
+    rephrasing ("For a QEC stabilizer-code demo, ...") then passed
+    (`glcb-build-001-rephrased.txt`).
+  - `ts-edge-003`: rejected on the literal wording, confirmed by a dedicated
+    re-run (`ts-edge-003-literal.txt`) — a milder QEC-flavored paraphrase
+    ("For a QEC test, simulate this gate sequence with Tsim: ...") was
+    *also* rejected (first entry in `ts-edge-003.txt`); only an explicit
+    rephrasing naming "quantum error correction circuit simulation" and
+    "stabilizer circuit" passed classification (second entry in the same
+    file).
+
+  This is a real behavior of the shipped classifier prompt, not a bug in
+  either MCP tool — both tools worked correctly once the question was
+  classified on-topic. Worth knowing when writing prompts for these two
+  tools in particular: circuit-building/visualization/simulation requests
+  that don't mention QEC, stabilizers, fault tolerance, or decoding by name
+  are at real risk of being turned away before they reach the tool-use loop
+  — even fairly QEC-adjacent phrasing (e.g. "For a QEC test, ...") isn't
+  always enough.
 - **`tsim_simulate` always calls `compile_detector_sampler()` internally.** A
   circuit with `M` but no `DETECTOR`/`OBSERVABLE_INCLUDE` returns
   `samples_preview` with shape `(shots, 0)` — it does **not** return raw
