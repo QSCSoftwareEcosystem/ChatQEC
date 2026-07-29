@@ -1,0 +1,243 @@
+{
+  "description": "Benchmark prompts for ChatQEC's Tsim + GLCB integration — covers the tsim_simulate MCP tool (GPU-accelerated Stim-superset simulator supporting non-Clifford gates via stabilizer rank decomposition) and glcb_visualize_url (shareable QuEra Gemini Logical Circuit Builder links, pure URL-encoding, no network call). Companion file to eval/lightstim_qec_prompts.json and eval/stim_qec_prompts.json, same shape. All reference values were computed live by calling tsim_simulate/glcb_visualize_url directly against bloqade-tsim==0.1.5 installed from the quera-tsim-glcb worktree (uv tool install --force '.[tsim]'); nothing here is fabricated. A load-bearing quirk discovered while computing these: tsim_simulate always calls Circuit.compile_detector_sampler() internally, so a circuit with M but no DETECTOR/OBSERVABLE_INCLUDE returns samples_preview with shape (shots, 0) — it does NOT return raw measurement bits the way stim_simulate does for the identical circuit text (see ts-clifford-001, ts-magic-001). Not run in bulk; a subset should be spot-checked the same way docs/stim_getting_started_capability_check.md does for the sibling benchmarks.",
+  "sources": {
+    "arxiv": "arxiv:2604.01059",
+    "github": "github:QuEraComputing/tsim@21757967",
+    "docs_mintlify_index": "url:482217e16477bb99",
+    "docs_mintlify_from_stim_to_tsim": "url:a661e3dee4872a0b",
+    "docs_mintlify_magic_state_distillation": "url:120344a774571cbe"
+  },
+  "categories": {
+    "tool_simulate_clifford": "tsim_simulate on a plain Clifford circuit — sanity baseline; should behave consistently with Stim's Clifford semantics modulo the detector-sampler-shape quirk above",
+    "tool_simulate_nonclifford": "tsim_simulate on a circuit using T/T_DAG — Stim's own stim.Circuit() raises ValueError('Gate not found') on this text; Tsim accepts and runs it. The headline capability.",
+    "tool_simulate_magic_state": "tsim_simulate on a real magic-state-preparation circuit from Tsim's own tutorial — the flagship real-world use case",
+    "tool_reference_convention": "Surfaces the documented Stim-vs-Tsim semantic difference: Tsim reports actual (non-deterministic) detector/observable samples by default; use_reference_sample=true XORs against a noiseless reference sample to match Stim's detection-flip convention. Verify the model explains this rather than silently assuming Stim semantics.",
+    "tool_edge_case": "tsim_simulate should fail gracefully (ok=False with a clear error_message) on oversized circuits, excess shots, or malformed instructions — not crash",
+    "glcb_build": "Should invoke glcb_visualize_url for a small circuit and return a real, correctly-encoded link",
+    "glcb_edge_case": "A gate targeting a qubit index >= qubits should return ok=False, not a malformed URL",
+    "combined": "Should build/simulate with tsim_simulate (or qec_circuit_build/code_params) and visualize the SAME circuit with glcb_visualize_url, coherently",
+    "retrieval_paper": "Corpus-only — should cite arxiv:2604.01059, no tool call needed",
+    "retrieval_docs": "Corpus-only — should cite the ingested mintlify docs and/or github:QuEraComputing/tsim@21757967, no tool call needed"
+  },
+  "prompts": [
+    {
+      "id": "ts-clifford-001",
+      "category": "tool_simulate_clifford",
+      "question": "Using Tsim, create a simple 2-qubit circuit that prepares a Bell pair (H on qubit 0, CNOT from 0 to 1) and measures both qubits in the Z basis. Simulate 2000 shots.",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "circuit": "H 0\nCNOT 0 1\nM 0 1",
+        "shots": 2000,
+        "verified_outcome": "ok=True, shots=2000, but samples_preview shape is (2000, 0) — no DETECTOR/OBSERVABLE_INCLUDE in the circuit means compile_detector_sampler() has nothing to report, even though 2 qubits were measured."
+      },
+      "notes": "Same circuit as st-sim-001 in eval/stim_qec_prompts.json, which DOES return raw [0,0]/[1,1] rows under stim_simulate. A correct answer notices tsim_simulate's empty preview here and does not claim to see ZZ correlation in samples_preview; compare with ts-clifford-002, which adds a DETECTOR to get a meaningful result."
+    },
+    {
+      "id": "ts-clifford-002",
+      "category": "tool_simulate_clifford",
+      "question": "Same Bell-pair circuit, but add a DETECTOR on the parity of the two measurements so we can actually see a result: `H 0\\nCNOT 0 1\\nM 0 1\\nDETECTOR rec[-1] rec[-2]`. Simulate 2000 shots.",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "circuit": "H 0\nCNOT 0 1\nM 0 1\nDETECTOR rec[-1] rec[-2]",
+        "shots": 2000,
+        "verified_outcome": "ok=True, shape=(2000,1), every one of the first 20 previewed rows is [0] — deterministic, since the circuit is noiseless. Verified identical under both use_reference_sample=False (default) and =True, because a noiseless run never deviates from its own reference."
+      }
+    },
+    {
+      "id": "ts-nonclifford-001",
+      "category": "tool_simulate_nonclifford",
+      "question": "Simulate this circuit with Tsim: `RX 0\\nT 0\\nH 0\\nM 0\\nDETECTOR rec[-1]` for 200 shots. If I tried to run this with plain Stim instead, what would happen?",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "circuit": "RX 0\nT 0\nH 0\nM 0\nDETECTOR rec[-1]",
+        "shots": 200,
+        "verified_outcome": "ok=True, shots=200, shape=(200,1), previewed rows are a genuine mix of 0/1 (stochastic — T is a real non-Clifford rotation, not deterministic).",
+        "stim_behavior": "Verified live: stim.Circuit('RX 0\\nT 0\\nH 0\\nM 0\\nDETECTOR rec[-1]') raises ValueError: \"Gate not found: 'T'\" — Stim has no T gate at all (S/S_DAG only, since T is non-Clifford)."
+      },
+      "notes": "This exact circuit is Tsim's own test-suite example for exercising non-Clifford support (tests/test_tsim_simulate.py::test_t_gate_circuit_with_real_tsim in the chatqec-mcp-tools repo). A correct answer runs it via tsim_simulate and correctly states Stim would reject it, rather than silently substituting an S gate or refusing the whole request."
+    },
+    {
+      "id": "ts-nonclifford-002",
+      "category": "tool_simulate_nonclifford",
+      "question": "Now try the T_DAG version: `RX 0\\nT_DAG 0\\nH 0\\nM 0\\nDETECTOR rec[-1]`, 500 shots.",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "circuit": "RX 0\nT_DAG 0\nH 0\nM 0\nDETECTOR rec[-1]",
+        "shots": 500,
+        "verified_outcome": "ok=True, shots=500, shape=(500,1), previewed rows are a mix of 0/1.",
+        "stim_behavior": "Verified live: stim.Circuit(...) raises ValueError: \"Gate not found: 'T_DAG'\"."
+      }
+    },
+    {
+      "id": "ts-magic-001",
+      "category": "tool_simulate_magic_state",
+      "question": "Tsim's magic_state_distillation tutorial has this single-qubit magic-state preparation step: `R 0\\nR_X(-0.30410731536166367) 0\\nT_DAG 0\\nDEPOLARIZE1(0.05) 0\\nM 0`. Simulate it for 2000 shots and tell me what you get.",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "circuit": "R 0\nR_X(-0.30410731536166367) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0",
+        "shots": 2000,
+        "verified_outcome": "ok=True, shots=2000, but samples_preview shape is (2000, 0) — same tool-shape quirk as ts-clifford-001: the circuit measures M 0 but declares no DETECTOR/OBSERVABLE_INCLUDE, so nothing is exposed in the preview even though the tool call succeeded."
+      },
+      "notes": "The angle -0.30410731536166367 = -arccos(sqrt(1/3))/pi (in units of pi, per Tsim's own tutorial), preparing an eigenstate of the 'SH' operator via R_X + T_DAG, then a 5% single-qubit depolarizing channel. This is ONE preparation step from the tutorial, not the full 85-qubit magic-state distillation/cultivation circuit the tutorial goes on to build — a correct answer should describe it as a preparation step, not overclaim it reproduces the full published protocol. A correct answer also notices the empty preview rather than inventing measurement statistics."
+    },
+    {
+      "id": "ts-magic-002",
+      "category": "tool_simulate_magic_state",
+      "question": "Add a DETECTOR so we can actually see the outcome: `R 0\\nR_X(-0.30410731536166367) 0\\nT_DAG 0\\nDEPOLARIZE1(0.05) 0\\nM 0\\nDETECTOR rec[-1]`, 2000 shots.",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "circuit": "R 0\nR_X(-0.30410731536166367) 0\nT_DAG 0\nDEPOLARIZE1(0.05) 0\nM 0\nDETECTOR rec[-1]",
+        "shots": 2000,
+        "verified_outcome": "ok=True, shape=(2000,1); previewed rows are a mix of 0/1, driven by the 5% depolarizing channel plus the non-Clifford R_X/T_DAG state prep."
+      }
+    },
+    {
+      "id": "ts-refconv-001",
+      "category": "tool_reference_convention",
+      "question": "Run `X 0\\nM 0\\nDETECTOR rec[-1]` with Tsim twice — once with default settings, once with use_reference_sample=true — for 50 shots each. There's no noise in this circuit at all. Explain why the detector value differs between the two runs.",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "circuit": "X 0\nM 0\nDETECTOR rec[-1]",
+        "shots": 50,
+        "default_use_reference_sample_false": "verified: all 50 previewed rows are [1] (detector reports True)",
+        "use_reference_sample_true": "verified: all 50 previewed rows are [0] (detector reports False)",
+        "explanation": "By default Tsim reports the ACTUAL detector value (the X gate deterministically flips the measurement to 1, so the detector reads True/1 every shot, noise or not). With use_reference_sample=true, Tsim XORs against a noiseless reference sample first — matching Stim's convention where a detector means 'did this shot deviate from the expected noiseless outcome', which for a noiseless circuit is always 0/False."
+      },
+      "notes": "This is the literal worked example from Tsim's own GitHub README 'Differences from Stim' section (verified via WebFetch, 2026-07-28): 'a circuit with an X gate followed by measurement will report detection as True in Tsim but False in Stim.' A correct answer should not claim this is a bug or randomness — it's documented, intentional semantics."
+    },
+    {
+      "id": "ts-refconv-002",
+      "category": "tool_reference_convention",
+      "question": "I ran tsim_simulate on a noisy repetition-code-style circuit with default settings and got a detector firing rate of about 20%. Does that mean roughly 20% of shots have a decodable error, the same interpretation I'd use if stim_simulate reported a 20% detector rate?",
+      "notes": "No single correct 'reference' number — this is a conceptual check. Correct answer: no, not necessarily the same interpretation. Tsim's default (use_reference_sample=false) reports the actual/raw detector outcome, not a flip-relative-to-noiseless-expectation the way Stim always does. A 20% raw firing rate under Tsim's default convention conflates 'the detector's expected value in the noiseless circuit' with 'the noise-induced deviation rate' — those are only the same number if the noiseless expectation is 0. To get an apples-to-apples comparison with a Stim-reported rate, the model should say to re-run tsim_simulate with use_reference_sample=true first.",
+      "expected_source_id_prefixes": ["url:482217e16477bb99", "github:QuEraComputing/tsim@21757967"]
+    },
+    {
+      "id": "ts-edge-001",
+      "category": "tool_edge_case",
+      "question": "Simulate `H 0\\nM 0` repeated as a 100,000-line circuit (`H 0\\n` x 100,000) for 1 shot with Tsim.",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "circuit_bytes": 400000,
+        "verified_outcome": "ok=False, error_message='circuit too large (>256 KB)' — the tool's _MAX_CIRCUIT_BYTES is 262144 bytes (256 KB); 100,000 x 'H 0\\n' is 400,000 bytes."
+      }
+    },
+    {
+      "id": "ts-edge-002",
+      "category": "tool_edge_case",
+      "question": "Simulate `H 0\\nM 0` with Tsim for 200,000 shots.",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "shots": 200000,
+        "verified_outcome": "ok=False, error_message='shots > 100,000 not permitted' — Tsim's own _MAX_SHOTS cap (100,000) is lower than stim_simulate's 1,000,000, because Tsim's ZX/JAX pipeline is far more expensive per shot."
+      }
+    },
+    {
+      "id": "ts-edge-003",
+      "category": "tool_edge_case",
+      "question": "Simulate `FOO_BAR_NOT_A_GATE 0\\nM 0` with Tsim for 10 shots.",
+      "expected_tool": "tsim_simulate",
+      "reference": {
+        "circuit": "FOO_BAR_NOT_A_GATE 0\nM 0",
+        "verified_outcome": "ok=False, error_message=\"tsim error: Gate not found: 'FOO_BAR_NOT_A_GATE'\""
+      }
+    },
+    {
+      "id": "glcb-build-001",
+      "category": "glcb_build",
+      "question": "Build a GLCB visualization link for the Bell-pair circuit: H on qubit 0 (column 0), then CX from qubit 0 to qubit 1 (column 1), on a 2-qubit register.",
+      "expected_tool": "glcb_visualize_url",
+      "reference": {
+        "ok": true,
+        "url": "https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}"
+      },
+      "notes": "Exact byte-for-byte match to test_bell_pair_matches_known_url_exactly in tests/test_glcb_visualize.py (chatqec-mcp-tools repo)."
+    },
+    {
+      "id": "glcb-build-002",
+      "category": "glcb_build",
+      "question": "Build a GLCB link for a 3-qubit circuit: H on qubit 2 (col 0), CX 2->1 (col 1), CX 0->1 (col 2), H on qubit 0 (col 3), H on qubit 2 (col 4); prep qubit 0 with theta=1.570796, phi=0, lam=0; postselect qubit 0 on value 0 and qubit 1 on value 0.",
+      "expected_tool": "glcb_visualize_url",
+      "reference": {
+        "ok": true,
+        "url": "https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:3,gates:[{gate:h,column:0,targets:[2]},{gate:cx,column:1,targets:[2,1]},{gate:cx,column:2,targets:[0,1]},{gate:h,column:3,targets:[0]},{gate:h,column:4,targets:[2]}],prep:[{qubit:0,theta:1.570796,phi:0,lam:0}],postselect:[{qubit:0,value:0},{qubit:1,value:0}],sampler:clifft}"
+      },
+      "notes": "Matches test_prep_and_postselect_matches_known_url_exactly in tests/test_glcb_visualize.py — a state-prep + postselection example, not just a bare gate sequence."
+    },
+    {
+      "id": "glcb-edge-001",
+      "category": "glcb_edge_case",
+      "question": "Build a GLCB link for a 2-qubit circuit with an H gate targeting qubit 5.",
+      "expected_tool": "glcb_visualize_url",
+      "reference": {
+        "ok": false,
+        "error_message": "gate 'h' targets qubit >= qubits=2"
+      },
+      "notes": "Matches test_out_of_range_target_returns_ok_false. Correct answer reports the failure, not a URL with an out-of-range target silently encoded."
+    },
+    {
+      "id": "ts-combined-001",
+      "category": "combined",
+      "question": "Simulate the Bell-pair circuit with Tsim (H 0, CNOT 0 1, M 0 1, with a DETECTOR on the measurement parity) for 2000 shots to confirm the correlation, then build a GLCB visualization link for the same circuit (H, then CX).",
+      "expected_tool": ["tsim_simulate", "glcb_visualize_url"],
+      "reference": {
+        "tsim_simulate": {
+          "circuit": "H 0\nCNOT 0 1\nM 0 1\nDETECTOR rec[-1] rec[-2]",
+          "shots": 2000,
+          "verified_outcome": "ok=True, all previewed detector rows are [0] (perfect ZZ correlation, noiseless)"
+        },
+        "glcb_visualize_url": {
+          "ok": true,
+          "url": "https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}"
+        }
+      },
+      "notes": "Tests whether the model keeps the SAME circuit consistent across both tool calls (H then CX on qubits 0,1) rather than diagramming a different or inconsistent gate order."
+    },
+    {
+      "id": "ts-combined-002",
+      "category": "combined",
+      "question": "Simulate the non-Clifford circuit `RX 0\\nT 0\\nH 0\\nM 0\\nDETECTOR rec[-1]` with Tsim for 200 shots, then build a GLCB link for the same 3-gate sequence (RX, T, H) on qubit 0.",
+      "expected_tool": ["tsim_simulate", "glcb_visualize_url"],
+      "reference": {
+        "tsim_simulate": {
+          "circuit": "RX 0\nT 0\nH 0\nM 0\nDETECTOR rec[-1]",
+          "shots": 200,
+          "verified_outcome": "ok=True, shape=(200,1), stochastic mix of 0/1"
+        },
+        "glcb_visualize_url": {
+          "ok": true,
+          "url": "https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:1,gates:[{gate:rx,column:0,targets:[0]},{gate:t,column:1,targets:[0]},{gate:h,column:2,targets:[0]}],sampler:clifft}"
+        }
+      },
+      "notes": "glcb_visualize_url does no gate-name validation (pure string encoding, no network call) — it happily encodes gate:t even though this is exactly the gate Stim itself cannot run; the two tools are independent and don't cross-check each other's gate vocabulary."
+    },
+    {
+      "id": "ts-retrieval-001",
+      "category": "retrieval_paper",
+      "question": "What is stabilizer rank decomposition and how does Tsim use it to simulate non-Clifford circuits efficiently?",
+      "expected_source_id_prefixes": ["arxiv:2604.01059"],
+      "notes": "Should draw on the paper's use of Sutcliffe & Kissinger (2024)-style stabilizer rank decomposition: each circuit diagram is decomposed into a sum of Clifford terms, letting Tsim sample in linear time in the number of Clifford gates and exponential time only in the number of non-Clifford gates/terms."
+    },
+    {
+      "id": "ts-retrieval-002",
+      "category": "retrieval_paper",
+      "question": "What complexity does Tsim's sampling scale with, and why does that let it match Stim's throughput on 'low-magic' circuits but not on highly non-Clifford ones?",
+      "expected_source_id_prefixes": ["arxiv:2604.01059"],
+      "notes": "Should draw on the paper's stated complexity: linear in the number of Clifford gates, exponential only in the number of non-Clifford gates — so circuits with few non-Clifford gates ('low magic') sample at close to Stim's speed, while circuits with many T/T_DAG/etc. gates blow up exponentially."
+    },
+    {
+      "id": "ts-retrieval-003",
+      "category": "retrieval_docs",
+      "question": "According to Tsim's own docs, how do you convert an existing Stim script to use Tsim?",
+      "expected_source_id_prefixes": ["url:a661e3dee4872a0b", "github:QuEraComputing/tsim@21757967"],
+      "notes": "Should draw on tutorials/from_stim_to_tsim.md: 'in many cases, replacing stim with tsim should just work,' with call-outs that REPEAT blocks get flattened (not supported natively) and that detector/observable sampling semantics differ by default (see tool_reference_convention prompts)."
+    },
+    {
+      "id": "ts-retrieval-004",
+      "category": "retrieval_docs",
+      "question": "Beyond the standard Stim instruction set, what non-Clifford gates does Tsim add, and what units are their rotation angles specified in?",
+      "expected_source_id_prefixes": ["url:482217e16477bb99", "github:QuEraComputing/tsim@21757967"],
+      "notes": "Should draw on the docs' listed additional gates: T, T_DAG, R_X, R_Y, R_Z, U3, TPP, TPP_DAG, R_XX, R_YY, R_ZZ, R_PAULI, CCZ, CCX — with rotation angles given in units of pi (e.g. R_X(-0.304...) means -0.304*pi radians), matching the pi convention used in the magic-state tutorial circuit."
+    }
+  ]
+}
