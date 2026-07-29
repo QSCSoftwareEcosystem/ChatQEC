@@ -84,26 +84,7 @@ Either way, once the corpus is in Qdrant:
 uv run chatqec ask "What is the surface code threshold under depolarizing noise?"
 ```
 
-### Run the Streamlit app
-
-```bash
-uv run streamlit run chatqec_app/streamlit_app.py
-
-# …or with Stim tool use enabled (same as `ask --mcp-server`):
-CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_app.py
-```
-
-Four pages: **Chat** (streaming Q&A with citation cards), **Sources**
-(filterable registry view), **Watchlist** (what we track), **About**. Set
-`CHATQEC_MCP_SERVER` to let the Chat page run the QEC tools (off by default).
-
-> **`CHATQEC_MCP_SERVER` must be set _before_ you launch Streamlit, and the app
-> restarted** to pick it up — the bot is built once and cached (`@st.cache_resource`).
-> Without it the Chat page has no tools, so the model answers from the corpus and
-> says it *"couldn't invoke the live simulation tools."* Make sure the sibling is
-> installed/up to date first (see [Enable Stim execution](#enable-stim-execution)).
-
-### Enable Stim execution
+### Enable QEC tool execution (Stim, LightStim, Tsim, GLCB)
 
 Clone and install the sibling MCP server, then point `--mcp-server` at it:
 
@@ -171,6 +152,27 @@ guess.
 Anthropic first and **automatically fails over to Gemini** on credit/auth errors —
 so Stim answers keep working even when the Claude API is unavailable. (The
 `huggingface` provider has no tool-use support.)
+
+### Run the Streamlit app
+
+```bash
+uv run streamlit run chatqec_app/streamlit_app.py
+
+# …or with QEC tool use enabled (same as `ask --mcp-server`):
+CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_app.py
+```
+
+Four pages: **Chat** (streaming Q&A with citation cards), **Sources**
+(filterable registry view), **Watchlist** (what we track), **About**. Set
+`CHATQEC_MCP_SERVER` to let the Chat page run the QEC tools (off by default).
+
+> **`CHATQEC_MCP_SERVER` must be set _before_ you launch Streamlit, and the app
+> restarted** to pick it up — the bot is built once and cached (`@st.cache_resource`).
+> Without it the Chat page has no tools, so the model answers from the corpus and
+> says it *"couldn't invoke the live simulation tools."* Make sure the sibling is
+> installed/up to date first (see
+> [Enable QEC tool execution](#enable-qec-tool-execution-stim-lightstim-tsim-glcb)
+> above).
 
 ### CLI commands at a glance
 
