@@ -49,10 +49,20 @@ uv sync --extra dev
 # bring up Qdrant for the vector store (starts empty)
 docker compose up -d
 
+# confirm it's up (REST API on :6333) — should print a JSON {"result": {...}}
+curl -s http://localhost:6333/collections
+
 # set API keys (or copy to .env)
 export ANTHROPIC_API_KEY=sk-ant-...
 export GEMINI_API_KEY=...
 ```
+
+> **No Docker?** Run the native binary instead — no daemon, no root/sudo needed:
+> ```bash
+> QDRANT__STORAGE__STORAGE_PATH="$(pwd)/qdrant_data/storage" qdrant &
+> curl -s http://localhost:6333/collections   # same confirm step
+> ```
+> ([Install Qdrant](https://qdrant.tech/documentation/quick-start/) first if you don't have the binary.)
 
 `docker compose up` gives you an **empty** Qdrant — the ingested chunks
 themselves aren't in this git repo (only source metadata in
