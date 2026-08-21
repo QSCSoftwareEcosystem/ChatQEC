@@ -9,7 +9,6 @@ Streamlit web app. (GitHub-repo and video-transcript fetchers exist but the
 corpus isn't seeded with them yet — see [Roadmap](#roadmap).)
 
 [Stim]: https://github.com/quantumlib/Stim
-
 > **Status: v0.1.0 — first public release.** The pipeline is end-to-end and
 > testable; it ships with the full 60-page canonical wiki (chunked and embedded
 > into Qdrant) and grows via the watchlist refresh job. See [Roadmap](#roadmap).
@@ -58,10 +57,20 @@ export GEMINI_API_KEY=...
 ```
 
 > **No Docker?** Run the native binary instead — no daemon, no root/sudo needed:
+>
 > ```bash
-> QDRANT__STORAGE__STORAGE_PATH="$(pwd)/qdrant_data/storage" qdrant &
+> mkdir -p logs
+> QDRANT__STORAGE__STORAGE_PATH="$(pwd)/qdrant_data/storage" \
+>   QDRANT__STORAGE__SNAPSHOTS_PATH="$(pwd)/qdrant_data/snapshots" \
+>   nohup qdrant > logs/qdrant.log 2>&1 &
 > curl -s http://localhost:6333/collections   # same confirm step
 > ```
+>
+> `nohup ... &` keeps it running after you close the shell; logs land in
+> `logs/qdrant.log`. It does *not* survive a reboot, so re-run it after one.
+> `STORAGE_PATH` points at the same `qdrant_data/storage` the Compose file
+> mounts, so both routes share one corpus; `SNAPSHOTS_PATH` keeps snapshot
+> upload/restore (Option A below) inside the repo instead of the CWD.
 > ([Install Qdrant](https://qdrant.tech/documentation/quick-start/) first if you don't have the binary.)
 
 `docker compose up` gives you an **empty** Qdrant — the ingested chunks
@@ -69,16 +78,19 @@ themselves aren't in this git repo (only source metadata in
 `sources/registry.jsonl` is). Pick one:
 
 **Option A — I have a corpus snapshot** (fastest: skip ingestion entirely)
+
 ```bash
 git clone git@code.ornl.gov:qsc-as/qec_corpus_snapshot.git
 curl -X POST 'http://localhost:6333/collections/chatqec_chunks/snapshots/upload?priority=snapshot' \
   -H 'Content-Type: multipart/form-data' \
   -F 'snapshot=@qec_corpus_snapshot/chatqec_chunks.snapshot'
 ```
+
 See that repo's README for the checksum and what commit it was built from.
 
 **Option B — I don't have a corpus** (build it yourself; takes longer, needs
 `GITHUB_PERSONAL_ACCESS_TOKEN` for GitHub sources)
+
 ```bash
 chatqec canonical embed              # 60-page hand-curated wiki — quick, no network fetch
 # then optionally re-populate the rest of the corpus, source by source:
@@ -86,11 +98,13 @@ chatqec ingest --arxiv <id> --full-text
 chatqec ingest --github <org/repo> --commit-sha <sha> --github-paths docs
 chatqec embed --all-pending --provider gemini
 ```
+
 `sources/registry.jsonl` lists every source currently in the corpus if you
 want to reproduce it fully — there's no single bulk "replay the registry"
 command yet, so this is source-by-source.
 
 Either way, once the corpus is in Qdrant:
+
 ```bash
 uv run chatqec ask "What is the surface code threshold under depolarizing noise?"
 ```
@@ -165,6 +179,20 @@ so Stim answers keep working even when the Claude API is unavailable. (The
 `huggingface` provider has no tool-use support.)
 
 ### Run the Streamlit app
+
+**Qdrant must already be up**, otherwise the Chat page dies on load with
+`ResponseHandlingException: [Errno 111] Connection refused`. Start it first
+(`docker compose up -d`, or the native binary if you have no Docker):
+
+```bash
+mkdir -p logs
+QDRANT__STORAGE__STORAGE_PATH="$(pwd)/qdrant_data/storage" \
+  QDRANT__STORAGE__SNAPSHOTS_PATH="$(pwd)/qdrant_data/snapshots" \
+  nohup qdrant > logs/qdrant.log 2>&1 &
+curl -s http://localhost:6333/collections   # expect {"result":{"collections":[{"name":"chatqec_chunks"}]},...}
+```
+
+Then:
 
 ```bash
 uv run streamlit run chatqec_app/streamlit_app.py
@@ -341,12 +369,12 @@ The surface code threshold under depolarizing noise is...
 
 Four explicit values are available for `models.provider`:
 
-| Value                  | Behaviour                                                                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Value                  | Behaviour                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `auto` *(default)* | Try Anthropic → Gemini → HuggingFace, falling back on credit/auth/quota errors. Non-recoverable errors (5xx, network) still raise. |
-| `anthropic`          | Anthropic only. Fails hard if no credit / no key.                                                                         |
-| `gemini`             | Gemini only. Fails hard if no credit / no key.                                                                            |
-| `huggingface`        | HuggingFace only. Useful for fully open-stack deploys.                                                                    |
+| `anthropic`          | Anthropic only. Fails hard if no credit / no key.                                                                                    |
+| `gemini`             | Gemini only. Fails hard if no credit / no key.                                                                                       |
+| `huggingface`        | HuggingFace only. Useful for fully open-stack deploys.                                                                               |
 
 Provide whichever keys you have: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and/or
 `HF_TOKEN` (the
@@ -362,18 +390,18 @@ the fallback kicks in — eval headline numbers should still be run with
 
 ## What's in the box
 
-| Layer           | Module                                                                 | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| --------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Canonical wiki  | [`knowledge/canonical/`](knowledge/canonical/)                        | 60 pages (full v1 roster + v0.4 additions in[`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed`                                                                                                                                                                                                                                                                                                                                                                                           |
-| Source registry | [`sources/registry.jsonl`](sources/registry.jsonl)                    | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Watchlist       | [`sources/watchlist.yaml`](sources/watchlist.yaml)                    | arXiv categories, GitHub repos, YouTube channels                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Ingestion       | [`src/chatqec/ingestion/`](src/chatqec/ingestion/)                    | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub, pinned to an exact commit via`--commit-sha` / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`)                                                                                                                                                                                                                                                                                     |
-| Embedding       | [`src/chatqec/embedding/`](src/chatqec/embedding/)                    | Gemini (default) or local BGE/Nomic; BM25 via fastembed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Store           | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py)          | Hybrid dense + sparse search                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Retrieval       | [`src/chatqec/retrieval/`](src/chatqec/retrieval/)                    | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Conversation    | [`src/chatqec/conversation/`](src/chatqec/conversation/)              | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Guards          | [`src/chatqec/guards/`](src/chatqec/guards/)                          | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Eval            | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)          | 50-pair Q&A set across 6 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Layer           | Module                                                                         | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical wiki  | [`knowledge/canonical/`](knowledge/canonical/)                                | 60 pages (full v1 roster + v0.4 additions in[`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed`                                                                                                                                                                                                                                                                                                                                                                                           |
+| Source registry | [`sources/registry.jsonl`](sources/registry.jsonl)                            | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Watchlist       | [`sources/watchlist.yaml`](sources/watchlist.yaml)                            | arXiv categories, GitHub repos, YouTube channels                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Ingestion       | [`src/chatqec/ingestion/`](src/chatqec/ingestion/)                            | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub, pinned to an exact commit via`--commit-sha` / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`)                                                                                                                                                                                                                                                                                     |
+| Embedding       | [`src/chatqec/embedding/`](src/chatqec/embedding/)                            | Gemini (default) or local BGE/Nomic; BM25 via fastembed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Store           | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py)                  | Hybrid dense + sparse search                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Retrieval       | [`src/chatqec/retrieval/`](src/chatqec/retrieval/)                            | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Conversation    | [`src/chatqec/conversation/`](src/chatqec/conversation/)                      | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Guards          | [`src/chatqec/guards/`](src/chatqec/guards/)                                  | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Eval            | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)                  | 50-pair Q&A set across 6 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | MCP tools       | [`chatqec-mcp-tools`](https://github.com/QSCSoftwareThrust/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) over MCP stdio |
 
 Full corpus breakdown (chunk counts, per-source stats) lives in
