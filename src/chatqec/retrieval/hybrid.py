@@ -64,6 +64,7 @@ class HybridRetriever:
         self.canonical_index = canonical_index
         self.coefficients = coefficients or Coefficients()
         self.per_query_k = per_query_k
+        self._last_top_rerank: float = 0.0
 
     def retrieve(
         self,
@@ -72,6 +73,7 @@ class HybridRetriever:
         top_k: int,
         candidate_k: int,
         now: datetime | None = None,
+        extra_chunks: Sequence[RetrievedChunk] = (),
     ) -> RetrievalResult:
         now = now or datetime.now(tz=UTC)
         trace(
@@ -112,7 +114,14 @@ class HybridRetriever:
         if not hits_by_chunk:
             matched_topics = match_topics(" ".join(queries), self.canonical_index)
             trace("retriever.no_hits", matched_topics=matched_topics)
-            return RetrievalResult(chunks=[], matched_topics=matched_topics)
+            if not extra_chunks:
+                return RetrievalResult(chunks=[], matched_topics=matched_topics)
+            ranked = self._rerank_pool(queries[0], list(extra_chunks), top_k=top_k)
+            return RetrievalResult(
+                chunks=ranked,
+                matched_topics=matched_topics,
+                debug={"extra_chunks": len(extra_chunks), "corpus_candidates": 0},
+            )
 
         # 3) normalize and score per §8.5
         chunk_ids = list(hits_by_chunk.keys())
@@ -143,26 +152,25 @@ class HybridRetriever:
             top_scored=[(s.chunk_id, round(s.final_score, 4)) for s in top_cands[:top_k]],
         )
 
-        # 5) rerank → top_k (called ONCE over the union of all queries' candidates)
-        texts = [str(hits_by_chunk[s.chunk_id].get("text", "")) for s in top_cands]
-        # Use first query for reranking (caller can pass merged query)
-        rerank_query = queries[0]
-        reranked = self.reranker.rerank_scored(rerank_query, texts, top_k=top_k)
-        top_idx = [i for i, _ in reranked]
-        top_rerank = reranked[0][1] if reranked else 0.0
-        trace("retriever.reranked", rerank_query=rerank_query, top_idx=list(top_idx))
-        retrieved = [
+        # 5) rerank → top_k, ONCE over corpus candidates plus any external chunks
+        #    (wiki sections). Scoring above is corpus-only, so external chunks are
+        #    appended to the pool rather than scored on the §8.5 scale — the
+        #    cross-encoder is the common yardstick that makes the comparison fair.
+        pool: list[RetrievedChunk] = [
             RetrievedChunk(
-                chunk_id=top_cands[i].chunk_id,
-                source_id=str(hits_by_chunk[top_cands[i].chunk_id].get("source_id", "")),
-                text=str(hits_by_chunk[top_cands[i].chunk_id].get("text", "")),
-                title=str(hits_by_chunk[top_cands[i].chunk_id].get("title", "")),
-                authority_tier=str(hits_by_chunk[top_cands[i].chunk_id].get("authority_tier", "")),
-                score=top_cands[i].final_score,
-                payload=hits_by_chunk[top_cands[i].chunk_id],
+                chunk_id=s.chunk_id,
+                source_id=str(hits_by_chunk[s.chunk_id].get("source_id", "")),
+                text=str(hits_by_chunk[s.chunk_id].get("text", "")),
+                title=str(hits_by_chunk[s.chunk_id].get("title", "")),
+                authority_tier=str(hits_by_chunk[s.chunk_id].get("authority_tier", "")),
+                score=s.final_score,
+                payload=hits_by_chunk[s.chunk_id],
             )
-            for i in top_idx
+            for s in top_cands
         ]
+        pool.extend(extra_chunks)
+        retrieved = self._rerank_pool(queries[0], pool, top_k=top_k)
+        top_rerank = self._last_top_rerank
 
         # 6) canonical topic match (force-injection signaled to caller)
         matched_topics = match_topics(" ".join(queries), self.canonical_index)
@@ -175,5 +183,18 @@ class HybridRetriever:
                 "after_scoring": len(top_cands),
                 "after_rerank": len(retrieved),
                 "top_rerank_score": float(top_rerank),
+                "extra_chunks": len(extra_chunks),
             },
         )
+
+    def _rerank_pool(
+        self, query: str, pool: list[RetrievedChunk], *, top_k: int
+    ) -> list[RetrievedChunk]:
+        """Rerank a mixed pool and remember the top absolute score for the caller."""
+        if not pool:
+            self._last_top_rerank = 0.0
+            return []
+        reranked = self.reranker.rerank_scored(query, [c.text for c in pool], top_k=top_k)
+        self._last_top_rerank = reranked[0][1] if reranked else 0.0
+        trace("retriever.reranked", rerank_query=query, pool=len(pool))
+        return [pool[i] for i, _ in reranked]
