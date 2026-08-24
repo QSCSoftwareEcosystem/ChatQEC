@@ -1,4 +1,4 @@
-"""ask() offers wiki sections to the reranker alongside corpus chunks."""
+"""ask()/ask_stream() offer wiki sections to the reranker alongside corpus chunks."""
 
 from unittest.mock import MagicMock
 
@@ -45,6 +45,7 @@ def _bot(retriever, wiki_searcher):
     synthesizer.synthesize.return_value = SynthesisResult(
         text="Answer.", citations=[], confidence="medium"
     )
+    synthesizer.synthesize_stream.return_value = iter(["Answer."])
     return ChatQEC(
         classifier=classifier,
         rewriter=rewriter,
@@ -74,3 +75,13 @@ def test_a_raising_wiki_searcher_never_breaks_the_answer():
     retriever = RecordingRetriever()
     _bot(retriever, boom).ask("what is the steane code?")  # must not raise
     assert retriever.extra_seen == []
+
+
+def test_wiki_searcher_output_reaches_the_retriever_via_ask_stream():
+    """Mirrors the ask() test above for the streaming call site (api.py's second
+    ``retrieve()`` call, at ~line 265 pre-Task-8 — the brief flagged missing this
+    one as the most likely way to get the task wrong)."""
+    retriever = RecordingRetriever()
+    bot = _bot(retriever, lambda q, k: [_wiki_chunk()])
+    list(bot.ask_stream("what is the steane code?"))  # consume the generator
+    assert [c.source_id for c in retriever.extra_seen] == ["qappswiki:concepts/qec/steane"]

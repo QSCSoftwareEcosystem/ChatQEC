@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,6 +20,7 @@ from chatqec import __version__
 if TYPE_CHECKING:
     from chatqec.api import ChatQEC
     from chatqec.api_types import ImageAttachment
+    from chatqec.conversation.mcp_adapter import MCPClient
 from chatqec.canonical.loader import (
     CanonicalLoadError,
     load_canonical_directory,
@@ -194,6 +196,24 @@ def _role_models(
     }
 
 
+def _mcp_client_or_none(clients: Sequence[MCPClient]) -> MCPClient | None:
+    """``None`` unless at least one MCP server actually started.
+
+    ``MultiMCPClient([])`` is a perfectly valid, non-``None`` object — its
+    ``list_tools()`` is just empty — so building it unconditionally makes an
+    all-failed ``--mcp-server`` list look identical to a working one further
+    down the pipeline (``mcp_adapter is not None`` gates skipping generic
+    figures; ``_mcp_client is not None`` gates the wiki searcher). Keying this
+    guard off ``clients`` instead of off the constructed client preserves the
+    pre-fan-out behaviour: nothing usable means nothing wired in.
+    """
+    if not clients:
+        return None
+    from chatqec.conversation.multi_mcp import MultiMCPClient
+
+    return MultiMCPClient(clients)
+
+
 def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cover
     """Build a ChatQEC instance from on-disk config. Overridable in tests.
 
@@ -258,7 +278,6 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
             )
         from chatqec.conversation.mcp_adapter import MCPAdapter
         from chatqec.conversation.mcp_stdio import StdioMCPClient
-        from chatqec.conversation.multi_mcp import MultiMCPClient
 
         # Comma-separated so one env var can name both the Stim sibling and the
         # wiki: CHATQEC_MCP_SERVER="chatqec-mcp-tools,qappswiki serve --root ~/QAppsWiki"
@@ -269,9 +288,15 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
                 clients.append(StdioMCPClient(server_command=command))
             except Exception:
                 logger.warning("MCP server %r failed to start; continuing without it", command)
-        mcp_client = MultiMCPClient(clients)
-        synthesizer.mcp_adapter = MCPAdapter(client=mcp_client)
-        _mcp_client = mcp_client
+        _mcp_client = _mcp_client_or_none(clients)
+        if _mcp_client is not None:
+            synthesizer.mcp_adapter = MCPAdapter(client=_mcp_client)
+        else:
+            logger.warning(
+                "All configured MCP servers failed to start (%r); "
+                "continuing without MCP tools or the wiki",
+                commands,
+            )
 
     from chatqec.retrieval.wiki_search import wiki_chunks
 
