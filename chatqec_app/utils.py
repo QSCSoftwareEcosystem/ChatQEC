@@ -14,6 +14,7 @@ from chatqec.cli import _build_chatqec
 from chatqec.guards.captcha import HCaptchaVerifier
 from chatqec.guards.cost_budget import CostBudget
 from chatqec.guards.rate_limit import RateLimiter
+from chatqec_app.qdrant_boot import ensure_qdrant
 
 
 def _build_bot() -> ChatQEC:
@@ -24,6 +25,9 @@ def _build_bot() -> ChatQEC:
     # tools by setting CHATQEC_MCP_SERVER (e.g. "chatqec-mcp-tools"); off by
     # default so deployments without the MCP server keep working.
     mcp_server = os.environ.get("CHATQEC_MCP_SERVER") or None
+    # The retriever connects to Qdrant during construction, so a missing store
+    # would crash the page on load. Start a local one first when needed.
+    ensure_qdrant()
     return _build_chatqec(mcp_server=mcp_server)
 
 

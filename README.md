@@ -62,11 +62,11 @@ export GEMINI_API_KEY=...
 > mkdir -p logs
 > QDRANT__STORAGE__STORAGE_PATH="$(pwd)/qdrant_data/storage" \
 >   QDRANT__STORAGE__SNAPSHOTS_PATH="$(pwd)/qdrant_data/snapshots" \
->   nohup qdrant > logs/qdrant.log 2>&1 &
+>   setsid nohup qdrant > logs/qdrant.log 2>&1 < /dev/null &
 > curl -s http://localhost:6333/collections   # same confirm step
 > ```
 >
-> `nohup ... &` keeps it running after you close the shell; logs land in
+> `setsid nohup ... &` keeps it running after you close the shell; logs land in
 > `logs/qdrant.log`. It does *not* survive a reboot, so re-run it after one.
 > `STORAGE_PATH` points at the same `qdrant_data/storage` the Compose file
 > mounts, so both routes share one corpus; `SNAPSHOTS_PATH` keeps snapshot
@@ -180,15 +180,26 @@ so Stim answers keep working even when the Claude API is unavailable. (The
 
 ### Run the Streamlit app
 
-**Qdrant must already be up**, otherwise the Chat page dies on load with
-`ResponseHandlingException: [Errno 111] Connection refused`. Start it first
-(`docker compose up -d`, or the native binary if you have no Docker):
+The app **starts a local Qdrant itself** if one isn't already listening, so
+this is usually all you need:
+
+```bash
+CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_app.py
+```
+
+Autostart only fires when `store.qdrant_url` is local and a `qdrant` binary is
+on PATH; it reuses `qdrant_data/`, logs to `logs/qdrant.log`, and leaves an
+already-running Qdrant alone. Set `CHATQEC_AUTOSTART_QDRANT=0` to switch it off,
+which hosted deploys should do. Without a binary you get the start command in
+the error instead of a bare `Connection refused`.
+
+To start Qdrant yourself (`docker compose up -d`, or the native binary):
 
 ```bash
 mkdir -p logs
 QDRANT__STORAGE__STORAGE_PATH="$(pwd)/qdrant_data/storage" \
   QDRANT__STORAGE__SNAPSHOTS_PATH="$(pwd)/qdrant_data/snapshots" \
-  nohup qdrant > logs/qdrant.log 2>&1 &
+  setsid nohup qdrant > logs/qdrant.log 2>&1 < /dev/null &
 curl -s http://localhost:6333/collections   # expect {"result":{"collections":[{"name":"chatqec_chunks"}]},...}
 ```
 
