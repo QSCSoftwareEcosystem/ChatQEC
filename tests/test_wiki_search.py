@@ -127,3 +127,82 @@ def test_relative_path_sources_do_not_crash_or_attribute():
     [chunk] = wiki_chunks(FakeClient({"rows": [row]}), "q")
     assert chunk.title == "Steane code (QAppsWiki)"
     assert chunk.payload["attribution"] == ""
+
+
+# --------------------------------------------------------------------------- #
+# attribution driven by the authoritative frontmatter field
+# --------------------------------------------------------------------------- #
+
+
+def test_imported_from_drives_attribution_without_looking_at_sources():
+    """`imported_from` is page frontmatter, so it is the authoritative licence
+    signal. A `sources` URL is prose an editor can move into the page body."""
+    row = {**ROW, "imported_from": "error-correction-zoo", "sources": ["../local/notes.md"]}
+    [chunk] = wiki_chunks(FakeClient({"rows": [row]}), "q")
+    assert chunk.title == "Steane code (QAppsWiki, CC-BY-SA Error Correction Zoo)"
+    assert chunk.payload["attribution"] == "CC-BY-SA Error Correction Zoo"
+    assert chunk.payload["imported_from"] == "error-correction-zoo"
+
+
+def test_sources_host_stays_a_fallback_for_rows_without_the_field():
+    """Older wiki versions serve no `imported_from`; those rows must not silently
+    lose the CC-BY-SA notice."""
+    assert "imported_from" not in ROW
+    [chunk] = wiki_chunks(FakeClient({"rows": [ROW]}), "q")
+    assert chunk.payload["attribution"] == "CC-BY-SA Error Correction Zoo"
+    assert chunk.payload["imported_from"] == ""
+
+
+def test_an_empty_imported_from_still_falls_back_to_sources():
+    row = {**ROW, "imported_from": ""}
+    [chunk] = wiki_chunks(FakeClient({"rows": [row]}), "q")
+    assert chunk.payload["attribution"] == "CC-BY-SA Error Correction Zoo"
+
+
+def test_qem_zoo_imports_get_no_attribution_pending_a_licence_decision():
+    """concepts/qem pages carry imported_from: qem-zoo. Their terms are unknown, so
+    inventing an attribution string would be worse than omitting one."""
+    row = {**ROW, "imported_from": "qem-zoo", "sources": ["https://qemzoo.com/c/zne"]}
+    [chunk] = wiki_chunks(FakeClient({"rows": [row]}), "q")
+    assert chunk.title == "Steane code (QAppsWiki)"
+    assert chunk.payload["attribution"] == ""
+
+
+def test_an_unrelated_imported_from_does_not_earn_zoo_attribution():
+    row = {**ROW, "imported_from": "somewhere-else", "sources": ["../local/notes.md"]}
+    [chunk] = wiki_chunks(FakeClient({"rows": [row]}), "q")
+    assert chunk.payload["attribution"] == ""
+
+
+# --------------------------------------------------------------------------- #
+# a missing tool is a configuration fact, not an error
+# --------------------------------------------------------------------------- #
+
+
+def test_a_missing_search_pages_tool_logs_at_debug_without_a_traceback(caplog):
+    """The documented default (CHATQEC_MCP_SERVER=chatqec-mcp-tools, no wiki server)
+    raises KeyError on every question. A warning with exc_info=True there means a
+    full traceback per query, twice a turn under Streamlit."""
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="chatqec.retrieval.wiki_search"):
+        assert wiki_chunks(FakeClient(raises=KeyError("search_pages")), "q") == []
+    [record] = caplog.records
+    assert record.levelno == logging.DEBUG
+    assert record.exc_info is None
+
+
+def test_a_real_transport_failure_still_warns(caplog):
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="chatqec.retrieval.wiki_search"):
+        assert wiki_chunks(FakeClient(raises=ConnectionResetError("pipe died")), "q") == []
+    [record] = caplog.records
+    assert record.levelno == logging.WARNING
+    assert record.exc_info is not None
+
+
+def test_a_timing_out_client_degrades_to_the_corpus_alone():
+    """StdioMCPClient now raises TimeoutError instead of blocking forever; the
+    answer must proceed without the wiki rather than propagate or hang."""
+    assert wiki_chunks(FakeClient(raises=TimeoutError("MCP call exceeded 5s")), "q") == []

@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 import os
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import click
 from dotenv import load_dotenv
@@ -214,6 +214,53 @@ def _mcp_client_or_none(clients: Sequence[MCPClient]) -> MCPClient | None:
     return MultiMCPClient(clients)
 
 
+def _start_mcp_clients(commands: Sequence[str], cfg: Mapping[Any, Any]) -> list[MCPClient]:
+    """Spawn one stdio MCP server per command, skipping any that fails to start.
+
+    Call budgets come from config and are per tool, not per server: one server can
+    host both a latency-critical tool and a deliberately slow one. ``search_pages``
+    runs on every single query, so it gets the tight ``wiki.timeout_seconds``
+    budget, while ``mcp.request_timeout_seconds`` covers everything else (the
+    wiki's own ``check_freshness``, for instance, does network I/O). Without any
+    timeout a wedged subprocess would hang the answer for good.
+    """
+    from chatqec.conversation.mcp_stdio import StdioMCPClient
+
+    call_timeout = float(cfg.get("mcp", {}).get("request_timeout_seconds", 60))
+    wiki_timeout = float(cfg.get("wiki", {}).get("timeout_seconds", 5))
+    clients: list[MCPClient] = []
+    for command in commands:
+        try:
+            clients.append(
+                StdioMCPClient(
+                    server_command=command,
+                    call_timeout=call_timeout,
+                    tool_timeouts={"search_pages": wiki_timeout},
+                )
+            )
+        except Exception:
+            logger.warning("MCP server %r failed to start; continuing without it", command)
+    return clients
+
+
+def _wiki_is_available(cfg: Mapping[Any, Any], mcp_client: MCPClient | None) -> bool:
+    """Is a wiki search actually reachable, as opposed to merely configured?
+
+    Gating on ``mcp_client is not None`` was wrong: the documented default setup
+    (``CHATQEC_MCP_SERVER="chatqec-mcp-tools"``, no wiki server) yields a live
+    client that has never heard of ``search_pages``. Every question then sent a
+    doomed call whose ``KeyError`` was logged with a full traceback, twice a turn
+    under Streamlit. The tool has to actually be there.
+    """
+    if not bool(cfg.get("wiki", {}).get("enabled", False)) or mcp_client is None:
+        return False
+    try:
+        return any(t.name == "search_pages" for t in mcp_client.list_tools())
+    except Exception:  # a client that cannot even be asked is not usable
+        logger.warning("Could not list MCP tools; the wiki stays off", exc_info=True)
+        return False
+
+
 def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cover
     """Build a ChatQEC instance from on-disk config. Overridable in tests.
 
@@ -277,18 +324,11 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
                 f"got {provider!r} (huggingface has no tool-use support)"
             )
         from chatqec.conversation.mcp_adapter import MCPAdapter
-        from chatqec.conversation.mcp_stdio import StdioMCPClient
 
         # Comma-separated so one env var can name both the Stim sibling and the
         # wiki: CHATQEC_MCP_SERVER="chatqec-mcp-tools,qappswiki serve --root ~/QAppsWiki"
         commands = [c.strip() for c in mcp_server.split(",") if c.strip()]
-        clients = []
-        for command in commands:
-            try:
-                clients.append(StdioMCPClient(server_command=command))
-            except Exception:
-                logger.warning("MCP server %r failed to start; continuing without it", command)
-        _mcp_client = _mcp_client_or_none(clients)
+        _mcp_client = _mcp_client_or_none(_start_mcp_clients(commands, cfg_dict))
         if _mcp_client is not None:
             synthesizer.mcp_adapter = MCPAdapter(client=_mcp_client)
         else:
@@ -300,7 +340,7 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
 
     from chatqec.retrieval.wiki_search import wiki_chunks
 
-    _wiki_enabled = bool(cfg_dict.get("wiki", {}).get("enabled", False)) and _mcp_client is not None
+    _wiki_enabled = _wiki_is_available(cfg_dict, _mcp_client)
     return ChatQEC(
         classifier=OffTopicClassifier(client=client, model=role_models["classifier"]),
         rewriter=QueryRewriter(client=client, model=role_models["rewriter"]),

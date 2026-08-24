@@ -61,6 +61,8 @@ mcp:
 wiki:
   enabled: true          # QAppsWiki sections join retrieval when its MCP server is configured
   k: 8                   # sections requested per query
+  timeout_seconds: 5     # search_pages runs on every query, so it gets a tight budget;
+                         # on timeout the answer degrades to the corpus alone
 
 limits:
   ask_per_day: 20

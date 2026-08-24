@@ -7,6 +7,11 @@ dedicated event-loop thread — it both enters and exits the ``async with``
 blocks, avoiding anyio "cancel scope in a different task" errors. Per-call
 coroutines (list/call) are submitted onto that loop via
 ``run_coroutine_threadsafe``.
+
+Every submitted call is bounded by a timeout. "Never raises" is not "never
+hangs": a wedged server subprocess would otherwise block the answering thread
+forever, and since Task 9 the wiki's ``search_pages`` sits on every query's
+critical path, not just on tool-calling turns.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ import contextlib
 import json
 import shlex
 import threading
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any
 
 from mcp import ClientSession
@@ -28,9 +34,27 @@ from chatqec.trace import trace
 class StdioMCPClient:
     """Spawns the MCP server as a subprocess and talks to it over stdio."""
 
-    def __init__(self, *, server_command: str, ready_timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        *,
+        server_command: str,
+        ready_timeout: float = 30.0,
+        call_timeout: float = 60.0,
+        tool_timeouts: dict[str, float] | None = None,
+    ) -> None:
+        """Spawn the server.
+
+        ``call_timeout`` bounds every tool call; ``tool_timeouts`` overrides it per
+        tool name. The override exists because a single server can host both a
+        latency-critical tool (the wiki's ``search_pages``, run on every query) and
+        a deliberately slow one (``check_freshness`` does network I/O), so one
+        number for the whole server would be wrong for one of them.
+        """
         argv = shlex.split(server_command)
         trace("mcp.spawn", server_command=server_command, argv=argv)
+        self.server_command = server_command
+        self.call_timeout = call_timeout
+        self._tool_timeouts = dict(tool_timeouts or {})
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
         self._thread.start()
@@ -62,12 +86,19 @@ class StdioMCPClient:
             self._error = exc
             self._ready.set()
 
-    def _submit(self, coro: Any) -> Any:
-        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+    def _submit(self, coro: Any, *, timeout: float | None = None) -> Any:
+        """Run ``coro`` on the worker loop and wait, raising TimeoutError if it stalls."""
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            return future.result(timeout=timeout)
+        except FutureTimeoutError:
+            # Cancel so a wedged call stops occupying the loop after we give up.
+            future.cancel()
+            raise TimeoutError(f"MCP call exceeded {timeout}s") from None
 
     def _load_tools(self) -> list[MCPToolDef]:
         assert self._session is not None
-        resp = self._submit(self._session.list_tools())
+        resp = self._submit(self._session.list_tools(), timeout=self.call_timeout)
         tools = [
             MCPToolDef(
                 name=t.name,
@@ -85,7 +116,8 @@ class StdioMCPClient:
     def call_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         assert self._session is not None
         trace("mcp.call_tool", name=name, args=args)
-        result = self._submit(self._session.call_tool(name, args))
+        timeout = self._tool_timeouts.get(name, self.call_timeout)
+        result = self._submit(self._session.call_tool(name, args), timeout=timeout)
         for block in result.content:
             text = getattr(block, "text", None)
             if text is not None:

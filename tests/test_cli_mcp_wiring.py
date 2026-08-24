@@ -40,3 +40,41 @@ def test_at_least_one_started_client_yields_a_usable_client():
     client = _mcp_client_or_none([FakeClient(["search_pages"])])
     assert client is not None
     assert [t.name for t in client.list_tools()] == ["search_pages"]
+
+
+# --------------------------------------------------------------------------- #
+# the wiki gate: "is search_pages reachable", not "did some MCP server start"
+# --------------------------------------------------------------------------- #
+
+from chatqec.cli import _wiki_is_available  # noqa: E402
+
+_ON = {"wiki": {"enabled": True}}
+
+
+def test_a_client_without_search_pages_leaves_the_wiki_off():
+    """The regression this guards: CHATQEC_MCP_SERVER="chatqec-mcp-tools" with no
+    wiki server is the documented default. Gating on `_mcp_client is not None` sent
+    a doomed call per question, and MultiMCPClient's KeyError was logged with a
+    full traceback each time."""
+    assert _wiki_is_available(_ON, FakeClient(["stim_simulate", "stim_diagram"])) is False
+
+
+def test_a_client_that_advertises_search_pages_turns_the_wiki_on():
+    assert _wiki_is_available(_ON, FakeClient(["stim_simulate", "search_pages"])) is True
+
+
+def test_no_client_leaves_the_wiki_off():
+    assert _wiki_is_available(_ON, None) is False
+
+
+def test_config_disabled_wins_over_an_available_tool():
+    assert _wiki_is_available({"wiki": {"enabled": False}}, FakeClient(["search_pages"])) is False
+    assert _wiki_is_available({}, FakeClient(["search_pages"])) is False
+
+
+def test_a_client_that_cannot_be_listed_leaves_the_wiki_off():
+    class Broken:
+        def list_tools(self):
+            raise RuntimeError("server died")
+
+    assert _wiki_is_available(_ON, Broken()) is False

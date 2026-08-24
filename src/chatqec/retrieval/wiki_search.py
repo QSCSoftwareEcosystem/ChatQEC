@@ -27,10 +27,24 @@ _CURATED_STATUSES = frozenset({"source-backed", "verified"})
 # to travel in the title or a reader never sees it.
 _ZOO_HOST = "errorcorrectionzoo.org"
 _ZOO_ATTRIBUTION = "CC-BY-SA Error Correction Zoo"
+# The wiki's own frontmatter value for a Zoo import. All 649 concepts/qec pages
+# carry it, which makes it the authoritative signal.
+_ZOO_IMPORT = "error-correction-zoo"
+# Deliberately not handled: the 39 concepts/qem pages carry
+# imported_from: qem-zoo (qemzoo.com). Their licence terms are unknown, so they
+# get no attribution string until a human settles what it should say.
 
 
-def _attribution(sources: list[str]) -> str:
-    """Check if any source is from the Error Correction Zoo."""
+def _attribution(sources: list[str], imported_from: str = "") -> str:
+    """Attribution string for a wiki row, or "" if none is required.
+
+    ``imported_from`` comes straight from page frontmatter and is authoritative, so
+    it is checked first. The host parse of ``sources`` stays as a fallback for rows
+    from an older wiki whose search_pages payload has no such field, and because a
+    citation URL is something an editor can move into the page body.
+    """
+    if imported_from == _ZOO_IMPORT:
+        return _ZOO_ATTRIBUTION
     for s in sources:
         try:
             parsed = urlparse(str(s))
@@ -68,7 +82,8 @@ def _to_chunk(row: dict[str, Any]) -> RetrievedChunk | None:
     except TypeError:
         # sources is not iterable (e.g., a scalar); skip it
         sources = []
-    attribution = _attribution(sources)
+    imported_from = str(row.get("imported_from") or "")
+    attribution = _attribution(sources, imported_from)
     base_title = str(row.get("title") or node_id)
     suffix = f"QAppsWiki, {attribution}" if attribution else "QAppsWiki"
     return RetrievedChunk(
@@ -84,6 +99,7 @@ def _to_chunk(row: dict[str, Any]) -> RetrievedChunk | None:
             "heading": heading,
             "sources": sources,
             "attribution": attribution,
+            "imported_from": imported_from,
             "provenance_status": str(row.get("provenance_status") or ""),
         },
     )
@@ -100,7 +116,13 @@ def wiki_chunks(
         args["domain"] = domain
     try:
         payload = client.call_tool(_TOOL, args)
-    except Exception:  # missing tool, dead server, timeout — all non-fatal
+    except KeyError:
+        # No server in this deployment advertises search_pages. The common setup
+        # (CHATQEC_MCP_SERVER="chatqec-mcp-tools", no wiki) hits this on every
+        # query, so it is a configuration fact, not a failure worth a traceback.
+        logger.debug("No %s tool is configured; answering from the corpus alone", _TOOL)
+        return []
+    except Exception:  # dead server, timeout, malformed transport — all non-fatal
         logger.warning("QAppsWiki search failed; answering from the corpus alone", exc_info=True)
         return []
 
