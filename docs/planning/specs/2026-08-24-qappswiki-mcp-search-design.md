@@ -82,12 +82,15 @@ def build_index(root: Path) -> Index      # section split + BM25 statistics
 def search(index: Index, query: str, k: int, domain: str | None) -> list[Hit]
 ```
 
-- Split each page on `##` headings, keeping frontmatter with every section. Sections, not
-  whole files, because the largest page in the repo is 380 KB and would swamp a context
-  window.
+- Split each page on `##` headings, keeping frontmatter with every section. Verified against
+  the corpus on 2026-08-24: 691 pages under `concepts/`, median 4 `##` headings per page,
+  and **zero pages without one**, so the splitter never has to fall back. Sections rather
+  than whole files so a hit points at the passage that matched (median page 2.7 KB, max
+  47.9 KB; the 380 KB monsters are all in the excluded `raw/md`).
 - Pure-Python BM25 (Okapi, k1=1.5, b=0.75). No new dependency; the package stays on
   `pyyaml` + `networkx`.
-- Cache the index to `.qappswiki/search-index.json`, keyed by per-file SHA-256. Rebuild
+- Cache the index to `.search-cache/index.json` (matching the repo's existing `.zoo-cache/`
+  convention; add it to `.gitignore`), keyed by per-file SHA-256. Rebuild
   only changed files, so first call after an edit is fast and correctness never depends on
   remembering to re-index.
 - Exclude `raw/md/` by default. Those are arXiv full texts that ChatQEC already ingests via
@@ -101,7 +104,13 @@ search_pages(query: str, k: int = 8, domain: str | None = None)
 ```
 
 - `url` is the canonical GitHub blob URL, so ChatQEC can cite a clickable source.
-- Registered alongside the existing `q_*` tools; no change to their behavior.
+- Registered alongside the ten existing tools (`query_graph`, `get_node`, `get_neighbors`,
+  `shortest_path`, `list_orphans`, `graph_stats`, `list_ambiguous`, `list_communities`,
+  `cite`, `check_freshness`); none of their behavior changes.
+- **`start_server` needs a new argument.** It currently takes only `graph_path` and serves
+  entirely from `graph.json`; full-text search needs the markdown tree as well. Add
+  `content_root`, defaulting to the graph file's parent, and thread it through the
+  `serve` subcommand in `cli.py`.
 
 **3. Tests** in the existing `tools/tests/` style: section splitting, BM25 ranking order,
 incremental cache invalidation, `raw/md` exclusion, and a real-corpus smoke test matching
@@ -157,11 +166,17 @@ behavior, decided by the reranker rather than a hand-tuned rule.
 "wiki_unverified": 0.35,    # provenance_status: needs-verification (the Zoo import)
 ```
 
-Rationale: 631 Zoo pages carry `provenance_status: needs-verification` and
-`status: provisional` in their own frontmatter. The wiki grades its own trustworthiness, so
-ChatQEC should honor that grading rather than flatten it. Unverified imports land between
-`blog` (0.5) and `web` (0.3), so they can inform an answer but never outrank a
-peer-reviewed paper.
+Rationale: the wiki grades its own trustworthiness in frontmatter, so ChatQEC should honor
+that grading rather than flatten it. Unverified pages land between `blog` (0.5) and `web`
+(0.3), so they can inform an answer but never outrank a peer-reviewed paper.
+
+**Be honest about today's distribution.** Measured 2026-08-24 across all 691 `concepts/`
+pages: **689 are `needs-verification`, 2 are `source-backed`.** So in practice the entire
+wiki enters at `wiki_unverified` and the split is currently near-vacuous. It is still worth
+building, because it costs two lines and it is the mechanism that pays off as the wiki
+verifies pages, but nobody should expect tier separation to do useful work on day one. The
+practical consequence: wiki content competes mainly on rerank score, not on tier weight,
+which is the intended behavior anyway.
 
 ### Phase 3 — `fetch_url` in `chatqec-mcp-tools`
 
@@ -206,6 +221,19 @@ oversized bodies truncate with `truncated=True`. No live network in tests.
 
 **Sequencing:** independent of Phases 1 and 2 and worth less on its own, so build it last.
 Its value depends on wiki citations actually reaching answers, which Phase 2 delivers.
+
+## Verified against the corpus
+
+Checked on 2026-08-24 against `/home/pza/QAppsWiki` at `d5f0248`, so the plan can rely on
+these rather than re-deriving them:
+
+- 691 pages under `concepts/`; every one has `name`, `sources`, and `provenance_status` in
+  frontmatter, and 689 have `domains` (so the `domain` filter is meaningful).
+- Every page has at least one `##` heading; median 4.
+- `provenance_status`: 689 `needs-verification`, 2 `source-backed`.
+- The MCP server is `start_server(graph_path)` in `tools/qappswiki/serve.py`, exposing ten
+  tools via a `dispatch` dict; adding one means an entry in `tools` and one in `dispatch`.
+- Tests run under pytest with `testpaths = ["tests"]` in `tools/pyproject.toml`.
 
 ## Attribution and licensing
 
