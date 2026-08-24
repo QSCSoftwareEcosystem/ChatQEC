@@ -100,3 +100,36 @@ def test_wiki_only_path_still_reports_rerank_strength():
     r = _retriever([])
     result = r.retrieve(queries=["codes"], top_k=5, candidate_k=10, extra_chunks=[_wiki_chunk()])
     assert result.debug["top_rerank_score"] == 10.0
+
+
+# --------------------------------------------------------------------------- #
+# the top rerank score travels by return value, not on the instance
+# --------------------------------------------------------------------------- #
+
+
+def test_rerank_pool_returns_the_top_score_instead_of_stashing_it():
+    """Streamlit caches one HybridRetriever across every session thread
+    (`chatqec_app/utils.py` wraps `get_chatqec()` in `@st.cache_resource`), so an
+    instance attribute written by one query and read by another is a real race.
+    The score gates the paid web-search fallback, so a crossed read fires or
+    suppresses a Tavily call for the wrong question."""
+    r = _retriever([])
+    chunks, top = r._rerank_pool("codes", [_wiki_chunk()], top_k=5)
+    assert [c.source_id for c in chunks] == ["qappswiki:concepts/qec/steane"]
+    assert top == 10.0
+    assert not hasattr(r, "_last_top_rerank")
+
+
+def test_an_empty_pool_reranks_to_nothing_with_a_zero_score():
+    assert _retriever([])._rerank_pool("codes", [], top_k=5) == ([], 0.0)
+
+
+def test_a_concurrent_query_cannot_steal_another_querys_rerank_score():
+    """Interleave two retrievals on one shared retriever the way two Streamlit
+    session threads would. Each result must carry its own score."""
+    r = _retriever([FakeHit("c1", "corpus passage")])
+    weak = r.retrieve(queries=["codes"], top_k=5, candidate_k=10)
+    strong = r.retrieve(queries=["codes"], top_k=5, candidate_k=10, extra_chunks=[_wiki_chunk()])
+    weak_again = r.retrieve(queries=["codes"], top_k=5, candidate_k=10)
+    assert strong.debug["top_rerank_score"] == 10.0
+    assert weak.debug["top_rerank_score"] == weak_again.debug["top_rerank_score"] == 1.0

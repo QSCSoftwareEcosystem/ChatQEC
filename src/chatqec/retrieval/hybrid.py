@@ -64,7 +64,6 @@ class HybridRetriever:
         self.canonical_index = canonical_index
         self.coefficients = coefficients or Coefficients()
         self.per_query_k = per_query_k
-        self._last_top_rerank: float = 0.0
 
     def retrieve(
         self,
@@ -116,14 +115,14 @@ class HybridRetriever:
             trace("retriever.no_hits", matched_topics=matched_topics)
             if not extra_chunks:
                 return RetrievalResult(chunks=[], matched_topics=matched_topics)
-            ranked = self._rerank_pool(queries[0], list(extra_chunks), top_k=top_k)
+            ranked, top_rerank = self._rerank_pool(queries[0], list(extra_chunks), top_k=top_k)
             return RetrievalResult(
                 chunks=ranked,
                 matched_topics=matched_topics,
                 debug={
                     "extra_chunks": len(extra_chunks),
                     "corpus_candidates": 0,
-                    "top_rerank_score": float(self._last_top_rerank),
+                    "top_rerank_score": float(top_rerank),
                 },
             )
 
@@ -173,8 +172,7 @@ class HybridRetriever:
             for s in top_cands
         ]
         pool.extend(extra_chunks)
-        retrieved = self._rerank_pool(queries[0], pool, top_k=top_k)
-        top_rerank = self._last_top_rerank
+        retrieved, top_rerank = self._rerank_pool(queries[0], pool, top_k=top_k)
 
         # 6) canonical topic match (force-injection signaled to caller)
         matched_topics = match_topics(" ".join(queries), self.canonical_index)
@@ -193,12 +191,17 @@ class HybridRetriever:
 
     def _rerank_pool(
         self, query: str, pool: list[RetrievedChunk], *, top_k: int
-    ) -> list[RetrievedChunk]:
-        """Rerank a mixed pool and remember the top absolute score for the caller."""
+    ) -> tuple[list[RetrievedChunk], float]:
+        """Rerank a mixed pool, returning the chunks and the top absolute score.
+
+        The score is returned rather than stashed on ``self``: Streamlit shares one
+        cached ``HybridRetriever`` across every session thread, so an instance
+        attribute written here and read by the caller can be overwritten by another
+        thread's query in between. That score gates the paid web-search fallback,
+        so a crossed read fires or suppresses a Tavily call for the wrong question.
+        """
         if not pool:
-            self._last_top_rerank = 0.0
-            return []
+            return [], 0.0
         reranked = self.reranker.rerank_scored(query, [c.text for c in pool], top_k=top_k)
-        self._last_top_rerank = reranked[0][1] if reranked else 0.0
         trace("retriever.reranked", rerank_query=query, pool=len(pool))
-        return [pool[i] for i, _ in reranked]
+        return [pool[i] for i, _ in reranked], (reranked[0][1] if reranked else 0.0)
