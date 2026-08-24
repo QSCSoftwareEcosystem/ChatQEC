@@ -94,3 +94,9 @@ def test_debug_records_how_many_extras_joined():
     r = _retriever([FakeHit("c1", "corpus passage")])
     result = r.retrieve(queries=["codes"], top_k=5, candidate_k=10, extra_chunks=[_wiki_chunk()])
     assert result.debug["extra_chunks"] == 1
+
+
+def test_wiki_only_path_still_reports_rerank_strength():
+    r = _retriever([])
+    result = r.retrieve(queries=["codes"], top_k=5, candidate_k=10, extra_chunks=[_wiki_chunk()])
+    assert result.debug["top_rerank_score"] == 10.0

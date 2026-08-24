@@ -120,7 +120,11 @@ class HybridRetriever:
             return RetrievalResult(
                 chunks=ranked,
                 matched_topics=matched_topics,
-                debug={"extra_chunks": len(extra_chunks), "corpus_candidates": 0},
+                debug={
+                    "extra_chunks": len(extra_chunks),
+                    "corpus_candidates": 0,
+                    "top_rerank_score": float(self._last_top_rerank),
+                },
             )
 
         # 3) normalize and score per §8.5
