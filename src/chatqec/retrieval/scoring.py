@@ -12,8 +12,10 @@ TIER_WEIGHTS: dict[str, float] = {
     "canonical": 1.0,
     "peer_reviewed": 0.9,
     "preprint": 0.7,
+    "wiki_curated": 0.6,
     "blog": 0.5,
     "video": 0.5,
+    "wiki_unverified": 0.35,
     "web": 0.3,
 }
 
