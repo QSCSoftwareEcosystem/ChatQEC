@@ -159,14 +159,21 @@ class ChatQEC:
             web_k=self.web_k,
         )
 
-    def _wiki_chunks(self, question: str) -> list[RetrievedChunk]:
-        """Wiki sections for the rerank pool. Best-effort: never breaks an answer."""
+    def _wiki_chunks(self, query: str) -> list[RetrievedChunk]:
+        """Wiki sections for the rerank pool. Best-effort: never breaks an answer.
+
+        Takes the *rewritten* query, not the raw question. The wiki serves a lexical
+        BM25 index, which is exactly the retriever that cannot recover a topic the
+        user left implicit: on "what about its threshold?" the raw question carries
+        no topic terms at all, while the rewrite has resolved the pronoun. It also
+        matches what the reranker scores against (``queries[0]``).
+        """
         if self.wiki_searcher is None:
             return []
         try:
-            return self.wiki_searcher(question, self.wiki_k)
+            return self.wiki_searcher(query, self.wiki_k)
         except Exception:  # the wiki is a bonus source, never a dependency
-            trace("wiki.search_failed", question=question)
+            trace("wiki.search_failed", query=query)
             return []
 
     def _caption(self, images: list[ImageAttachment]) -> str:
@@ -200,7 +207,7 @@ class ChatQEC:
             queries=queries,
         )
 
-        wiki_extra = self._wiki_chunks(question)
+        wiki_extra = self._wiki_chunks(queries[0])
         retrieval = self.retriever.retrieve(
             queries=queries,
             top_k=self.top_k,
@@ -280,7 +287,7 @@ class ChatQEC:
             is_followup=rewrite.is_followup,
             queries=queries,
         )
-        wiki_extra = self._wiki_chunks(question)
+        wiki_extra = self._wiki_chunks(queries[0])
         retrieval = self.retriever.retrieve(
             queries=queries,
             top_k=self.top_k,

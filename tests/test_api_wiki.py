@@ -85,3 +85,61 @@ def test_wiki_searcher_output_reaches_the_retriever_via_ask_stream():
     bot = _bot(retriever, lambda q, k: [_wiki_chunk()])
     list(bot.ask_stream("what is the steane code?"))  # consume the generator
     assert [c.source_id for c in retriever.extra_seen] == ["qappswiki:concepts/qec/steane"]
+
+
+class RecordingWiki:
+    """Captures exactly which string the wiki searcher was handed."""
+
+    def __init__(self):
+        self.queries = []
+
+    def __call__(self, query, k):
+        self.queries.append(query)
+        return [_wiki_chunk()]
+
+
+def _bot_with_rewrite(retriever, wiki, rewritten, variants=()):
+    bot = _bot(retriever, wiki)
+    bot.rewriter.rewrite.return_value = RewriteResult(
+        rewritten=rewritten, variants=list(variants), is_followup=True
+    )
+    return bot
+
+
+def test_the_wiki_is_searched_with_the_rewritten_query_not_the_raw_question():
+    """The wiki serves a lexical BM25 index, which is precisely the retriever that
+    cannot recover an implicit topic. On a follow-up the raw question carries no
+    topic terms at all. It is also what the reranker scores against (queries[0])."""
+    wiki = RecordingWiki()
+    bot = _bot_with_rewrite(RecordingRetriever(), wiki, rewritten="surface code threshold")
+    bot.ask("what about its threshold?")
+    assert wiki.queries == ["surface code threshold"]
+
+
+def test_ask_stream_also_searches_the_wiki_with_the_rewritten_query():
+    wiki = RecordingWiki()
+    bot = _bot_with_rewrite(RecordingRetriever(), wiki, rewritten="surface code threshold")
+    list(bot.ask_stream("what about its threshold?"))
+    assert wiki.queries == ["surface code threshold"]
+
+
+def test_the_wiki_query_is_the_same_string_the_reranker_scores_against():
+    """queries[0] is both what retrieve() reranks against and what the wiki gets,
+    so a wiki hit and a corpus hit are judged against the same question."""
+
+    class QueryCapturingRetriever(RecordingRetriever):
+        def __init__(self):
+            super().__init__()
+            self.queries_seen = None
+
+        def retrieve(self, *, queries, top_k, candidate_k, extra_chunks=()):
+            self.queries_seen = list(queries)
+            return super().retrieve(
+                queries=queries, top_k=top_k, candidate_k=candidate_k, extra_chunks=extra_chunks
+            )
+
+    retriever = QueryCapturingRetriever()
+    wiki = RecordingWiki()
+    bot = _bot_with_rewrite(retriever, wiki, rewritten="steane code distance", variants=["css"])
+    bot.ask("and its distance?")
+    assert wiki.queries == [retriever.queries_seen[0]] == ["steane code distance"]
