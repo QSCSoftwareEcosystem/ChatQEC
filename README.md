@@ -181,7 +181,8 @@ so Stim answers keep working even when the Claude API is unavailable. (The
 ### Enable QAppsWiki search
 
 ChatQEC can pull prose sections from [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki)
-(631 Error Correction Zoo codes plus curated QEC/QEM pages) into the same
+(649 Error Correction Zoo code pages plus 42 other QEC/QEM pages, 691 under
+`concepts/` in total) into the same
 candidate pool as the corpus, by naming a **second** MCP server alongside the
 Stim sibling. `CHATQEC_MCP_SERVER` (and `--mcp-server`) take a comma-separated
 list, so one variable can name both:
@@ -211,11 +212,14 @@ wiki:
 ```
 
 Wiki sections are reranked together with Qdrant chunks by the same
-cross-encoder, at one of two authority tiers (`wiki_curated` 0.6,
-`wiki_unverified` 0.35) driven by the page's own `provenance_status`
-frontmatter. In the current QAppsWiki corpus nearly every page is
-`needs-verification`, so in practice almost all wiki content competes at the
-lower tier and wins or loses on rerank score, not on trust grading. See
+cross-encoder. Each one carries an authority tier (`wiki_curated` or
+`wiki_unverified`) derived from the page's own `provenance_status` frontmatter,
+but that tier is currently only a label passed into the model's context block,
+not a ranking weight: `TIER_WEIGHTS` is read solely by the corpus candidate
+scoring, which wiki sections bypass by being appended straight to the rerank
+pool. Wiki content therefore wins or loses purely on cross-encoder score today.
+Whether the tier should also move the ranking is a deliberately deferred design
+decision. See
 [`docs/DESIGN_CHOICES.md`](docs/DESIGN_CHOICES.md#why-qappswiki-search-lives-in-qappswiki)
 for the rationale. Use `-v` on `chatqec ask`/`chat` to trace whether the wiki
 was queried and what it returned (there's no `CHATQEC_TRACE` env var; tracing

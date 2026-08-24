@@ -151,7 +151,7 @@ This is the same pattern used by Wikipedia's "see also" sidebar — editorial pr
 
 ### Why QAppsWiki search lives in QAppsWiki
 
-Not the canonical wiki above. [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) is a separate, externally-maintained repo (691 pages under `concepts/qec/`, the Error Correction Zoo import plus curated QEC/QEM pages) reached only over MCP. It never enters the `[CANONICAL]` force-inject path; wiki sections compete in the ordinary rerank pool with everything else, at their own authority tiers (`wiki_curated` 0.6, `wiki_unverified` 0.35).
+Not the canonical wiki above. [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) is a separate, externally-maintained repo (691 pages under `concepts/`: 649 Error Correction Zoo imports in `concepts/qec/`, 39 QEM pages in `concepts/qem/`, and 3 loose pages) reached only over MCP. It never enters the `[CANONICAL]` force-inject path; wiki sections compete in the ordinary rerank pool with everything else, carrying an authority tier (`wiki_curated`, `wiki_unverified`) that today is a label in the prompt rather than a ranking weight (see below).
 
 **Why not the GitHub API.** GitHub has not indexed the repo for code search, so there is no search endpoint to call at query time. Measured 2026-08-24 with an authenticated token: `"stabilizer"` against `QSCSoftwareEcosystem/QAppsWiki` returns `total_count: 0`; the same query against `quantumlib/Stim`, used as a control, returns 188. A GitHub-search MCP tool wraps this same REST endpoint, so it would inherit this blind spot rather than work around it.
 
@@ -163,7 +163,9 @@ Not the canonical wiki above. [QAppsWiki](https://github.com/QSCSoftwareEcosyste
 
 **Known limitation: BM25 is lexical.** The wiki's search has no embeddings; it matches tokens, not meaning. A query for "biased noise" will not retrieve a page that only says "asymmetric Pauli channel," even though they're close in meaning. The cross-encoder can only rescore what BM25 hands it; it cannot rescue a section BM25 never retrieved. Retrieval-only checks against the real corpus show the wiki competing rather than dominating: for "concatenated Steane code" a QAppsWiki section ranks #1 and takes 3 of the top 8; for "bivariate bicycle code" it ranks #2 with 3 of 8; for "quantum Reed-Muller codes" the corpus wins all 8 slots.
 
-**Be honest about the tier split today.** 689 of the 691 `concepts/` pages carry `provenance_status: needs-verification` (2 are `source-backed`), so almost all wiki content enters at the lower `wiki_unverified` tier (0.35) rather than `wiki_curated` (0.6). The split is still worth having for when the wiki verifies more pages, but today wiki content wins or loses mainly on rerank score, not on trust grading.
+**Be honest about the tier today: it is a label, not a weight.** `TIER_WEIGHTS` (`wiki_curated` 0.6, `wiki_unverified` 0.35) is consulted only by the candidate scoring that runs over Qdrant hits, and wiki sections bypass that scoring entirely: they are appended straight to the rerank pool, which is exactly what lets the cross-encoder judge them against corpus prose on one scale. Those two numbers are therefore inert for wiki content. The tier's only live effect is the label the synthesizer sees in its context block. Whether it should also move wiki ranking is deliberately deferred rather than overlooked, and changing it would need eval evidence, not a config edit.
+
+The split is also near-vacuous in the corpus as it stands: 689 of the 691 `concepts/` pages carry `provenance_status: needs-verification` (2 are `source-backed`), so nearly everything would land at `wiki_unverified` even if the weights were live. It is still worth carrying for when the wiki verifies more pages.
 
 ### Why a math-aware chunker
 

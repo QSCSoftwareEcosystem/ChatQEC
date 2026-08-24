@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-24
 **Status:** Approved (design)
-**Scope:** Let ChatQEC ground answers in the QAppsWiki corpus (631 Error Correction Zoo
+**Scope:** Let ChatQEC ground answers in the QAppsWiki corpus (649 Error Correction Zoo
 codes plus curated QEC/QEM pages) by adding full-text search to QAppsWiki's own MCP server
 and calling it during retrieval, alongside Qdrant. No second Qdrant collection, no
 ingestion pipeline, no sync job.
