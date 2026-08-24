@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from datetime import UTC, datetime
@@ -45,6 +46,8 @@ from chatqec.ingestion.resolver import (
     resolve_arxiv_paper,
 )
 from chatqec.ingestion.watchlist import Watchlist, load_watchlist
+
+logger = logging.getLogger(__name__)
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -246,6 +249,7 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
     role_models = _role_models(models, provider)
 
     synthesizer = Synthesizer(client=client, model=role_models["synthesizer"])
+    _mcp_client = None
     if mcp_server:
         if provider not in ("anthropic", "gemini", "auto"):
             raise ValueError(
@@ -254,9 +258,24 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
             )
         from chatqec.conversation.mcp_adapter import MCPAdapter
         from chatqec.conversation.mcp_stdio import StdioMCPClient
+        from chatqec.conversation.multi_mcp import MultiMCPClient
 
-        synthesizer.mcp_adapter = MCPAdapter(client=StdioMCPClient(server_command=mcp_server))
+        # Comma-separated so one env var can name both the Stim sibling and the
+        # wiki: CHATQEC_MCP_SERVER="chatqec-mcp-tools,qappswiki serve --root ~/QAppsWiki"
+        commands = [c.strip() for c in mcp_server.split(",") if c.strip()]
+        clients = []
+        for command in commands:
+            try:
+                clients.append(StdioMCPClient(server_command=command))
+            except Exception:
+                logger.warning("MCP server %r failed to start; continuing without it", command)
+        mcp_client = MultiMCPClient(clients)
+        synthesizer.mcp_adapter = MCPAdapter(client=mcp_client)
+        _mcp_client = mcp_client
 
+    from chatqec.retrieval.wiki_search import wiki_chunks
+
+    _wiki_enabled = bool(cfg_dict.get("wiki", {}).get("enabled", False)) and _mcp_client is not None
     return ChatQEC(
         classifier=OffTopicClassifier(client=client, model=role_models["classifier"]),
         rewriter=QueryRewriter(client=client, model=role_models["rewriter"]),
@@ -265,6 +284,8 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
         canonical_index=canonical_index,  # type: ignore[arg-type]
         web_searcher=_web_searcher if _tavily_key else None,
         web_fallback=_web_enabled,
+        wiki_searcher=((lambda q, k: wiki_chunks(_mcp_client, q, k=k)) if _wiki_enabled else None),
+        wiki_k=int(cfg_dict.get("wiki", {}).get("k", 8)),
     )
 
 

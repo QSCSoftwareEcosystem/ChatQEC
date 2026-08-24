@@ -58,6 +58,10 @@ mcp:
   server_args: []
   request_timeout_seconds: 60
 
+wiki:
+  enabled: true          # QAppsWiki sections join retrieval when its MCP server is configured
+  k: 8                   # sections requested per query
+
 limits:
   ask_per_day: 20
   tool_per_hour: 5

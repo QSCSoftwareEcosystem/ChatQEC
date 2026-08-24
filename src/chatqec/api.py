@@ -103,6 +103,8 @@ class ChatQEC:
         # fallback for uncovered/off-topic queries, never for covered topics.
         web_fallback_threshold: float = 0.4,
         web_k: int = 5,
+        wiki_searcher: Callable[[str, int], list[RetrievedChunk]] | None = None,
+        wiki_k: int = 8,
     ) -> None:
         self.classifier = classifier
         self.rewriter = rewriter
@@ -116,6 +118,8 @@ class ChatQEC:
         self.web_fallback = web_fallback
         self.web_fallback_threshold = web_fallback_threshold
         self.web_k = web_k
+        self.wiki_searcher = wiki_searcher
+        self.wiki_k = wiki_k
 
     def _canonical_chunks(self, matched_topics: list[str]) -> list[RetrievedChunk]:
         """Build force-injected canonical chunks for the matched topic slugs.
@@ -155,6 +159,16 @@ class ChatQEC:
             web_k=self.web_k,
         )
 
+    def _wiki_chunks(self, question: str) -> list[RetrievedChunk]:
+        """Wiki sections for the rerank pool. Best-effort: never breaks an answer."""
+        if self.wiki_searcher is None:
+            return []
+        try:
+            return self.wiki_searcher(question, self.wiki_k)
+        except Exception:  # the wiki is a bonus source, never a dependency
+            trace("wiki.search_failed", question=question)
+            return []
+
     def _caption(self, images: list[ImageAttachment]) -> str:
         """Describe attached images for retrieval (empty string if none)."""
         if not images:
@@ -186,8 +200,12 @@ class ChatQEC:
             queries=queries,
         )
 
+        wiki_extra = self._wiki_chunks(question)
         retrieval = self.retriever.retrieve(
-            queries=queries, top_k=self.top_k, candidate_k=self.candidate_k
+            queries=queries,
+            top_k=self.top_k,
+            candidate_k=self.candidate_k,
+            extra_chunks=wiki_extra,
         )
         _trace_retrieval(retrieval)
         canonical_chunks = self._canonical_chunks(retrieval.matched_topics)
@@ -262,8 +280,12 @@ class ChatQEC:
             is_followup=rewrite.is_followup,
             queries=queries,
         )
+        wiki_extra = self._wiki_chunks(question)
         retrieval = self.retriever.retrieve(
-            queries=queries, top_k=self.top_k, candidate_k=self.candidate_k
+            queries=queries,
+            top_k=self.top_k,
+            candidate_k=self.candidate_k,
+            extra_chunks=wiki_extra,
         )
         _trace_retrieval(retrieval)
         canonical_chunks = self._canonical_chunks(retrieval.matched_topics)
