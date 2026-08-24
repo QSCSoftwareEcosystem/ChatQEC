@@ -74,6 +74,12 @@ def test_passes_query_and_k_through_to_the_tool():
     ]
 
 
+def test_domain_omitted_when_none():
+    client = FakeClient({"rows": []})
+    wiki_chunks(client, "surface code", k=3)
+    assert client.calls == [("search_pages", {"query": "surface code", "k": 3})]
+
+
 def test_a_bare_list_payload_is_accepted_too():
     assert len(wiki_chunks(FakeClient([ROW]), "q")) == 1
 
@@ -86,3 +92,38 @@ def test_every_failure_degrades_to_empty():
     assert wiki_chunks(FakeClient({"rows": [{"junk": 1}, ROW]}), "q")[0].title.startswith(
         "Steane code"
     )
+
+
+def test_non_iterable_sources_are_skipped_safely():
+    # sources is a scalar (int); should skip it and still return the valid row.
+    row_with_scalar_sources = {**ROW, "sources": 1}
+    chunks = wiki_chunks(FakeClient({"rows": [row_with_scalar_sources, ROW]}), "q")
+    assert len(chunks) == 2
+    # First chunk has scalar sources, which becomes empty list and no attribution
+    assert chunks[0].title == "Steane code (QAppsWiki)"
+    assert chunks[0].payload["sources"] == []
+    assert chunks[0].payload["attribution"] == ""
+    # Second chunk has valid Zoo sources
+    assert "CC-BY-SA Error Correction Zoo" in chunks[1].title
+
+
+def test_lookalike_domains_do_not_earn_zoo_attribution():
+    # Domain that merely contains "errorcorrectionzoo.org" as a substring should not match
+    row = {**ROW, "sources": ["https://not-errorcorrectionzoo.org.evil.com/page"]}
+    [chunk] = wiki_chunks(FakeClient({"rows": [row]}), "q")
+    assert chunk.title == "Steane code (QAppsWiki)"
+    assert chunk.payload["attribution"] == ""
+
+
+def test_real_zoo_urls_earn_attribution():
+    row = {**ROW, "sources": ["https://errorcorrectionzoo.org/c/steane"]}
+    [chunk] = wiki_chunks(FakeClient({"rows": [row]}), "q")
+    assert "CC-BY-SA Error Correction Zoo" in chunk.title
+    assert chunk.payload["attribution"] == "CC-BY-SA Error Correction Zoo"
+
+
+def test_relative_path_sources_do_not_crash_or_attribute():
+    row = {**ROW, "sources": ["../OpenQEvo/README.md", "raw/error-correction-zoo.md"]}
+    [chunk] = wiki_chunks(FakeClient({"rows": [row]}), "q")
+    assert chunk.title == "Steane code (QAppsWiki)"
+    assert chunk.payload["attribution"] == ""

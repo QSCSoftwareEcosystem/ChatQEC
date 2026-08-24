@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 from chatqec.retrieval.hybrid import RetrievedChunk
 from chatqec.trace import trace
@@ -29,7 +30,22 @@ _ZOO_ATTRIBUTION = "CC-BY-SA Error Correction Zoo"
 
 
 def _attribution(sources: list[str]) -> str:
-    return _ZOO_ATTRIBUTION if any(_ZOO_HOST in str(s) for s in sources) else ""
+    """Check if any source is from the Error Correction Zoo."""
+    for s in sources:
+        try:
+            parsed = urlparse(str(s))
+            netloc = parsed.netloc
+            if not netloc:
+                continue
+            # Strip user@ and :port for comparison
+            host_only = netloc.split("@")[-1].split(":")[0]
+            # Match exact host or proper subdomains
+            if host_only == _ZOO_HOST or host_only.endswith("." + _ZOO_HOST):
+                return _ZOO_ATTRIBUTION
+        except Exception:
+            # Non-URL strings (relative paths, etc.) skip
+            continue
+    return ""
 
 
 def _tier(provenance_status: str) -> str:
@@ -47,7 +63,11 @@ def _to_chunk(row: dict[str, Any]) -> RetrievedChunk | None:
         score = float(row.get("score", 0.0))
     except (TypeError, ValueError):
         score = 0.0
-    sources = list(row.get("sources") or [])
+    try:
+        sources = list(row.get("sources") or [])
+    except TypeError:
+        # sources is not iterable (e.g., a scalar); skip it
+        sources = []
     attribution = _attribution(sources)
     base_title = str(row.get("title") or node_id)
     suffix = f"QAppsWiki, {attribution}" if attribution else "QAppsWiki"
@@ -75,7 +95,9 @@ def wiki_chunks(
     """Search QAppsWiki over MCP and return chunks. Never raises."""
     if client is None or not query:
         return []
-    args: dict[str, Any] = {"query": query, "k": k, "domain": domain}
+    args: dict[str, Any] = {"query": query, "k": k}
+    if domain is not None:
+        args["domain"] = domain
     try:
         payload = client.call_tool(_TOOL, args)
     except Exception:  # missing tool, dead server, timeout — all non-fatal
