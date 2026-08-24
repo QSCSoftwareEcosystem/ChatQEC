@@ -178,6 +178,69 @@ Anthropic first and **automatically fails over to Gemini** on credit/auth errors
 so Stim answers keep working even when the Claude API is unavailable. (The
 `huggingface` provider has no tool-use support.)
 
+### Enable QAppsWiki search
+
+ChatQEC can pull prose sections from [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki)
+(631 Error Correction Zoo codes plus curated QEC/QEM pages) into the same
+candidate pool as the corpus, by naming a **second** MCP server alongside the
+Stim sibling. `CHATQEC_MCP_SERVER` (and `--mcp-server`) take a comma-separated
+list, so one variable can name both:
+
+```bash
+git clone https://github.com/QSCSoftwareEcosystem/QAppsWiki ~/QAppsWiki
+
+CHATQEC_MCP_SERVER="chatqec-mcp-tools,sh -c 'PYTHONPATH=/path/to/QAppsWiki/tools python -m qappswiki serve --root /path/to/QAppsWiki'" \
+  uv run streamlit run chatqec_app/streamlit_app.py
+```
+
+`MultiMCPClient` fans out to both servers and skips whichever fails to start,
+so a broken wiki clone degrades to Stim-only tools rather than a hard failure.
+The wiki's MCP server is a **stdio subprocess that reads its own working
+tree** (there is no hosted endpoint), so **QAppsWiki must be cloned locally**
+and the paths above point at that clone. The `qappswiki` console script isn't
+on `PATH` in this setup, hence launching it via `PYTHONPATH` + `python -m
+qappswiki` rather than a bare `qappswiki serve`.
+
+Two knobs in `conf/config.yaml` control the wiki side once its MCP server is
+reachable:
+
+```yaml
+wiki:
+  enabled: true   # query the wiki on every question; false = corpus-only
+  k: 8             # sections requested per query, before reranking
+```
+
+Wiki sections are reranked together with Qdrant chunks by the same
+cross-encoder, at one of two authority tiers (`wiki_curated` 0.6,
+`wiki_unverified` 0.35) driven by the page's own `provenance_status`
+frontmatter. In the current QAppsWiki corpus nearly every page is
+`needs-verification`, so in practice almost all wiki content competes at the
+lower tier and wins or loses on rerank score, not on trust grading. See
+[`docs/DESIGN_CHOICES.md`](docs/DESIGN_CHOICES.md#why-qappswiki-search-lives-in-qappswiki)
+for the rationale. Use `-v` on `chatqec ask`/`chat` to trace whether the wiki
+was queried and what it returned (there's no `CHATQEC_TRACE` env var; tracing
+is a CLI flag).
+
+This is new and **not yet measured** against the eval set. The recommended
+way to check whether the wiki actually helps, or crowds out better corpus
+chunks, is the same 50-pair eval run already used for every other retrieval
+change:
+
+```bash
+uv run chatqec eval run --output eval/results.json
+```
+
+compared once corpus-only and once with the wiki's MCP server named, reading
+off recall@K and citation accuracy for each (see [Eval](#eval)). **That
+comparison has not been run for this feature.** One caveat as of this
+writing: `chatqec eval run` has no `--mcp-server` option and does not read
+`CHATQEC_MCP_SERVER`, unlike `ask`/`chat`, so today it always evaluates the
+corpus-only pipeline regardless of environment. Until eval wiring picks up an
+MCP server the same way `ask`/`chat` do, spot-check individual questions
+instead: `chatqec ask --mcp-server "chatqec-mcp-tools,sh -c '...'"
+"<question>"` against the same question without `--mcp-server`, comparing
+citations.
+
 ### Run the Streamlit app
 
 The app **starts a local Qdrant itself** if one isn't already listening, so
@@ -414,6 +477,7 @@ the fallback kicks in — eval headline numbers should still be run with
 | Guards          | [`src/chatqec/guards/`](src/chatqec/guards/)                                  | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Eval            | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)                  | 50-pair Q&A set across 6 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | MCP tools       | [`chatqec-mcp-tools`](https://github.com/QSCSoftwareThrust/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) over MCP stdio |
+| QAppsWiki search | [`src/chatqec/retrieval/wiki_search.py`](src/chatqec/retrieval/wiki_search.py) | Wraps the [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) MCP `search_pages` tool (self-hosted BM25 over ~3,778 sections from 691 concept pages) into `RetrievedChunk`s that join the same cross-encoder rerank pass as corpus chunks; needs the wiki's MCP server named alongside `chatqec-mcp-tools` (see [Enable QAppsWiki search](#enable-qappswiki-search)) |
 
 Full corpus breakdown (chunk counts, per-source stats) lives in
 [`docs/EXAMPLES.md`](docs/EXAMPLES.md); as of 2026-07-28 the store has 2,935

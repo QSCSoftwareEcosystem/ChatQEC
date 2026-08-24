@@ -149,6 +149,22 @@ The canonical layer is **hand-curated markdown pages** (currently 5 P0 pages, 52
 
 This is the same pattern used by Wikipedia's "see also" sidebar — editorial primary, retrieval secondary.
 
+### Why QAppsWiki search lives in QAppsWiki
+
+Not the canonical wiki above. [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) is a separate, externally-maintained repo (691 pages under `concepts/qec/`, the Error Correction Zoo import plus curated QEC/QEM pages) reached only over MCP. It never enters the `[CANONICAL]` force-inject path; wiki sections compete in the ordinary rerank pool with everything else, at their own authority tiers (`wiki_curated` 0.6, `wiki_unverified` 0.35).
+
+**Why not the GitHub API.** GitHub has not indexed the repo for code search, so there is no search endpoint to call at query time. Measured 2026-08-24 with an authenticated token: `"stabilizer"` against `QSCSoftwareEcosystem/QAppsWiki` returns `total_count: 0`; the same query against `quantumlib/Stim`, used as a control, returns 188. A GitHub-search MCP tool wraps this same REST endpoint, so it would inherit this blind spot rather than work around it.
+
+**Why not ingest into Qdrant.** This was the leading candidate until edit access to QAppsWiki was confirmed. It is workable, but it costs a mirror of the content, a freshness check against the wiki's HEAD, per-page `content_sha256` tracking, delete-before-reinsert on every update, registry rows, and a second copy of prose that already lives in a maintained repo. Every one of those is a staleness bug waiting to happen (the wiki and the mirror drift the moment someone edits a page and the sync job hasn't run yet).
+
+**Chosen approach: the wiki serves its own search.** `tools/qappswiki/search.py` adds a hand-written Okapi BM25 index (pages split into `##` sections, cached by per-file content hash) to the MCP server that already sits next to the content, and ChatQEC calls it like any other MCP tool through `MultiMCPClient`. That keeps exactly one copy of the corpus, and freshness is free because the server reads the working tree instead of a snapshot. The trade-off is real: ChatQEC now depends on a stdio subprocess reading a local clone rather than a query against its own Qdrant, so a missing or broken clone means no wiki results, not stale ones (`wiki_search.py` never raises, so this degrades to corpus-only, matching the [error-handling table](planning/specs/2026-08-24-qappswiki-mcp-search-design.md#error-handling) in the design spec).
+
+**Why the cross-encoder is what makes this fair.** A wiki section (a hand-edited `##` block) and a corpus chunk (math-aware-split paper prose) are different shapes of text, so their raw retrieval scores aren't directly comparable. Both go through the same `HybridRetriever` rerank pass (`retrieval/hybrid.py`'s `extra_chunks`), so the cross-encoder scores wiki prose against corpus prose on one scale before either survives to `top_k`. Without that shared rerank, one source would have to win by a hand-tuned rule instead of by which one actually answers the question.
+
+**Known limitation: BM25 is lexical.** The wiki's search has no embeddings; it matches tokens, not meaning. A query for "biased noise" will not retrieve a page that only says "asymmetric Pauli channel," even though they're close in meaning. The cross-encoder can only rescore what BM25 hands it; it cannot rescue a section BM25 never retrieved. Retrieval-only checks against the real corpus show the wiki competing rather than dominating: for "concatenated Steane code" a QAppsWiki section ranks #1 and takes 3 of the top 8; for "bivariate bicycle code" it ranks #2 with 3 of 8; for "quantum Reed-Muller codes" the corpus wins all 8 slots.
+
+**Be honest about the tier split today.** 689 of the 691 `concepts/` pages carry `provenance_status: needs-verification` (2 are `source-backed`), so almost all wiki content enters at the lower `wiki_unverified` tier (0.35) rather than `wiki_curated` (0.6). The split is still worth having for when the wiki verifies more pages, but today wiki content wins or loses mainly on rerank score, not on trust grading.
+
 ### Why a math-aware chunker
 
 Default chunkers (LangChain's `RecursiveCharacterTextSplitter` etc.) cut text by character count. They'll happily split `\begin{equation} p_L = A(p/p_{th})^{(d+1)/2}` in half.
