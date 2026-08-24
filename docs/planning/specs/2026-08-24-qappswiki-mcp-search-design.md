@@ -7,7 +7,8 @@ codes plus curated QEC/QEM pages) by adding full-text search to QAppsWiki's own 
 and calling it during retrieval, alongside Qdrant. No second Qdrant collection, no
 ingestion pipeline, no sync job.
 
-**Repos touched:** `QSCSoftwareEcosystem/QAppsWiki` (Phase 1), `chatQEC` (Phase 2).
+**Repos touched:** `QSCSoftwareEcosystem/QAppsWiki` (Phase 1), `chatQEC` (Phase 2),
+`chatqec-mcp-tools` (Phase 3).
 
 ## Motivation
 
@@ -162,6 +163,50 @@ ChatQEC should honor that grading rather than flatten it. Unverified imports lan
 `blog` (0.5) and `web` (0.3), so they can inform an answer but never outrank a
 peer-reviewed paper.
 
+### Phase 3 — `fetch_url` in `chatqec-mcp-tools`
+
+Wiki pages cite their sources, and those citations are often where the real answer lives:
+an arXiv abstract, an Error Correction Zoo entry, a reference implementation. `search_pages`
+returns those links as metadata, so today the model can show a link but not read it. This
+phase lets it read one when a citation looks decisive.
+
+`fetch_url` belongs in the Stim sibling, not QAppsWiki: fetching a URL is a ChatQEC
+capability, unrelated to what a wiki knows, and the sibling already has the sandboxing
+posture and the install path for tools.
+
+**Tool**
+
+```
+fetch_url(url: str, max_chars: int = 20000)
+  -> {ok, url, title, text, truncated, error_message}
+```
+
+- HTML reduced to readable text; non-HTML content types rejected by name rather than parsed.
+- Failure returns `ok=False` with `error_message`, matching every other tool in that repo.
+
+**Domain allowlist (required, not optional)**
+
+An LLM-chosen URL fetched by a server is an SSRF primitive, and the Streamlit app is
+publicly deployable. `rules/security.md` forbids exactly this shape of unchecked outbound
+request. So:
+
+- Allow `arxiv.org`, `errorcorrectionzoo.org`, `raw.githubusercontent.com`, `github.com`,
+  `doi.org`, and `quantumlib.github.io`; everything else returns `ok=False`. The list is a
+  frozen constant in the tool module, reviewable in one place.
+- Reject non-HTTPS schemes, credentials in the URL, and any host resolving to a private,
+  loopback, or link-local address, re-checked **after** DNS resolution so a public hostname
+  cannot redirect into the internal network.
+- Do not follow redirects across a domain that leaves the allowlist.
+- Cap response size and set a hard timeout; count each call against the existing
+  `limits.per_query_tool_iterations`.
+
+**Tests:** allowlisted host succeeds against a stubbed transport; non-allowlisted host,
+`file://`, a redirect off the allowlist, and a private-IP host all return `ok=False`;
+oversized bodies truncate with `truncated=True`. No live network in tests.
+
+**Sequencing:** independent of Phases 1 and 2 and worth less on its own, so build it last.
+Its value depends on wiki citations actually reaching answers, which Phase 2 delivers.
+
 ## Attribution and licensing
 
 Zoo-imported pages state: *"Text is reused under CC-BY-SA; attribute the Error Correction
@@ -179,6 +224,8 @@ its owners but does not block this work, since CC-BY-SA attribution is satisfied
 | `search_pages` times out or errors | Returns `[]`; answer proceeds from Qdrant alone |
 | Index cache corrupt | Rebuilt from scratch on next call |
 | Qdrant down | Unchanged behavior; wiki does not mask a broken store |
+| `fetch_url` given a non-allowlisted host | `ok=False`; the model answers without it |
+| `fetch_url` times out or the page is huge | `ok=False`, or truncated text with `truncated=True` |
 
 Every wiki failure is non-fatal. The corpus path must never depend on the wiki being
 healthy.
@@ -209,4 +256,5 @@ healthy.
 
 Ingesting `raw/md`; the graph traversal tools (`q_get_neighbors`, `q_shortest_path`) as
 LLM-facing tools; the second wiki (`qrag`), which the current token cannot see; wiring
-`code_params` to Zoo data, which is a natural follow-on once this proves useful.
+`code_params` to Zoo data, which is a natural follow-on once this proves useful;
+automatic verification of fetched pages against the claims that cited them.
