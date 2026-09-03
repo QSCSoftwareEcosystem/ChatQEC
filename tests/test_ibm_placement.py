@@ -145,16 +145,25 @@ def test_place_vf2_bounds_search_cost_on_pathological_no_match_graph():
     GraphMatcher-based search that only checked time.monotonic() *between*
     yields of subgraph_monomorphisms_iter() could not be interrupted while
     VF2's internal backtracking produced zero yields -- exactly the
-    no-exact-match case -- and measured ~219s on this exact shape. The
-    rustworkx-based place_vf2 bounds internal search states via call_limit,
-    the real cost driver, and must return well within a generous wall-clock
-    bound even though no match exists."""
+    no-exact-match case. The blowup is driven by branching in the hardware
+    graph, not just triangle-freeness: a low-degree line graph of the same
+    node count does not trigger it, but a 5x5 grid (max degree 4, still
+    triangle-free since grids are bipartite) does -- the old networkx-based
+    search took over 500s against this exact interaction graph on that grid
+    and had to be killed rather than waited out. The rustworkx-based
+    place_vf2 bounds internal search states via call_limit, the real cost
+    driver, and must return well within a generous wall-clock bound even on
+    this branching shape."""
     import time
 
     from chatqec_mcp_tools.tools.ibm_hardware._placement import place_vf2
     from chatqec_mcp_tools.tools.ibm_hardware._quality_model import HardwareQualityModel
 
-    hw_graph = nx.path_graph(50)  # a line is triangle-free
+    # 25-node grid: branching (interior nodes have degree 4) and triangle-free
+    # (grids are bipartite) -- branching, not triangle-freeness alone, is what
+    # drives networkx's GraphMatcher into runaway backtracking on a no-match
+    # search, so a plain line graph would not have caught the original defect.
+    hw_graph = nx.convert_node_labels_to_integers(nx.grid_2d_graph(5, 5))
     for q in hw_graph.nodes:
         hw_graph.nodes[q].update(T1=50.0, T2=45.0, readout_fidelity=0.99, is_operational=True)
     for u, v in hw_graph.edges:
@@ -175,5 +184,5 @@ def test_place_vf2_bounds_search_cost_on_pathological_no_match_graph():
     result = place_vf2(hw_graph, interaction, quality)
     elapsed = time.monotonic() - start
 
-    assert result is None  # no triangle exists in a line graph -- no exact match possible
-    assert elapsed < 5.0  # would have taken ~219s with the rejected networkx-based approach
+    assert result is None  # no triangle exists in a bipartite grid graph -- no exact match possible
+    assert elapsed < 5.0  # the rejected networkx-based approach took >500s (killed) on this shape
