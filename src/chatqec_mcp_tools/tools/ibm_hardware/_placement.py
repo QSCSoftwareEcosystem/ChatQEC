@@ -64,12 +64,6 @@ def place_greedy(
             assignment[logical] = best
             used_physical.add(best)
 
-    remaining_logical = [n for n in interaction_graph.nodes if n not in assignment]
-    remaining_physical = sorted(set(hw_graph.nodes) - used_physical, key=lambda q: -quality.node_score(q))
-    for logical, phys in zip(remaining_logical, remaining_physical, strict=False):
-        assignment[logical] = phys
-        used_physical.add(phys)
-
     if len(assignment) < interaction_graph.number_of_nodes():
         missing = interaction_graph.number_of_nodes() - len(assignment)
         raise ValueError(
