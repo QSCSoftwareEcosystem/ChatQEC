@@ -18,6 +18,10 @@ from chatqec_mcp_tools.tools.glcb_visualize import (
     GlcbVisualizeInput,
     glcb_visualize_url,
 )
+from chatqec_mcp_tools.tools.ibm_hardware.list_backends import (
+    IbmListBackendsInput,
+    ibm_list_backends,
+)
 from chatqec_mcp_tools.tools.pymatching_decode import (
     PymatchingDecodeInput,
     pymatching_decode,
@@ -82,6 +86,10 @@ def _tsim_simulate_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _glcb_visualize_url_handler(args: dict[str, Any]) -> dict[str, Any]:
     return glcb_visualize_url(GlcbVisualizeInput.model_validate(args)).model_dump()
+
+
+def _ibm_list_backends_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return ibm_list_backends(IbmListBackendsInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -175,6 +183,16 @@ _TOOLS = [
         ),
         input_schema=GlcbVisualizeInput.model_json_schema(),
         handler=_glcb_visualize_url_handler,
+    ),
+    ToolSpec(
+        name="ibm_list_backends",
+        description=(
+            "List IBM Quantum backends visible to the configured account: name, "
+            "qubit count, operational status, and pending job queue depth. "
+            "Free, cached for 60 seconds."
+        ),
+        input_schema=IbmListBackendsInput.model_json_schema(),
+        handler=_ibm_list_backends_handler,
     ),
 ]
 

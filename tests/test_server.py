@@ -32,3 +32,8 @@ def test_threshold_sweep_handler_round_trips():
     })
     assert out["ok"] is True
     assert len(out["rows"]) == 1
+
+
+def test_ibm_list_backends_is_registered():
+    server = build_server()
+    assert "ibm_list_backends" in {t.name for t in server.list_tools()}
