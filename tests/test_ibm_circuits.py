@@ -68,3 +68,16 @@ def test_build_interaction_graph_weights_repeated_pairs():
     assert set(interaction.graph.nodes) == {0, 1, 2}
     assert interaction.graph.has_edge(0, 1)
     assert interaction.graph.has_edge(0, 2)
+
+
+def test_qaoa_layers_zero_produces_empty_circuit():
+    from chatqec_mcp_tools.tools.ibm_hardware._circuits import parse_circuit_input
+
+    spec = parse_circuit_input(circuit_qasm=None, circuit_preset="qaoa", num_qubits=4, qaoa_layers=0)
+
+    # 0 layers should produce a circuit with no QAOA construction gates (h, cx, rz, rx)
+    ops = spec.circuit.count_ops()
+    assert ops.get("h", 0) == 0
+    assert ops.get("cx", 0) == 0
+    assert ops.get("rz", 0) == 0
+    assert ops.get("rx", 0) == 0

@@ -57,7 +57,7 @@ def parse_circuit_input(
     if circuit_preset not in _PRESETS:
         raise ValueError(f"circuit_preset must be one of {_PRESETS}, got {circuit_preset!r}")
 
-    n = num_qubits or (_BELL_QUBITS if circuit_preset == "bell" else _DEFAULT_NUM_QUBITS)
+    n = num_qubits if num_qubits is not None else (_BELL_QUBITS if circuit_preset == "bell" else _DEFAULT_NUM_QUBITS)
     if circuit_preset == "bell":
         if n != _BELL_QUBITS:
             raise ValueError("the bell preset is defined for exactly 2 qubits")
@@ -67,7 +67,7 @@ def parse_circuit_input(
     elif circuit_preset == "qft":
         circuit = _qft(n)
     else:
-        circuit = _qaoa(n, layers=qaoa_layers or 1)
+        circuit = _qaoa(n, layers=qaoa_layers if qaoa_layers is not None else 1)
 
     return CircuitSpec(circuit=circuit, num_logical_qubits=n)
 
