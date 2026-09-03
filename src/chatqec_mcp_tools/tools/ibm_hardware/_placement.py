@@ -3,10 +3,17 @@
 place_greedy is ported essentially as-is from cahgr/retrieval.py's
 _retrieve_greedy/_physical_candidates -- no defects found there during review.
 place_vf2 fixes the one confirmed real defect: the intern's hardcoded
-_VF2_NODE_CAP/_VF2_CANDIDATE_CAP had no wall-clock bound. It is bounded by a
-real time budget instead, checked on every candidate the matcher yields.
-place() tries place_vf2 first (a zero-SWAP result when one exists) and falls
-back to place_greedy, which always succeeds.
+_VF2_NODE_CAP/_VF2_CANDIDATE_CAP had no wall-clock bound. It uses rustworkx's
+call_limit to bound the actual number of internal VF2 search states visited
+(the real cost driver) -- the same dual-bound pattern (call_limit + a
+wall-clock time_limit) Qiskit's own VF2Layout pass uses. A first attempt that
+checked time.monotonic() between yields of networkx's
+subgraph_monomorphisms_iter() was rejected in review: that check can only run
+between yields, so it cannot interrupt VF2's internal backtracking when there
+are few or zero matches -- exactly the case that matters most in practice
+(no exact match exists) -- and measured ~219s on a pathological 20-node
+case. place() tries place_vf2 first (a zero-SWAP result when one exists) and
+falls back to place_greedy, which always succeeds.
 """
 
 from __future__ import annotations
@@ -16,7 +23,7 @@ from dataclasses import dataclass
 from statistics import mean
 
 import networkx as nx
-from networkx.algorithms.isomorphism import GraphMatcher
+import rustworkx as rx
 
 from chatqec_mcp_tools.tools.ibm_hardware._quality_model import HardwareQualityModel
 
@@ -97,8 +104,9 @@ def _physical_candidates(
     return candidates
 
 
-_VF2_MAX_INTERACTION_NODES = 20  # cheap pre-filter only; the time budget below is the real bound
+_VF2_MAX_INTERACTION_NODES = 20  # cheap pre-filter only; call_limit is the real bound on search cost now
 _VF2_DEFAULT_TIME_BUDGET_SECONDS = 2.0
+_VF2_CALL_LIMIT = 100_000  # bounds internal VF2 search states (the real cost driver, per rustworkx's docs)
 
 
 def place_vf2(
@@ -107,14 +115,16 @@ def place_vf2(
     quality: HardwareQualityModel,
     *,
     time_budget_seconds: float = _VF2_DEFAULT_TIME_BUDGET_SECONDS,
+    call_limit: int = _VF2_CALL_LIMIT,
 ) -> PlacementResult | None:
-    """Exact subgraph monomorphism search: find a physical region where every
-    logical interaction maps to an existing physical coupler (zero predicted
-    SWAPs). Bounded by wall-clock time, not a candidate-count guess -- fixes
-    cahgr/retrieval.py's _VF2_NODE_CAP/_VF2_CANDIDATE_CAP, which capped
-    already-yielded candidates but had no bound on time spent before the first
-    yield. Returns None (never raises) if no match is found or the budget runs
-    out; callers should fall back to place_greedy."""
+    """Exact subgraph monomorphism search via rustworkx (bounded by
+    call_limit, the count of internal VF2 search states -- not by how many
+    already-found candidates get scored). A wall-clock deadline is kept as a
+    second, complementary bound (matching Qiskit's own VF2Layout pass, which
+    uses both call_limit and time_limit together) in case scoring itself is
+    slow for a very large hardware graph. Returns None (never raises) if no
+    match is found, the interaction graph is empty/too large, or either bound
+    is hit; callers should fall back to place_greedy."""
     if (
         interaction_graph.number_of_nodes() == 0
         or interaction_graph.number_of_nodes() > _VF2_MAX_INTERACTION_NODES
@@ -123,15 +133,25 @@ def place_vf2(
     if interaction_graph.number_of_edges() == 0:
         return None  # nothing to align structurally
 
-    matcher = GraphMatcher(hw_graph, interaction_graph)
+    hw_rx = rx.networkx_converter(hw_graph, keep_attributes=False)
+    inter_rx = rx.networkx_converter(interaction_graph, keep_attributes=False)
+    # nx.Graph is always undirected, so networkx_converter always returns a
+    # PyGraph here; narrow the PyGraph | PyDiGraph union type for mypy.
+    assert isinstance(hw_rx, rx.PyGraph)
+    assert isinstance(inter_rx, rx.PyGraph)
+
     best_assignment: dict[int, int] | None = None
     best_score = float("-inf")
     deadline = time.monotonic() + time_budget_seconds
 
-    for mapping in matcher.subgraph_monomorphisms_iter():
+    mappings = rx.vf2_mapping(hw_rx, inter_rx, subgraph=True, induced=False, call_limit=call_limit)
+    for mapping in mappings:
         if time.monotonic() >= deadline:
             break
-        assignment = {logical_q: phys_q for phys_q, logical_q in mapping.items()}
+        # mapping: {hw_rx_index: inter_rx_index}; translate rustworkx indices
+        # back to the original nx node labels (payloads), then invert to our
+        # logical->physical convention.
+        assignment = {inter_rx[inter_idx]: hw_rx[hw_idx] for hw_idx, inter_idx in mapping.items()}
         score = _score_assignment(hw_graph, interaction_graph, quality, assignment)
         if score > best_score:
             best_score = score

@@ -37,6 +37,8 @@ tsim = [
 ibm = [
   "qiskit>=1.0",
   "qiskit-ibm-runtime>=0.48",
+  "networkx>=3",
+  "rustworkx>=0.15",
 ]
 
 [project.scripts]

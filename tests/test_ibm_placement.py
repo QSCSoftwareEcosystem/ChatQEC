@@ -138,3 +138,42 @@ def test_place_dispatcher_prefers_vf2_when_exact_match_exists():
     result = place(hw_graph, interaction, quality)
 
     assert result.strategy_used == "vf2"
+
+
+def test_place_vf2_bounds_search_cost_on_pathological_no_match_graph():
+    """Regression test for the reviewer-found defect: a networkx
+    GraphMatcher-based search that only checked time.monotonic() *between*
+    yields of subgraph_monomorphisms_iter() could not be interrupted while
+    VF2's internal backtracking produced zero yields -- exactly the
+    no-exact-match case -- and measured ~219s on this exact shape. The
+    rustworkx-based place_vf2 bounds internal search states via call_limit,
+    the real cost driver, and must return well within a generous wall-clock
+    bound even though no match exists."""
+    import time
+
+    from chatqec_mcp_tools.tools.ibm_hardware._placement import place_vf2
+    from chatqec_mcp_tools.tools.ibm_hardware._quality_model import HardwareQualityModel
+
+    hw_graph = nx.path_graph(50)  # a line is triangle-free
+    for q in hw_graph.nodes:
+        hw_graph.nodes[q].update(T1=50.0, T2=45.0, readout_fidelity=0.99, is_operational=True)
+    for u, v in hw_graph.edges:
+        hw_graph.edges[u, v].update(gate_fidelity=0.99, gate_time=50.0)
+
+    interaction = nx.Graph()
+    for i in range(16):  # a 17-node chain: 0-1-2-...-16
+        interaction.add_edge(i, i + 1, weight=1)
+    interaction.add_edge(17, 18, weight=1)  # a 3-node triangle: 17-18-19
+    interaction.add_edge(18, 19, weight=1)
+    interaction.add_edge(19, 17, weight=1)
+
+    assert interaction.number_of_nodes() == 20  # exactly at the VF2 node cap
+
+    quality = HardwareQualityModel(hw_graph, objective="balanced")
+
+    start = time.monotonic()
+    result = place_vf2(hw_graph, interaction, quality)
+    elapsed = time.monotonic() - start
+
+    assert result is None  # no triangle exists in a line graph -- no exact match possible
+    assert elapsed < 5.0  # would have taken ~219s with the rejected networkx-based approach
