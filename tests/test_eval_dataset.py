@@ -56,7 +56,7 @@ def test_load_eval_set_skips_blank_lines(tmp_path: Path):
     assert len(load_eval_set(p)) == 1
 
 
-def test_subtype_enum_covers_six_classes():
+def test_subtype_enum_covers_expected_classes():
     expected = {
         "definition",
         "paper_lookup",
@@ -64,5 +64,6 @@ def test_subtype_enum_covers_six_classes():
         "math_detail",
         "recent_niche",
         "code_execution",
+        "hardware_mapping",
     }
     assert {s.value for s in QuestionSubtype} == expected

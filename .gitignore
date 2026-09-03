@@ -248,3 +248,4 @@ Raw/
 
 # Generated corpus statistics
 data/corpus_stats.json
+snapshots/

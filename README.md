@@ -227,7 +227,7 @@ is a CLI flag).
 
 This is new and **not yet measured** against the eval set. The recommended
 way to check whether the wiki actually helps, or crowds out better corpus
-chunks, is the same 50-pair eval run already used for every other retrieval
+chunks, is the same 62-pair eval run already used for every other retrieval
 change:
 
 ```bash
@@ -307,7 +307,7 @@ chatqec canonical validate                            # check the canonical wiki
 chatqec canonical embed                               # chunk + embed canonical pages into Qdrant
 chatqec ask "..." --image fig.png                     # multimodal: attach an image to the question
 chatqec watch refresh --apply                         # pull new arXiv/GitHub candidates
-chatqec eval run --output eval/results.json           # run the 50-pair eval set
+chatqec eval run --output eval/results.json           # run the 62-pair eval set
 ```
 
 > **Tip — verify retrieval without Anthropic credit.** `chatqec retrieve --query "..."` exercises only Gemini embeddings + Qdrant + the BGE reranker, **no
@@ -479,7 +479,7 @@ the fallback kicks in — eval headline numbers should still be run with
 | Retrieval       | [`src/chatqec/retrieval/`](src/chatqec/retrieval/)                            | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Conversation    | [`src/chatqec/conversation/`](src/chatqec/conversation/)                      | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Guards          | [`src/chatqec/guards/`](src/chatqec/guards/)                                  | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Eval            | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)                  | 50-pair Q&A set across 6 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Eval            | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)                  | 62-pair Q&A set across 7 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | MCP tools       | [`chatqec-mcp-tools`](https://github.com/QSCSoftwareThrust/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) over MCP stdio |
 | QAppsWiki search | [`src/chatqec/retrieval/wiki_search.py`](src/chatqec/retrieval/wiki_search.py) | Wraps the [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) MCP `search_pages` tool (self-hosted BM25 over ~3,778 sections from 691 concept pages) into `RetrievedChunk`s that join the same cross-encoder rerank pass as corpus chunks; needs the wiki's MCP server named alongside `chatqec-mcp-tools` (see [Enable QAppsWiki search](#enable-qappswiki-search)) |
 
@@ -608,7 +608,7 @@ retrieved evidence?). Run output is JSON with per-subtype + overall scores.
 - ✅ Figure ingestion: persisted images, local Llama-3.2-Vision descriptions, searchable + shown at answer time
 - ✅ Sandboxed Stim execution via MCP sibling repo
 - ✅ Streamlit app with per-IP rate limit, daily budget, hCaptcha
-- ✅ 50-pair eval set + `chatqec eval run`
+- ✅ 62-pair eval set + `chatqec eval run`
 - ✅ Watchlist refresh (arXiv + GitHub) with scheduled CI MR
 
 **v0.2 — content & quality:**

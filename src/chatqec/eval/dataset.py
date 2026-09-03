@@ -15,6 +15,7 @@ class QuestionSubtype(StrEnum):
     MATH_DETAIL = "math_detail"
     RECENT_NICHE = "recent_niche"
     CODE_EXECUTION = "code_execution"
+    HARDWARE_MAPPING = "hardware_mapping"
 
 
 class EvalCase(BaseModel):
