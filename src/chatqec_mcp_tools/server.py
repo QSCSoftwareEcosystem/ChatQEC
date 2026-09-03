@@ -26,6 +26,10 @@ from chatqec_mcp_tools.tools.ibm_hardware.list_backends import (
     IbmListBackendsInput,
     ibm_list_backends,
 )
+from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import (
+    IbmMapCircuitInput,
+    ibm_map_circuit,
+)
 from chatqec_mcp_tools.tools.pymatching_decode import (
     PymatchingDecodeInput,
     pymatching_decode,
@@ -98,6 +102,10 @@ def _ibm_list_backends_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _ibm_backend_calibration_handler(args: dict[str, Any]) -> dict[str, Any]:
     return ibm_backend_calibration(IbmBackendCalibrationInput.model_validate(args)).model_dump()
+
+
+def _ibm_map_circuit_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return ibm_map_circuit(IbmMapCircuitInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -211,6 +219,16 @@ _TOOLS = [
         ),
         input_schema=IbmBackendCalibrationInput.model_json_schema(),
         handler=_ibm_backend_calibration_handler,
+    ),
+    ToolSpec(
+        name="ibm_map_circuit",
+        description=(
+            "Map a circuit (QASM or a bell/ghz/qft/qaoa preset) onto an IBM backend: "
+            "physical qubit layout, strategy used, estimated fidelity, and a "
+            "coupling-map diagram. Free, local compute plus one calibration fetch."
+        ),
+        input_schema=IbmMapCircuitInput.model_json_schema(),
+        handler=_ibm_map_circuit_handler,
     ),
 ]
 
