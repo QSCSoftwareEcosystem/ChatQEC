@@ -36,19 +36,21 @@ def render_coupling_diagram(hw_graph: nx.Graph, highlighted_qubits: set[int]) ->
 
         pos = nx.kamada_kawai_layout(hw_graph)
         fig, ax = plt.subplots(figsize=(6, 6))
-        node_colors = ["#d62728" if n in highlighted_qubits else "#cccccc" for n in hw_graph.nodes]
-        nx.draw(
-            hw_graph,
-            pos=pos,
-            ax=ax,
-            node_color=node_colors,
-            with_labels=True,
-            node_size=300,
-            font_size=8,
-        )
-        buf = io.StringIO()
-        fig.savefig(buf, format="svg")
-        plt.close(fig)
-        return buf.getvalue()
+        try:
+            node_colors = ["#d62728" if n in highlighted_qubits else "#cccccc" for n in hw_graph.nodes]
+            nx.draw(
+                hw_graph,
+                pos=pos,
+                ax=ax,
+                node_color=node_colors,
+                with_labels=True,
+                node_size=300,
+                font_size=8,
+            )
+            buf = io.StringIO()
+            fig.savefig(buf, format="svg")
+            return buf.getvalue()
+        finally:
+            plt.close(fig)
     except Exception:  # plot is best-effort; rendering failure returns empty string
         return ""
