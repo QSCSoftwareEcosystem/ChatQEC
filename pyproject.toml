@@ -34,6 +34,10 @@ lightstim = [
 tsim = [
   "bloqade-tsim>=0.1.5,<0.2",
 ]
+ibm = [
+  "qiskit>=1.0",
+  "qiskit-ibm-runtime>=0.48",
+]
 
 [project.scripts]
 chatqec-mcp-tools = "chatqec_mcp_tools.server:main"
