@@ -47,3 +47,8 @@ def test_ibm_backend_calibration_is_registered():
 def test_ibm_map_circuit_is_registered():
     server = build_server()
     assert "ibm_map_circuit" in {t.name for t in server.list_tools()}
+
+
+def test_ibm_preview_execution_is_registered():
+    server = build_server()
+    assert "ibm_preview_execution" in {t.name for t in server.list_tools()}

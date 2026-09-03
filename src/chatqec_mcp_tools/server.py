@@ -30,6 +30,10 @@ from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import (
     IbmMapCircuitInput,
     ibm_map_circuit,
 )
+from chatqec_mcp_tools.tools.ibm_hardware.preview_execution import (
+    IbmPreviewExecutionInput,
+    ibm_preview_execution,
+)
 from chatqec_mcp_tools.tools.pymatching_decode import (
     PymatchingDecodeInput,
     pymatching_decode,
@@ -106,6 +110,10 @@ def _ibm_backend_calibration_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _ibm_map_circuit_handler(args: dict[str, Any]) -> dict[str, Any]:
     return ibm_map_circuit(IbmMapCircuitInput.model_validate(args)).model_dump()
+
+
+def _ibm_preview_execution_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return ibm_preview_execution(IbmPreviewExecutionInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -229,6 +237,16 @@ _TOOLS = [
         ),
         input_schema=IbmMapCircuitInput.model_json_schema(),
         handler=_ibm_map_circuit_handler,
+    ),
+    ToolSpec(
+        name="ibm_preview_execution",
+        description=(
+            "Preview a real-hardware submission — mapped qubits, backend status, "
+            "shots — without submitting or spending credits. Call this before "
+            "ibm_submit_execution."
+        ),
+        input_schema=IbmPreviewExecutionInput.model_json_schema(),
+        handler=_ibm_preview_execution_handler,
     ),
 ]
 
