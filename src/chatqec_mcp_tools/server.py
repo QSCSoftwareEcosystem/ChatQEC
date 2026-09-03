@@ -34,6 +34,10 @@ from chatqec_mcp_tools.tools.ibm_hardware.preview_execution import (
     IbmPreviewExecutionInput,
     ibm_preview_execution,
 )
+from chatqec_mcp_tools.tools.ibm_hardware.submit_execution import (
+    IbmSubmitExecutionInput,
+    ibm_submit_execution,
+)
 from chatqec_mcp_tools.tools.pymatching_decode import (
     PymatchingDecodeInput,
     pymatching_decode,
@@ -114,6 +118,10 @@ def _ibm_map_circuit_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _ibm_preview_execution_handler(args: dict[str, Any]) -> dict[str, Any]:
     return ibm_preview_execution(IbmPreviewExecutionInput.model_validate(args)).model_dump()
+
+
+def _ibm_submit_execution_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return ibm_submit_execution(IbmSubmitExecutionInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -247,6 +255,17 @@ _TOOLS = [
         ),
         input_schema=IbmPreviewExecutionInput.model_json_schema(),
         handler=_ibm_preview_execution_handler,
+    ),
+    ToolSpec(
+        name="ibm_submit_execution",
+        description=(
+            "SUBMIT a real job to IBM Quantum hardware — spends account credits/quota. "
+            "Requires an explicit backend name (no auto-pick), caps at 10 qubits / "
+            "4000 shots. Call ibm_preview_execution first to see the plan before "
+            "spending anything."
+        ),
+        input_schema=IbmSubmitExecutionInput.model_json_schema(),
+        handler=_ibm_submit_execution_handler,
     ),
 ]
 
