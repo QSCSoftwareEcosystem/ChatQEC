@@ -90,7 +90,7 @@ tools/ibm_hardware/
   submit_execution.py     # ibm_submit_execution
   _client.py              # lazy QiskitRuntimeService construction from env vars
   _cache.py               # new: file-based TTL cache (JSON, fetched_at/ttl_seconds/payload)
-  _hardware_graph.py       # ported from cahgr/hardware_kg.py: calibration -> normalized graph
+  _hardware_graph.py       # adapted from cahgr/hardware_kg.py: live backend -> normalized graph
   _quality_model.py        # ported from cahgr/retrieval.py: HardwareQualityModel
   _placement.py            # ported+fixed: greedy region-growing + bounded VF2
   _coupling_diagram.py     # matplotlib -> SVG string, mapped qubits highlighted
@@ -174,28 +174,44 @@ server-side. This is a documented limitation (see below), not a hard guarantee.
 
 ## Mapping algorithm
 
-Ported from `cahgr/hardware_kg.py` and `cahgr/retrieval.py`, generalized from the intern's
-fixed prompt-library circuits to arbitrary user-supplied QASM:
+Ported from `cahgr/hardware_kg.py`, `cahgr/circuit_graph.py`, and `cahgr/retrieval.py`.
+Verified while reading the source (2026-09-03): `cahgr/circuit_graph.py`'s
+`build_circuit_interaction_graph` already dispatches on a real Qiskit `QuantumCircuit`
+(`hasattr(circuit, "data") and hasattr(circuit, "num_qubits")`), with no hard dependency on
+qiskit for its dict-based fallback path. It already generalizes to arbitrary circuits, not
+just the intern's fixed prompt library — no rewrite needed there beyond a straight port.
 
-- **`_hardware_graph.py`**: calibration JSON → a graph with per-qubit (T1, T2, readout
-  error) and per-coupler (two-qubit error, gate duration) attributes. Kept as-is; the review
-  found this schema sound.
-- **`_quality_model.py`**: min-max normalized objective scoring (`maximum_fidelity` weights
-  T1/T2/readout/gate-fidelity; `minimum_execution_time` switches to gate duration). Kept
-  as-is.
+- **`_hardware_graph.py`**: adapted, not a literal port. Keeps `cahgr/hardware_kg.py`'s graph
+  schema (per-qubit T1/T2/readout, per-coupler gate error/duration/native-gate) and its
+  native-two-qubit-gate priority pick, but builds directly from a live `qiskit_ibm_runtime`
+  backend's `.properties()` and `.coupling_map` rather than a parsed JSON snapshot. This
+  intentionally drops the intern's `hardware_layout.vendor_ibm` JSON-reconstruction layer and
+  `hardware_layout.qubit_coordinates` per-backend coordinate lookup (unreviewed, unnecessary
+  once the source is a live SDK object) — the coupling-map SVG uses `networkx`'s own
+  `kamada_kawai_layout` instead of hardcoded per-chip coordinates.
+- **`_quality_model.py`**: `cahgr/retrieval.py`'s `HardwareQualityModel` — min-max normalized
+  objective scoring (`maximum_fidelity` narrows to readout fidelity; `minimum_execution_time`
+  switches edge scoring to inverse gate duration). Ported essentially as-is; the review found
+  this schema sound.
 - **`_placement.py`**: two strategies.
   - **Greedy region-growing** (default, always succeeds): grow a candidate physical-qubit
     region from a high-quality seed qubit, scored by the objective model.
   - **VF2 exact subgraph match**: attempted first when the circuit's two-qubit interaction
     graph is small enough. This is the one piece that gets an actual fix rather than a
-    straight port: the intern's version capped search at a hardcoded 12 interaction-graph
-    nodes / 4000 candidates with no stated justification. Replacing that: candidates are
-    generated in order of a cheap greedy pre-score (best regions first) and the search stops
-    on a **time/candidate budget** (default: 2 seconds or 2000 candidates, whichever first),
-    falling back to greedy automatically when the budget is exhausted or the interaction
-    graph is too large to match exactly. This makes the exact-match effort scale with actual
-    difficulty instead of an arbitrary constant, and it always terminates with *some* valid
-    mapping (greedy) even when VF2 finds nothing.
+    straight port. Confirmed by reading `cahgr/retrieval.py:47-48,198-223`: `_VF2_NODE_CAP =
+    12` and `_VF2_CANDIDATE_CAP = 4000` are hardcoded module constants with one-line comments
+    ("interaction graphs larger than this make VF2 impractical" / "cap how many monomorphisms
+    we score before giving up") but no complexity analysis, and — the real correctness gap —
+    **no wall-clock bound at all**: the candidate cap only limits how many already-yielded
+    `subgraph_monomorphisms_iter()` results get scored, so a pathological interaction-graph
+    shape *within* the 12-node cap could still spend a long time in VF2's internal backtracking
+    before yielding anything. The port replaces both constants with a **wall-clock time budget**
+    (default 2 seconds, checked on every loop iteration) as the real termination guarantee,
+    keeping a generous node/candidate cap only as a cheap pre-filter, and falls back to greedy
+    automatically when the budget is exhausted or the interaction graph is too large. This
+    makes the exact-match effort bounded by actual elapsed time rather than a constant that
+    doesn't track the real cost driver, and it always terminates with *some* valid mapping
+    (greedy) even when VF2 finds nothing.
   - **Steiner-tree placement is dropped**, not ported. Greedy + bounded VF2 cover the
     exact/approximate spectrum for Bell/GHZ/QAOA-scale circuits (the actual target use
     case); Steiner adds real complexity for a case not yet observed to need it. If a future
@@ -238,9 +254,12 @@ plan below can rely on these rather than assumptions:
   `ibm_marrakesh` is the one backend present in both the live account and the pinned
   fixtures, useful for integration-test continuity).
 - **A coupling pair can expose more than one native two-qubit gate.** `ibm_fez` qubits (0, 1)
-  list both `cz` and `rzz` as available two-qubit basis gates — `_hardware_graph.py` must
-  store a per-coupler *list* of (gate name, error, duration) tuples, not a single native
-  gate, correcting an implicit single-gate assumption in the intern's schema.
+  list both `cz` and `rzz` as available two-qubit basis gates. Correction to an earlier draft
+  of this section: this is **not** a gap in the intern's code — `cahgr/hardware_kg.py` already
+  anticipates exactly this (`_TWO_Q_GATE_PRIORITY = ("cz", "ecr", "cx", "rzz", "iswap", "swap")`,
+  with a comment noting "Heron: cz + rzz") and deliberately picks one gate per coupler by
+  priority rather than tracking every alternative. That's a reasonable simplification for
+  quality-scoring purposes and is kept as-is in the port.
 - **Calibration data was ~33 minutes old** at check time (`last_update_date` timestamp),
   consistent with same-day (sub-daily) recalibration — supports the 3600s default TTL as
   reasonable rather than needing to guess.
