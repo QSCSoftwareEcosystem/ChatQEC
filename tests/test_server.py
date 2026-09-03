@@ -37,3 +37,8 @@ def test_threshold_sweep_handler_round_trips():
 def test_ibm_list_backends_is_registered():
     server = build_server()
     assert "ibm_list_backends" in {t.name for t in server.list_tools()}
+
+
+def test_ibm_backend_calibration_is_registered():
+    server = build_server()
+    assert "ibm_backend_calibration" in {t.name for t in server.list_tools()}

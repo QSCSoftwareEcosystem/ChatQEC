@@ -18,6 +18,10 @@ from chatqec_mcp_tools.tools.glcb_visualize import (
     GlcbVisualizeInput,
     glcb_visualize_url,
 )
+from chatqec_mcp_tools.tools.ibm_hardware.calibration import (
+    IbmBackendCalibrationInput,
+    ibm_backend_calibration,
+)
 from chatqec_mcp_tools.tools.ibm_hardware.list_backends import (
     IbmListBackendsInput,
     ibm_list_backends,
@@ -90,6 +94,10 @@ def _glcb_visualize_url_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _ibm_list_backends_handler(args: dict[str, Any]) -> dict[str, Any]:
     return ibm_list_backends(IbmListBackendsInput.model_validate(args)).model_dump()
+
+
+def _ibm_backend_calibration_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return ibm_backend_calibration(IbmBackendCalibrationInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -193,6 +201,16 @@ _TOOLS = [
         ),
         input_schema=IbmListBackendsInput.model_json_schema(),
         handler=_ibm_list_backends_handler,
+    ),
+    ToolSpec(
+        name="ibm_backend_calibration",
+        description=(
+            "Fetch T1/T2/readout error and per-coupler two-qubit gate error/duration "
+            "for one IBM backend. Cached; every answer built from this must state the "
+            "data's age (e.g. 'fetched 12 min ago')."
+        ),
+        input_schema=IbmBackendCalibrationInput.model_json_schema(),
+        handler=_ibm_backend_calibration_handler,
     ),
 ]
 
