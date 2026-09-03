@@ -218,6 +218,33 @@ Both overridable via env vars. Cache persists across chat sessions (each session
 fresh MCP server subprocess, so an in-memory cache would not survive between sessions;
 disk-based avoids repaying the fetch cost every new conversation).
 
+## Verified against your live IBM account (2026-09-03)
+
+Checked live with `qiskit-ibm-runtime` 0.49.0 against the free "open" plan account, so the
+plan below can rely on these rather than assumptions:
+
+- **Only `ibm_quantum_platform`/`ibm_cloud` channels exist** in this SDK version; the legacy
+  `ibm_quantum` channel referenced by the intern's code and by older docs has been fully
+  retired and raises `ValueError` if passed.
+- **No `QISKIT_IBM_INSTANCE` is required.** `QiskitRuntimeService(channel="ibm_quantum_platform", token=...)`
+  auto-selects the account's single `open-instance` on the free plan (with a warning, not an
+  error) — `_client.py` can rely on this default and only needs `QISKIT_IBM_INSTANCE` for
+  accounts with more than one instance.
+- **3 backends currently visible**, all 156-qubit Heron processors: `ibm_fez` (0 pending
+  jobs), `ibm_marrakesh` (3 pending), `ibm_kingston` (3 pending). `ibm_list_backends` must
+  reflect whatever the account can see dynamically — confirmed there is no fixed set to
+  hardcode, and the free-tier lineup can differ from the intern's pinned snapshot set
+  (`ibm_boston`, absent from `ibm_data/`'s stale snapshot, isn't visible here at all;
+  `ibm_marrakesh` is the one backend present in both the live account and the pinned
+  fixtures, useful for integration-test continuity).
+- **A coupling pair can expose more than one native two-qubit gate.** `ibm_fez` qubits (0, 1)
+  list both `cz` and `rzz` as available two-qubit basis gates — `_hardware_graph.py` must
+  store a per-coupler *list* of (gate name, error, duration) tuples, not a single native
+  gate, correcting an implicit single-gate assumption in the intern's schema.
+- **Calibration data was ~33 minutes old** at check time (`last_update_date` timestamp),
+  consistent with same-day (sub-daily) recalibration — supports the 3600s default TTL as
+  reasonable rather than needing to guess.
+
 ## Credentials
 
 `QISKIT_IBM_TOKEN` and `QISKIT_IBM_INSTANCE` read from environment only, lazily, inside
@@ -267,11 +294,9 @@ Input/Output/function directly, IBM API calls mocked (no live network in unit te
   verify a preview actually happened first. A determined or confused model could call submit
   directly. The qubit/shot caps and required explicit backend are the real safety net; the
   preview-first tool split is a strong nudge, not a guarantee.
-- **Free-tier backend visibility is unknown until the live smoke test runs.** The design
-  assumes `ibm_list_backends` dynamically reflects whatever the account can see, so it does
-  not hardcode backend names, but real behavior (which backend(s), queue depths) is unverified.
-- **Calibration TTL of 3600s is a starting guess**, not measured against how often IBM
-  actually recalibrates each backend; easy to tune via env var once observed.
+- **Calibration TTL of 3600s is a starting guess** informed by one observation (~33 min old
+  at check time), not a measured recalibration cadence; easy to tune via env var once more
+  data is observed over time.
 - **No near-duplicate or job-history tracking.** Repeated `ibm_submit_execution` calls are
   not deduplicated; a user or model calling it twice submits two jobs.
 
