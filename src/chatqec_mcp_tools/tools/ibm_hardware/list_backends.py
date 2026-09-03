@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from chatqec_mcp_tools.tools.ibm_hardware._cache import get_or_fetch
 from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError, get_ibm_service
@@ -28,14 +29,14 @@ class IbmListBackendsInput(BaseModel):
 class IbmListBackendsOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ok: bool
-    backends: list[BackendInfo] = []
+    backends: list[BackendInfo] = Field(default_factory=list)
     error_message: str = ""
 
 
 def ibm_list_backends(inp: IbmListBackendsInput) -> IbmListBackendsOutput:
     ttl = float(os.environ.get("CHATQEC_IBM_BACKEND_LIST_TTL_SECONDS", _DEFAULT_TTL_SECONDS))
 
-    def fetch() -> list[dict]:
+    def fetch() -> list[dict[str, Any]]:
         service = get_ibm_service()
         result = []
         for backend in service.backends():
