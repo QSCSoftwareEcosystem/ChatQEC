@@ -25,6 +25,12 @@ from chatqec_mcp_tools.tools.ibm_hardware._quality_model import HardwareQualityM
 _VALID_OBJECTIVES = ("maximum_fidelity", "minimum_execution_time")
 _TWO_QUBIT_GATE_ARITY = 2
 _MAX_NUM_QUBITS = 1024
+# _qaoa's construction is O(n * qaoa_layers), so an unbounded qaoa_layers is
+# just as much of a cheap-to-request/expensive-to-build hazard as an
+# unbounded num_qubits (see _MAX_NUM_QUBITS above) -- mirrors the bound
+# preview_execution.py's IbmPreviewExecutionInput already applies to its own
+# qaoa_layers field.
+_MAX_QAOA_LAYERS = 1000
 # Same exclusion set _circuits.build_interaction_graph uses -- these gates never
 # count as a "two-qubit gate" even when they happen to take two qubit operands.
 _NON_INTERACTION_GATE_NAMES = frozenset({"barrier", "measure", "reset", "delay"})
@@ -40,7 +46,7 @@ class IbmMapCircuitInput(BaseModel):
     circuit_qasm: str | None = None
     circuit_preset: str | None = None
     num_qubits: int | None = Field(default=None, ge=1, le=_MAX_NUM_QUBITS)
-    qaoa_layers: int | None = None
+    qaoa_layers: int | None = Field(default=None, ge=1, le=_MAX_QAOA_LAYERS)
     backend: str | None = None
     objective: str = "maximum_fidelity"
 

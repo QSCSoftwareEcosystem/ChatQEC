@@ -138,6 +138,22 @@ def test_ibm_map_circuit_rejects_num_qubits_above_bound(monkeypatch, tmp_path):
         IbmMapCircuitInput(circuit_preset="qft", num_qubits=2000)
 
 
+def test_ibm_map_circuit_rejects_qaoa_layers_out_of_bounds():
+    """qaoa_layers is bounded the same way num_qubits already is (see the test
+    above): _qaoa's construction is O(n * qaoa_layers), so an unbounded value
+    is a cheap-to-request/expensive-to-build hazard just like an unbounded
+    num_qubits."""
+    import pydantic
+
+    from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import IbmMapCircuitInput
+
+    with pytest.raises(pydantic.ValidationError):
+        IbmMapCircuitInput(circuit_preset="qaoa", qaoa_layers=0)
+
+    with pytest.raises(pydantic.ValidationError):
+        IbmMapCircuitInput(circuit_preset="qaoa", qaoa_layers=1001)
+
+
 def test_compute_mapping_handles_overflow_without_raising(monkeypatch, tmp_path):
     """Reproduces the brief's own bug report: _qft's math.pi / 2 ** (k - j)
     raises OverflowError once the exponent gets large enough. compute_mapping
