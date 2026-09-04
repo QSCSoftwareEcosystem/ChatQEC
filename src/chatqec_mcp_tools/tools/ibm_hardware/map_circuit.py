@@ -80,6 +80,9 @@ class MappingOutcome:
     error_message: str = ""
     service: Any = None  # the authenticated service, reused by callers so they
     sdk_backend: Any = None  # don't re-authenticate / re-fetch the backend a second time
+    circuit: Any = None  # the actual parsed/built qiskit circuit (CircuitSpec.circuit),
+    # reused by ibm_submit_execution so it can transpile and run the real circuit
+    # instead of just knowing about its placement.
 
 
 def _fetch_backend_infos(service: Any) -> list[dict[str, Any]]:
@@ -223,6 +226,7 @@ def compute_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error path
         svg=svg,
         service=service,
         sdk_backend=sdk_backend,
+        circuit=spec.circuit,
     )
 
 

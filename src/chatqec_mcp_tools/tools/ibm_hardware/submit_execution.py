@@ -30,10 +30,17 @@ class IbmSubmitExecutionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     circuit_qasm: str | None = None
     circuit_preset: str | None = None
-    num_qubits: int | None = None
+    # Deliberately ge=1 only, no upper bound: the real cap (_MAX_QUBITS) is a
+    # runtime ok=False check below, not a pydantic ValidationError, so that a
+    # too-large request still returns a structured error instead of raising.
+    # ge=1 alone still blocks num_qubits <= 0, which reaches qiskit's own
+    # CircuitError with no cap-check in between.
+    num_qubits: int | None = Field(default=None, ge=1)
     qaoa_layers: int | None = Field(default=None, ge=1, le=_MAX_QAOA_LAYERS)
     backend: str = Field(..., min_length=1)
-    shots: int
+    # Same reasoning as num_qubits above: ge=1 only, no upper bound -- the
+    # _MAX_SHOTS cap is enforced at runtime as ok=False.
+    shots: int = Field(..., ge=1)
 
 
 class IbmSubmitExecutionOutput(BaseModel):
@@ -50,6 +57,17 @@ def _make_sampler(service: Any, backend: Any) -> Any:
     from qiskit_ibm_runtime import SamplerV2  # noqa: PLC0415
 
     return SamplerV2(mode=backend)
+
+
+def _transpile(circuit: Any, backend: Any, initial_layout: list[int]) -> Any:
+    """Lazy wrapper around qiskit.transpile -- same lazy-import convention as
+    _make_sampler/_client.get_ibm_service (this whole package avoids importing
+    qiskit at module scope so it stays importable without the optional 'ibm'
+    extra); kept as its own function so tests can patch it directly, exactly
+    like _make_sampler already is."""
+    from qiskit import transpile  # noqa: PLC0415
+
+    return transpile(circuit, backend=backend, initial_layout=initial_layout)
 
 
 def ibm_submit_execution(inp: IbmSubmitExecutionInput) -> IbmSubmitExecutionOutput:
@@ -83,22 +101,49 @@ def ibm_submit_execution(inp: IbmSubmitExecutionInput) -> IbmSubmitExecutionOutp
             ),
         )
 
-    # Everything past this point is a real network operation (submitting the
-    # job, then asking the returned job object for its id/status) and any of
-    # it can fail in ways outside our control -- keep it all inside one try
-    # block so nothing escapes ibm_submit_execution as a raised exception.
+    # Build the actual ISA circuit to run: compute_mapping only produces a
+    # placement (logical -> physical qubit assignment), not something
+    # runnable. The mapped circuit itself (outcome.circuit) typically has no
+    # measurements (the mapping/preview tools never need them), so add them
+    # here if missing -- a real hardware run needs measurements to get any
+    # data back. transpile() then places qubits per the resolved placement.
     try:
+        circuit = outcome.circuit
+        if not circuit.clbits:
+            circuit = circuit.copy()
+            circuit.measure_all()
+
+        initial_layout = [outcome.placement.assignment[i] for i in range(circuit.num_qubits)]
+        isa_circuit = _transpile(circuit, outcome.sdk_backend, initial_layout)
+
         sampler = _make_sampler(outcome.service, outcome.sdk_backend)
-        job = sampler.run([], shots=inp.shots)
+        job = sampler.run([isa_circuit], shots=inp.shots)
+    except Exception as exc:
+        return IbmSubmitExecutionOutput(
+            ok=False,
+            error_message=(
+                f"Submission failed: {exc}. A job may still have been created on the "
+                "backend -- check your IBM Quantum jobs list before retrying."
+            ),
+        )
+
+    # job.job_id() and job.status() are separate calls on the now-real,
+    # already-submitted job: a failure in either must not discard the job_id
+    # we already have (the job is real and spending credits regardless), and
+    # must not raise out of this function.
+    try:
         job_id = job.job_id()
+    except Exception:
+        job_id = ""
+    try:
         status = str(job.status())
     except Exception as exc:
-        return IbmSubmitExecutionOutput(ok=False, error_message=f"Submission failed: {exc}")
+        status = f"unknown (status lookup failed: {exc})"
 
     return IbmSubmitExecutionOutput(
         ok=True,
         job_id=job_id,
-        backend=inp.backend,
+        backend=outcome.backend,  # the resolved backend name, not the raw request
         shots=inp.shots,
         status=status,
     )
