@@ -159,3 +159,31 @@ def test_parse_circuit_input_preset_path_is_guarded_too():
         parse_circuit_input(
             circuit_qasm=None, circuit_preset="ghz", num_qubits=0, qaoa_layers=None
         )
+
+
+def test_qaoa_preset_requires_at_least_two_qubits():
+    """QAOA's ring topology uses qc.cx(i, (i+1) % num_qubits). When num_qubits=1,
+    this becomes qc.cx(0, 0), a two-qubit gate with both operands the same,
+    which qiskit rejects with CircuitError('duplicate bit arguments'). The
+    guard must reject this before circuit construction, raising ValueError so
+    compute_mapping's except clause turns it into ok=False for all three tools."""
+    from chatqec_mcp_tools.tools.ibm_hardware._circuits import parse_circuit_input
+
+    with pytest.raises(ValueError, match="at least 2 qubits"):
+        parse_circuit_input(
+            circuit_qasm=None, circuit_preset="qaoa", num_qubits=1, qaoa_layers=None
+        )
+
+
+def test_qaoa_preset_works_with_two_or_more_qubits():
+    """Guard against over-rejecting: num_qubits=2 and higher should work."""
+    from chatqec_mcp_tools.tools.ibm_hardware._circuits import parse_circuit_input
+
+    spec = parse_circuit_input(
+        circuit_qasm=None, circuit_preset="qaoa", num_qubits=2, qaoa_layers=1
+    )
+
+    assert spec.num_logical_qubits == 2
+    # Each layer has num_qubits H gates, num_qubits*2 CX gates (cx before+after rz),
+    # num_qubits RZ gates, and num_qubits RX gates. With 1 layer and 2 qubits:
+    assert spec.circuit.count_ops().get("cx", 0) == 4

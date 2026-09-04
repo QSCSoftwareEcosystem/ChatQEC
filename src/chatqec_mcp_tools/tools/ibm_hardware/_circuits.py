@@ -20,6 +20,7 @@ import networkx as nx
 
 _BELL_QUBITS = 2
 _DEFAULT_NUM_QUBITS = 3
+_QAOA_MIN_QUBITS = 2  # ring topology requires at least 2 qubits
 _PRESETS = ("bell", "ghz", "qft", "qaoa")
 _TWO_QUBIT_GATES = 2
 
@@ -77,7 +78,9 @@ def parse_circuit_input(
         circuit = _ghz(n)
     elif circuit_preset == "qft":
         circuit = _qft(n)
-    else:
+    else:  # circuit_preset == "qaoa"
+        if n < _QAOA_MIN_QUBITS:
+            raise ValueError("the qaoa preset requires at least 2 qubits for a ring topology")
         circuit = _qaoa(n, layers=qaoa_layers if qaoa_layers is not None else 1)
 
     _reject_empty_circuit(circuit)

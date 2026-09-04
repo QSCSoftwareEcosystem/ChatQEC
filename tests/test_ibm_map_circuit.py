@@ -299,3 +299,23 @@ def test_compute_mapping_returns_the_actual_service_and_backend_objects(monkeypa
     assert outcome.ok is True
     assert outcome.service is fake_service
     assert outcome.sdk_backend is fake_backend
+
+
+def test_ibm_map_circuit_rejects_qaoa_at_one_qubit(monkeypatch, tmp_path):
+    """QAOA's ring topology construction fails with num_qubits=1 because it
+    tries to create qc.cx(0, 0) (a two-qubit gate with both operands the same).
+    The parser's arity guard must catch this and raise ValueError, which
+    compute_mapping's except clause converts to ok=False + error_message for
+    all three tools."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import (
+        IbmMapCircuitInput,
+        ibm_map_circuit,
+    )
+
+    out = ibm_map_circuit(
+        IbmMapCircuitInput(circuit_preset="qaoa", num_qubits=1, backend="ibm_fake")
+    )
+
+    assert out.ok is False
+    assert "at least 2 qubits" in out.error_message
