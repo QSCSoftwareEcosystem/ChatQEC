@@ -1138,8 +1138,9 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from chatqec_mcp_tools.tools.ibm_hardware._cache import get_or_fetch
 from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError, get_ibm_service
@@ -1176,15 +1177,15 @@ class IbmBackendCalibrationOutput(BaseModel):
     fetched_at: str = ""
     age_seconds: int = 0
     stale: bool = False
-    qubits: list[QubitCalibration] = []
-    couplers: list[CouplerCalibration] = []
+    qubits: list[QubitCalibration] = Field(default_factory=list)
+    couplers: list[CouplerCalibration] = Field(default_factory=list)
     error_message: str = ""
 
 
 def ibm_backend_calibration(inp: IbmBackendCalibrationInput) -> IbmBackendCalibrationOutput:
     ttl = float(os.environ.get("CHATQEC_IBM_CALIBRATION_TTL_SECONDS", _DEFAULT_TTL_SECONDS))
 
-    def fetch() -> dict:
+    def fetch() -> dict[str, list[dict[str, Any]]]:
         service = get_ibm_service()
         backend = service.backend(inp.backend)
         hw_graph = build_hardware_graph(backend)
@@ -2293,8 +2294,11 @@ git commit -m "feat(ibm): render coupling-map SVG with mapped qubits highlighted
   logical_to_physical: dict[str, int], strategy_used, transpiled_two_qubit_gate_count: int,
   estimated_fidelity: float, coupling_map_svg: str, fetched_at, age_seconds, error_message`),
   `ibm_map_circuit(inp) -> IbmMapCircuitOutput`. Also produces a reusable helper
-  `_select_backend_and_map(inp) -> MappingOutcome` consumed directly by Tasks 12 and 13 so
-  preview/submit don't duplicate this logic.
+  `compute_mapping(*, circuit_qasm, circuit_preset, num_qubits, qaoa_layers, backend,
+  objective, include_svg=True) -> MappingOutcome` (keyword-only; `MappingOutcome` carries
+  `service` and `sdk_backend` — the already-authenticated objects — specifically so Tasks 12
+  and 13 reuse them instead of re-authenticating/re-fetching the backend a second time),
+  consumed directly by Tasks 12 and 13 so preview/submit don't duplicate this logic.
 
 *Note on `logical_to_physical` typing:* pydantic/JSON requires string dict keys, so this
 field is `dict[str, int]` even though the underlying assignment is `dict[int, int]`.
@@ -2424,7 +2428,7 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from chatqec_mcp_tools.tools.ibm_hardware._circuits import (
     build_interaction_graph,
@@ -2453,8 +2457,8 @@ class IbmMapCircuitOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ok: bool
     backend: str = ""
-    physical_qubits: list[int] = []
-    logical_to_physical: dict[str, int] = {}
+    physical_qubits: list[int] = Field(default_factory=list)
+    logical_to_physical: dict[str, int] = Field(default_factory=dict)
     strategy_used: str = ""
     transpiled_two_qubit_gate_count: int = 0
     estimated_fidelity: float = 0.0
@@ -2476,6 +2480,8 @@ class MappingOutcome:
     estimated_fidelity: float = 0.0
     svg: str = ""
     error_message: str = ""
+    service: object = None  # the authenticated service, reused by callers so they
+    sdk_backend: object = None  # don't re-authenticate / re-fetch the backend a second time
 
 
 def _auto_select_backend(service, *, min_qubits: int):
@@ -2573,6 +2579,8 @@ def compute_mapping(
         two_qubit_gate_count=two_q_count,
         estimated_fidelity=estimated_fidelity,
         svg=svg,
+        service=service,
+        sdk_backend=sdk_backend,
     )
 
 
@@ -2633,8 +2641,10 @@ git commit -m "feat(ibm): add ibm_map_circuit tool"
 - Modify: `tests/test_server.py`
 
 **Interfaces:**
-- Consumes: `compute_mapping`/`MappingOutcome` from Task 11's `map_circuit.py`, `get_ibm_service`
-  (Task 1).
+- Consumes: `compute_mapping`/`MappingOutcome` from Task 11's `map_circuit.py`. Does **not**
+  import `get_ibm_service` itself — reuses `MappingOutcome.sdk_backend` (already
+  authenticated by `compute_mapping`) for the status check, so this tool has no IBM-auth
+  code of its own and tests only need to patch `map_circuit.get_ibm_service`.
 - Produces: `IbmPreviewExecutionInput` (same circuit fields as `IbmMapCircuitInput` plus
   `shots: int = 1000`), `IbmPreviewExecutionOutput` (`ok, backend, physical_qubits,
   strategy_used, estimated_fidelity, shots, estimated_queue_position: int | None,
@@ -2668,6 +2678,9 @@ def test_ibm_preview_execution_success(monkeypatch, tmp_path):
         ibm_preview_execution,
     )
 
+    # compute_mapping lives in map_circuit.py and calls get_ibm_service() using
+    # THAT module's imported name -- patch it there, not in preview_execution's
+    # namespace, or the real (uncredentialed) SDK call runs during the test.
     fake_service = SimpleNamespace(
         backend=lambda name: SimpleNamespace(
             name=name, status=lambda: SimpleNamespace(operational=True, pending_jobs=2)
@@ -2675,7 +2688,7 @@ def test_ibm_preview_execution_success(monkeypatch, tmp_path):
     )
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.preview_execution.get_ibm_service", return_value=fake_service),
+        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service", return_value=fake_service),
         patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph", return_value=_fake_hw_graph()),
     ):
         out = ibm_preview_execution(
@@ -2712,13 +2725,16 @@ Expected: `FAIL` with `ModuleNotFoundError`
 ```python
 # src/chatqec_mcp_tools/tools/ibm_hardware/preview_execution.py
 """ibm_preview_execution tool -- everything ibm_submit_execution would do,
-minus submission. Free; call this before ibm_submit_execution."""
+minus submission. Free; call this before ibm_submit_execution.
+
+Reuses compute_mapping's already-authenticated sdk_backend for the status
+check instead of calling get_ibm_service()/service.backend() a second time --
+this tool has no IBM-auth code of its own."""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError, get_ibm_service
 from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import compute_mapping
 
 
@@ -2737,7 +2753,7 @@ class IbmPreviewExecutionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ok: bool
     backend: str = ""
-    physical_qubits: list[int] = []
+    physical_qubits: list[int] = Field(default_factory=list)
     strategy_used: str = ""
     estimated_fidelity: float = 0.0
     shots: int = 0
@@ -2760,11 +2776,8 @@ def ibm_preview_execution(inp: IbmPreviewExecutionInput) -> IbmPreviewExecutionO
         return IbmPreviewExecutionOutput(ok=False, error_message=outcome.error_message)
 
     try:
-        service = get_ibm_service()
-        status = service.backend(inp.backend).status()
+        status = outcome.sdk_backend.status()
         operational, pending_jobs = status.operational, status.pending_jobs
-    except IBMCredentialsError as exc:
-        return IbmPreviewExecutionOutput(ok=False, error_message=str(exc))
     except Exception as exc:
         return IbmPreviewExecutionOutput(ok=False, error_message=f"Failed to check backend status: {exc}")
 
@@ -2810,7 +2823,10 @@ git commit -m "feat(ibm): add ibm_preview_execution tool"
 - Modify: `tests/test_server.py`
 
 **Interfaces:**
-- Consumes: `compute_mapping` (Task 11), `get_ibm_service`/`IBMCredentialsError` (Task 1).
+- Consumes: `compute_mapping` (Task 11). Does **not** import `get_ibm_service` itself —
+  reuses `MappingOutcome.service`/`MappingOutcome.sdk_backend` (already authenticated by
+  `compute_mapping`) to build the sampler, so tests only need to patch
+  `map_circuit.get_ibm_service`, not a second reference in this module.
 - Produces: `IbmSubmitExecutionInput` (`circuit_qasm | circuit_preset` fields, `backend: str`
   [required, no default], `shots: int`), `IbmSubmitExecutionOutput` (`ok, job_id, backend,
   shots, status, error_message`), `ibm_submit_execution(inp) -> Output`.
@@ -2892,8 +2908,11 @@ def test_ibm_submit_execution_success(monkeypatch, tmp_path):
     fake_sampler = SimpleNamespace(run=lambda *a, **kw: fake_job)
     fake_service = SimpleNamespace(backend=lambda name: SimpleNamespace(name=name))
 
+    # compute_mapping lives in map_circuit.py and calls get_ibm_service() using
+    # THAT module's imported name -- patch it there, not in submit_execution's
+    # namespace (this tool has no get_ibm_service call of its own).
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.submit_execution.get_ibm_service", return_value=fake_service),
+        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service", return_value=fake_service),
         patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph", return_value=_fake_hw_graph()),
         patch("chatqec_mcp_tools.tools.ibm_hardware.submit_execution._make_sampler", return_value=fake_sampler),
     ):
@@ -2917,7 +2936,11 @@ Expected: `FAIL` with `ModuleNotFoundError`
 # src/chatqec_mcp_tools/tools/ibm_hardware/submit_execution.py
 """ibm_submit_execution tool -- SPENDS REAL CREDITS. Caps enforced before any
 SDK call: num_qubits <= 10, shots <= 4000, backend required (no auto-pick).
-Call ibm_preview_execution first."""
+Call ibm_preview_execution first.
+
+Reuses compute_mapping's already-authenticated service/sdk_backend to build
+the sampler instead of calling get_ibm_service()/service.backend() a second
+time -- this tool has no IBM-auth code of its own."""
 
 from __future__ import annotations
 
@@ -2925,7 +2948,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError, get_ibm_service
 from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import compute_mapping
 
 _MAX_QUBITS = 10
@@ -2990,12 +3012,8 @@ def ibm_submit_execution(inp: IbmSubmitExecutionInput) -> IbmSubmitExecutionOutp
         )
 
     try:
-        service = get_ibm_service()
-        sdk_backend = service.backend(inp.backend)
-        sampler = _make_sampler(service, sdk_backend)
+        sampler = _make_sampler(outcome.service, outcome.sdk_backend)
         job = sampler.run([], shots=inp.shots)
-    except IBMCredentialsError as exc:
-        return IbmSubmitExecutionOutput(ok=False, error_message=str(exc))
     except Exception as exc:
         return IbmSubmitExecutionOutput(ok=False, error_message=f"Submission failed: {exc}")
 
