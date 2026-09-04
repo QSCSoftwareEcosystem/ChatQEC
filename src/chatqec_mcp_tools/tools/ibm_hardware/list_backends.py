@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from chatqec_mcp_tools.tools.ibm_hardware._cache import get_or_fetch
 from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError, get_ibm_service
@@ -59,6 +59,21 @@ def ibm_list_backends(inp: IbmListBackendsInput) -> IbmListBackendsOutput:
     except Exception as exc:  # network/SDK errors, never raise out of the tool
         return IbmListBackendsOutput(ok=False, error_message=f"Failed to list backends: {exc}")
 
-    return IbmListBackendsOutput(
-        ok=True, backends=[BackendInfo.model_validate(b) for b in cache_result.payload]
-    )
+    # Deserialization is guarded too, not just the fetch: cache_result.payload
+    # may have come off disk, written by an older/newer code path (this key is
+    # shared with map_circuit.py's auto-select) or hand-edited into a shape that
+    # is still valid JSON but no longer matches BackendInfo. Left unguarded that
+    # raised ValidationError straight out of the tool, breaking the feature-wide
+    # "every failure path returns ok=False, nothing raises" contract.
+    try:
+        backends = [BackendInfo.model_validate(b) for b in cache_result.payload]
+    except (ValidationError, KeyError, TypeError) as exc:
+        return IbmListBackendsOutput(
+            ok=False,
+            error_message=(
+                "Cached backend data is in an unexpected format; please retry "
+                f"(a retry refetches from IBM Quantum). Details: {exc}"
+            ),
+        )
+
+    return IbmListBackendsOutput(ok=True, backends=backends)

@@ -8,7 +8,7 @@ import datetime as dt
 import os
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from chatqec_mcp_tools.tools.ibm_hardware._cache import get_or_fetch
 from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError, get_ibm_service
@@ -88,6 +88,24 @@ def ibm_backend_calibration(inp: IbmBackendCalibrationInput) -> IbmBackendCalibr
             ok=False, error_message=f"Failed to fetch calibration for {inp.backend}: {exc}"
         )
 
+    # Guarded for the same reason as list_backends.py: cache_result.payload may
+    # have come off disk in a shape that is valid JSON but no longer matches
+    # what this code reads (schema drift, a hand-edited file). Both the raw
+    # ["qubits"]/["couplers"] subscripts and the model_validate calls sit inside
+    # the guard, so a mismatched cache entry yields ok=False instead of a
+    # KeyError/ValidationError escaping the tool.
+    try:
+        qubits = [QubitCalibration.model_validate(q) for q in cache_result.payload["qubits"]]
+        couplers = [CouplerCalibration.model_validate(c) for c in cache_result.payload["couplers"]]
+    except (ValidationError, KeyError, TypeError) as exc:
+        return IbmBackendCalibrationOutput(
+            ok=False,
+            error_message=(
+                f"Cached calibration data for {inp.backend} is in an unexpected format; "
+                f"please retry (a retry refetches from IBM Quantum). Details: {exc}"
+            ),
+        )
+
     fetched_at_iso = dt.datetime.fromtimestamp(cache_result.fetched_at, tz=dt.UTC).isoformat()
     return IbmBackendCalibrationOutput(
         ok=True,
@@ -95,6 +113,6 @@ def ibm_backend_calibration(inp: IbmBackendCalibrationInput) -> IbmBackendCalibr
         fetched_at=fetched_at_iso,
         age_seconds=int(cache_result.age_seconds),
         stale=cache_result.stale,
-        qubits=[QubitCalibration.model_validate(q) for q in cache_result.payload["qubits"]],
-        couplers=[CouplerCalibration.model_validate(c) for c in cache_result.payload["couplers"]],
+        qubits=qubits,
+        couplers=couplers,
     )

@@ -123,3 +123,63 @@ def pytest_approx(value):
     import pytest
 
     return pytest.approx(value)
+
+
+# --------------------------------------------------------------------------
+# A cached payload whose SHAPE does not match must degrade, not raise.
+# --------------------------------------------------------------------------
+
+
+def _write_cache(tmp_path, key, payload):
+    import json
+    import time
+
+    root = tmp_path / "chatqec-mcp-tools" / "ibm_hardware"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / f"{key.replace('/', '__')}.json").write_text(
+        json.dumps({"fetched_at": time.time(), "ttl_seconds": 1e9, "payload": payload}),
+        encoding="utf-8",
+    )
+
+
+def test_ibm_backend_calibration_handles_missing_cached_keys(monkeypatch, tmp_path):
+    """cache_result.payload["qubits"] / ["couplers"] were raw dict subscripts
+    outside any try/except, so a cached payload lacking those keys raised
+    KeyError straight out of the tool instead of returning ok=False."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    from chatqec_mcp_tools.tools.ibm_hardware.calibration import (
+        IbmBackendCalibrationInput,
+        ibm_backend_calibration,
+    )
+
+    _write_cache(tmp_path, "calibration/ibm_fake", {"qubit_list": []})
+
+    out = ibm_backend_calibration(IbmBackendCalibrationInput(backend="ibm_fake"))
+
+    assert out.ok is False
+    assert out.qubits == []
+    assert out.couplers == []
+    assert "unexpected format" in out.error_message
+    assert "retry" in out.error_message.lower()
+
+
+def test_ibm_backend_calibration_handles_cached_entry_shape_mismatch(monkeypatch, tmp_path):
+    """Keys present but their contents no longer match QubitCalibration /
+    CouplerCalibration -- pydantic's ValidationError must be caught too, not
+    just KeyError."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    from chatqec_mcp_tools.tools.ibm_hardware.calibration import (
+        IbmBackendCalibrationInput,
+        ibm_backend_calibration,
+    )
+
+    _write_cache(
+        tmp_path,
+        "calibration/ibm_fake",
+        {"qubits": [{"qubit_index": 0, "t1_microseconds": 30.0}], "couplers": []},
+    )
+
+    out = ibm_backend_calibration(IbmBackendCalibrationInput(backend="ibm_fake"))
+
+    assert out.ok is False
+    assert "unexpected format" in out.error_message
