@@ -71,6 +71,34 @@ def test_classifier_prompt_covers_stabilizer_formalism():
     assert "|1>" in system  # a specific single-qubit state is named as on_topic
 
 
+def test_classifier_prompt_covers_ibm_hardware_topics():
+    # Regression guard: the IBM hardware-aware tools (backend calibration, circuit
+    # mapping) were added after this prompt was written, and the classifier refused
+    # plain hardware questions like "what IBM backends do I have access to" because
+    # nothing in the prompt said they were on_topic. The system prompt sent to the
+    # API must explicitly cover IBM hardware/calibration/mapping questions.
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    clf.classify("What IBM Quantum backends do I have access to right now?")
+    system = client.messages.create.call_args.kwargs["system"].lower()
+    assert "ibm" in system
+    assert "calibration" in system or "coupling map" in system
+
+
+def test_classifier_on_topic_for_ibm_backend_query():
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    verdict = clf.classify("What's the T1 time of qubit 0 on ibm_fez?")
+    assert verdict.on_topic is True
+
+
+def test_classifier_on_topic_for_circuit_mapping_query():
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    verdict = clf.classify("Map a Bell state onto ibm_fez")
+    assert verdict.on_topic is True
+
+
 def test_classifier_includes_model_name_in_api_call():
     client = _make_anthropic_with_response("on_topic")
     clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
