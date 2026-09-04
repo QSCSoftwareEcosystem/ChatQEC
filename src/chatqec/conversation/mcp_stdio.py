@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import shlex
 import threading
 from concurrent.futures import TimeoutError as FutureTimeoutError
@@ -73,7 +74,15 @@ class StdioMCPClient:
 
     async def _worker(self, argv: list[str]) -> None:
         self._stop = asyncio.Event()
-        params = StdioServerParameters(command=argv[0], args=argv[1:])
+        # StdioServerParameters defaults to a minimal env (HOME/LOGNAME/PATH/SHELL/
+        # TERM/USER only, per mcp.client.stdio.DEFAULT_INHERITED_ENV_VARS) unless
+        # env= is passed explicitly -- without this, secrets like QISKIT_IBM_TOKEN
+        # set in the parent process (e.g. via .env + load_dotenv()) never reach the
+        # spawned server subprocess, which then reports missing credentials even
+        # though they're set. Pass the full parent environment: this subprocess
+        # command is operator-configured (CHATQEC_MCP_SERVER), not a third-party
+        # server the MCP stdio spec's minimal-env default is meant to sandbox.
+        params = StdioServerParameters(command=argv[0], args=argv[1:], env=os.environ.copy())
         try:
             # Nested (not combined): ClientSession needs the outer context's streams.
             async with stdio_client(params) as (read, write):  # noqa: SIM117
