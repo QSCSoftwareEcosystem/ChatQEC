@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from statistics import mean
 
 import networkx as nx
-import rustworkx as rx
 
 from chatqec_mcp_tools.tools.ibm_hardware._quality_model import HardwareQualityModel
 
@@ -131,6 +130,14 @@ def place_vf2(
     slow for a very large hardware graph. Returns None (never raises) if no
     match is found, the interaction graph is empty/too large, or either bound
     is hit; callers should fall back to place_greedy."""
+    # Lazy import (same convention as _client.get_ibm_service /
+    # submit_execution._make_sampler/_transpile): rustworkx ships only in the
+    # optional 'ibm' extra, and server.py imports this module unconditionally
+    # to register tools -- a module-scope import here made a base install fail
+    # to import the WHOLE server, taking down all 13 tools (the 8 pre-existing
+    # ones included, not just the 5 IBM ones).
+    import rustworkx as rx  # noqa: PLC0415
+
     if (
         interaction_graph.number_of_nodes() == 0
         or interaction_graph.number_of_nodes() > _VF2_MAX_INTERACTION_NODES

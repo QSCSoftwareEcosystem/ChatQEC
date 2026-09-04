@@ -18,6 +18,11 @@ dependencies = [
   "matplotlib>=3.8",
   "pydantic>=2.8",
   "pymatching>=2.0",
+  # Imported at module scope by tools/ibm_hardware/{_hardware_graph,_quality_model,
+  # _circuits,_placement}.py, which server.py imports unconditionally to register
+  # tools -- so networkx is needed by every install, not just the 'ibm' extra. It
+  # previously resolved only by accident, as a transitive dependency of pymatching.
+  "networkx>=3",
 ]
 
 [project.optional-dependencies]
@@ -37,7 +42,10 @@ tsim = [
 ibm = [
   "qiskit>=1.0",
   "qiskit-ibm-runtime>=0.48",
-  "networkx>=3",
+  # networkx is a base dependency (see [project].dependencies) -- extras here
+  # list only what the base install does not already pull in, matching the
+  # lightstim/tsim extras above. rustworkx stays extra-only: it is a heavier
+  # compiled extension used solely by _placement.place_vf2, which lazy-imports it.
   "rustworkx>=0.15",
 ]
 

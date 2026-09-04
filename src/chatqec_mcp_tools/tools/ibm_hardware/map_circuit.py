@@ -16,7 +16,11 @@ from chatqec_mcp_tools.tools.ibm_hardware._circuits import (
     build_interaction_graph,
     parse_circuit_input,
 )
-from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError, get_ibm_service
+from chatqec_mcp_tools.tools.ibm_hardware._client import (
+    IBM_EXTRA_INSTALL_HINT,
+    IBMCredentialsError,
+    get_ibm_service,
+)
 from chatqec_mcp_tools.tools.ibm_hardware._coupling_diagram import render_coupling_diagram
 from chatqec_mcp_tools.tools.ibm_hardware._hardware_graph import build_hardware_graph
 from chatqec_mcp_tools.tools.ibm_hardware._placement import PlacementResult, place
@@ -151,6 +155,19 @@ def compute_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error path
             circuit_preset=circuit_preset,
             num_qubits=num_qubits,
             qaoa_layers=qaoa_layers,
+        )
+    except ImportError as exc:
+        # parse_circuit_input lazy-imports qiskit, which ships only in the
+        # optional 'ibm' extra. Nothing else in this call chain caught that, so
+        # ibm_map_circuit / ibm_preview_execution / ibm_submit_execution all
+        # raised a raw ModuleNotFoundError on a base install instead of the
+        # ok=False + install hint that ibm_list_backends / ibm_backend_
+        # calibration already return via _client.IBMCredentialsError. Handling
+        # it here covers all three at once, since they all funnel through
+        # compute_mapping.
+        return MappingOutcome(
+            ok=False,
+            error_message=f"qiskit is not installed. {IBM_EXTRA_INSTALL_HINT} ({exc})",
         )
     except (ValueError, OverflowError, ArithmeticError) as exc:
         return MappingOutcome(ok=False, error_message=str(exc))
