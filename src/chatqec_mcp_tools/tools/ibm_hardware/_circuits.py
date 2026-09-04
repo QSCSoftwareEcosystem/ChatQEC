@@ -52,6 +52,7 @@ def parse_circuit_input(
             circuit = QuantumCircuit.from_qasm_str(circuit_qasm)
         except Exception as exc:
             raise ValueError(f"Could not parse circuit_qasm: {exc}") from exc
+        _reject_empty_circuit(circuit)
         return CircuitSpec(circuit=circuit, num_logical_qubits=circuit.num_qubits)
 
     if circuit_preset not in _PRESETS:
@@ -62,6 +63,12 @@ def parse_circuit_input(
         if num_qubits is not None
         else (_BELL_QUBITS if circuit_preset == "bell" else _DEFAULT_NUM_QUBITS)
     )
+    # Checked before construction, not after: _ghz(0)/_qft(0)/_qaoa(0) reach
+    # qiskit's own CircuitError (not a ValueError), which compute_mapping's
+    # except clause would not catch, so it would escape as a raw QiskitError.
+    if n < 1:
+        raise ValueError(f"num_qubits must be at least 1 for a circuit to run, got {n}.")
+
     if circuit_preset == "bell":
         if n != _BELL_QUBITS:
             raise ValueError("the bell preset is defined for exactly 2 qubits")
@@ -73,7 +80,28 @@ def parse_circuit_input(
     else:
         circuit = _qaoa(n, layers=qaoa_layers if qaoa_layers is not None else 1)
 
+    _reject_empty_circuit(circuit)
     return CircuitSpec(circuit=circuit, num_logical_qubits=n)
+
+
+def _reject_empty_circuit(circuit: Any) -> None:
+    """A 0-qubit circuit is not a mapping/execution request anyone means.
+
+    QuantumCircuit.from_qasm_str("") does NOT raise -- it returns a perfectly
+    valid 0-qubit circuit, as does a QASM string declaring `qreg q[0];`. Left
+    unchecked that circuit flows through compute_mapping (an empty placement
+    passes every downstream size check) all the way into
+    ibm_submit_execution's sampler.run, spending real account credits on a job
+    that runs nothing while reporting ok=True with a job_id. Raised as
+    ValueError so compute_mapping's existing except clause around
+    parse_circuit_input turns it into ok=False for all three callers
+    (ibm_map_circuit / ibm_preview_execution / ibm_submit_execution)."""
+    if circuit.num_qubits == 0:
+        raise ValueError(
+            "The circuit has 0 qubits, so there is nothing to map or execute. "
+            "Provide a circuit_qasm that declares at least one qubit, or use a "
+            "circuit_preset."
+        )
 
 
 def build_interaction_graph(circuit: Any) -> InteractionGraph:

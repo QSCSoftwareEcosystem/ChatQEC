@@ -70,7 +70,9 @@ def _transpile(circuit: Any, backend: Any, initial_layout: list[int]) -> Any:
     return transpile(circuit, backend=backend, initial_layout=initial_layout)
 
 
-def ibm_submit_execution(inp: IbmSubmitExecutionInput) -> IbmSubmitExecutionOutput:
+def ibm_submit_execution(  # noqa: PLR0911 -- distinct refusal paths, not complexity
+    inp: IbmSubmitExecutionInput,
+) -> IbmSubmitExecutionOutput:
     if inp.shots > _MAX_SHOTS:
         return IbmSubmitExecutionOutput(
             ok=False, error_message=f"shots ({inp.shots}) exceeds the cap of {_MAX_SHOTS}."
@@ -92,6 +94,20 @@ def ibm_submit_execution(inp: IbmSubmitExecutionInput) -> IbmSubmitExecutionOutp
     )
     if not outcome.ok or outcome.placement is None:
         return IbmSubmitExecutionOutput(ok=False, error_message=outcome.error_message)
+
+    # Belt-and-braces guard on the one credit-spending tool: an empty placement
+    # means nothing would actually run, yet every size/cap check below passes
+    # trivially and submission would still bill the account. _circuits
+    # .parse_circuit_input already rejects 0-qubit circuits upstream (the known
+    # route here); this catches any future path that yields an empty placement.
+    if not outcome.placement.assignment:
+        return IbmSubmitExecutionOutput(
+            ok=False,
+            error_message=(
+                "The resolved placement is empty, so no qubits would be executed. "
+                "Refusing to submit a job that would spend credits on nothing."
+            ),
+        )
 
     if len(outcome.placement.assignment) > _MAX_QUBITS:
         return IbmSubmitExecutionOutput(

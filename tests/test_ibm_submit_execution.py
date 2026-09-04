@@ -441,3 +441,90 @@ def test_ibm_submit_execution_preserves_job_id_when_status_lookup_fails(monkeypa
     assert "unknown" in out.status
     assert "status lookup exploded" in out.status
     assert out.error_message == ""
+
+
+# --------------------------------------------------------------------------
+# A 0-qubit / empty-placement request must never reach the credit spend.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "qasm",
+    ["", "   ", 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[0];\n'],
+    ids=["empty", "whitespace", "zero-width-qreg"],
+)
+def test_ibm_submit_execution_rejects_zero_qubit_circuit(qasm, monkeypatch, tmp_path):
+    """CORE REGRESSION TEST.
+
+    QuantumCircuit.from_qasm_str("") returns a valid 0-qubit circuit rather than
+    raising, so an empty circuit_qasm used to sail through parse_circuit_input,
+    produce an empty placement (which passes every size/cap check trivially) and
+    reach sampler.run -- spending real account credits on a job that runs
+    nothing, while reporting ok=True with a job_id as if it had worked.
+
+    Nothing network-adjacent may be touched: not _transpile, not _make_sampler,
+    not sampler.run.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    from chatqec_mcp_tools.tools.ibm_hardware.submit_execution import (
+        IbmSubmitExecutionInput,
+        ibm_submit_execution,
+    )
+
+    sampler = MagicMock()
+    sampler.run.return_value = _fake_job()
+    service, _resolved = _fake_service()
+
+    with _patched_sdk(service, sampler=sampler, isa_circuit=SimpleNamespace()) as (
+        make_sampler,
+        transpile,
+    ):
+        out = ibm_submit_execution(
+            IbmSubmitExecutionInput(circuit_qasm=qasm, backend="ibm_fake", shots=100)
+        )
+
+    assert out.ok is False
+    assert out.job_id == ""
+    assert "0 qubits" in out.error_message
+    transpile.assert_not_called()
+    make_sampler.assert_not_called()
+    sampler.run.assert_not_called()
+
+
+def test_ibm_submit_execution_refuses_an_empty_placement(monkeypatch, tmp_path):
+    """Belt-and-braces guard in the one credit-spending tool, independent of
+    the upstream 0-qubit rejection: if compute_mapping ever returns an
+    ok=True outcome with an empty placement, submission must still be refused
+    rather than billing the account for a job with no qubits."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    from chatqec_mcp_tools.tools.ibm_hardware import submit_execution as se
+    from chatqec_mcp_tools.tools.ibm_hardware._placement import PlacementResult
+    from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import MappingOutcome
+
+    sampler = MagicMock()
+    sampler.run.return_value = _fake_job()
+
+    empty_outcome = MappingOutcome(
+        ok=True,
+        backend="ibm_fake",
+        placement=PlacementResult(assignment={}, strategy_used="greedy"),
+        circuit=SimpleNamespace(clbits=[], num_qubits=0),
+        sdk_backend=SimpleNamespace(name="ibm_fake"),
+        service=SimpleNamespace(),
+    )
+
+    with (
+        patch(f"{_SUBMIT_MODULE}.compute_mapping", return_value=empty_outcome),
+        patch(f"{_SUBMIT_MODULE}._make_sampler", return_value=sampler) as make_sampler,
+        patch(f"{_SUBMIT_MODULE}._transpile") as transpile,
+    ):
+        out = se.ibm_submit_execution(
+            se.IbmSubmitExecutionInput(circuit_preset="bell", backend="ibm_fake", shots=100)
+        )
+
+    assert out.ok is False
+    assert out.job_id == ""
+    assert "empty" in out.error_message.lower()
+    transpile.assert_not_called()
+    make_sampler.assert_not_called()
+    sampler.run.assert_not_called()
