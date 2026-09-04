@@ -47,7 +47,10 @@ def stim_simulate(inp: StimSimulateInput) -> StimSimulateOutput:
         samples = sampler.sample(shots=inp.shots)
     except (ValueError, RuntimeError) as e:
         return StimSimulateOutput(
-            ok=False, shots=0, summary="", error_message=f"stim error: {e}",
+            ok=False,
+            shots=0,
+            summary="",
+            error_message=f"stim error: {e}",
         )
 
     preview_cap = min(20, _MAX_SHOTS)
@@ -57,10 +60,16 @@ def stim_simulate(inp: StimSimulateInput) -> StimSimulateOutput:
     summary = (
         f"shape={samples.shape}, dtype={samples.dtype}; "
         f"showing first {preview_rows} of {samples.shape[0]} rows"
-        + (" (TRUNCATED — remaining rows were sampled but are not shown; "
-           "do not state or assume their values)"
-           if truncated else " (ALL rows shown — none omitted)")
+        + (
+            " (TRUNCATED — remaining rows were sampled but are not shown; "
+            "do not state or assume their values)"
+            if truncated
+            else " (ALL rows shown — none omitted)"
+        )
     )
     return StimSimulateOutput(
-        ok=True, shots=inp.shots, summary=summary, samples_preview=preview,
+        ok=True,
+        shots=inp.shots,
+        summary=summary,
+        samples_preview=preview,
     )

@@ -8,10 +8,12 @@ from chatqec_mcp_tools.tools.stim_simulate import (
 
 
 def test_simulate_runs_simple_circuit():
-    out = stim_simulate(StimSimulateInput(
-        circuit="H 0\nCNOT 0 1\nM 0 1\n",
-        shots=10,
-    ))
+    out = stim_simulate(
+        StimSimulateInput(
+            circuit="H 0\nCNOT 0 1\nM 0 1\n",
+            shots=10,
+        )
+    )
     assert isinstance(out, StimSimulateOutput)
     assert out.ok is True
     assert out.shots == 10
@@ -20,29 +22,35 @@ def test_simulate_runs_simple_circuit():
 
 
 def test_simulate_returns_error_for_invalid_circuit():
-    out = stim_simulate(StimSimulateInput(
-        circuit="NOT_A_GATE 0\n",
-        shots=4,
-    ))
+    out = stim_simulate(
+        StimSimulateInput(
+            circuit="NOT_A_GATE 0\n",
+            shots=4,
+        )
+    )
     assert out.ok is False
     assert "error" in (out.summary + out.error_message).lower()
 
 
 def test_simulate_rejects_oversize_circuit():
     huge = "M 0\n" * 100_000  # >1 MB
-    out = stim_simulate(StimSimulateInput(
-        circuit=huge,
-        shots=1,
-    ))
+    out = stim_simulate(
+        StimSimulateInput(
+            circuit=huge,
+            shots=1,
+        )
+    )
     assert out.ok is False
     assert "too large" in out.error_message.lower()
 
 
 def test_simulate_caps_shots():
-    out = stim_simulate(StimSimulateInput(
-        circuit="M 0\n",
-        shots=10_000_000,
-    ))
+    out = stim_simulate(
+        StimSimulateInput(
+            circuit="M 0\n",
+            shots=10_000_000,
+        )
+    )
     # Either capped silently or rejected; behavior is deterministic
     assert out.ok is False or out.shots <= 1_000_000
 

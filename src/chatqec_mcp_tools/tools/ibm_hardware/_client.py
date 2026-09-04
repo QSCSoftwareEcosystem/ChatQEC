@@ -43,6 +43,4 @@ def get_ibm_service() -> Any:
     try:
         return QiskitRuntimeService(**kwargs)
     except Exception as exc:
-        raise IBMCredentialsError(
-            f"Could not authenticate with IBM Quantum: {exc}"
-        ) from exc
+        raise IBMCredentialsError(f"Could not authenticate with IBM Quantum: {exc}") from exc

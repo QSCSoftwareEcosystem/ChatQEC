@@ -14,9 +14,25 @@ def _fake_service_with_graph_payload():
             import networkx as nx
 
             g = nx.Graph()
-            g.add_node(0, T1=3.0e-05, T2=2.7e-05, readout_error=0.0127, readout_fidelity=0.9873, is_operational=True)
-            g.add_node(1, T1=2.5e-05, T2=2.0e-05, readout_error=0.02, readout_fidelity=0.98, is_operational=True)
-            g.add_edge(0, 1, native_gate="cz", gate_error=0.0097, gate_time=6.8e-08, gate_fidelity=0.9903)
+            g.add_node(
+                0,
+                T1=3.0e-05,
+                T2=2.7e-05,
+                readout_error=0.0127,
+                readout_fidelity=0.9873,
+                is_operational=True,
+            )
+            g.add_node(
+                1,
+                T1=2.5e-05,
+                T2=2.0e-05,
+                readout_error=0.02,
+                readout_fidelity=0.98,
+                is_operational=True,
+            )
+            g.add_edge(
+                0, 1, native_gate="cz", gate_error=0.0097, gate_time=6.8e-08, gate_fidelity=0.9903
+            )
             self.graph = g
             self.backend_name = "ibm_fake"
 
@@ -34,8 +50,13 @@ def test_ibm_backend_calibration_success(monkeypatch, tmp_path):
     service, hw_graph = _fake_service_with_graph_payload()
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.calibration.get_ibm_service", return_value=service),
-        patch("chatqec_mcp_tools.tools.ibm_hardware.calibration.build_hardware_graph", return_value=hw_graph),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.calibration.get_ibm_service", return_value=service
+        ),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.calibration.build_hardware_graph",
+            return_value=hw_graph,
+        ),
     ):
         out = ibm_backend_calibration(IbmBackendCalibrationInput(backend="ibm_fake"))
 
@@ -65,8 +86,13 @@ def test_ibm_backend_calibration_second_call_is_cached(monkeypatch, tmp_path):
         return hw_graph
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.calibration.get_ibm_service", return_value=service),
-        patch("chatqec_mcp_tools.tools.ibm_hardware.calibration.build_hardware_graph", side_effect=build_and_count),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.calibration.get_ibm_service", return_value=service
+        ),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.calibration.build_hardware_graph",
+            side_effect=build_and_count,
+        ),
     ):
         ibm_backend_calibration(IbmBackendCalibrationInput(backend="ibm_fake"))
         out2 = ibm_backend_calibration(IbmBackendCalibrationInput(backend="ibm_fake"))

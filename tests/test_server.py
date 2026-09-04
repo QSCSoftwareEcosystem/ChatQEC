@@ -24,12 +24,15 @@ def test_build_server_registers_new_qec_tools():
 
 def test_threshold_sweep_handler_round_trips():
     server = build_server()
-    out = server.invoke_tool("threshold_sweep", {
-        "code_family": "repetition_code",
-        "distances": [3],
-        "p_values": [0.1],
-        "shots": 50,
-    })
+    out = server.invoke_tool(
+        "threshold_sweep",
+        {
+            "code_family": "repetition_code",
+            "distances": [3],
+            "p_values": [0.1],
+            "shots": 50,
+        },
+    )
     assert out["ok"] is True
     assert len(out["rows"]) == 1
 

@@ -65,7 +65,9 @@ def build_hardware_graph(backend: Any) -> HardwareGraph:
     for u, v in backend.coupling_map:
         if graph.has_edge(u, v):
             continue
-        metrics = _pick_native_two_qubit_metrics(props, u, v) if props is not None else _empty_metrics()
+        metrics = (
+            _pick_native_two_qubit_metrics(props, u, v) if props is not None else _empty_metrics()
+        )
         graph.add_edge(u, v, **metrics)
 
     return HardwareGraph(graph=graph, backend_name=backend.name)

@@ -71,7 +71,9 @@ def ibm_backend_calibration(inp: IbmBackendCalibrationInput) -> IbmBackendCalibr
                 "qubits": [u, v],
                 "native_gate": d.get("native_gate"),
                 "two_qubit_error": d.get("gate_error"),
-                "gate_duration_ns": (d["gate_time"] * 1e9) if d.get("gate_time") is not None else None,
+                "gate_duration_ns": (d["gate_time"] * 1e9)
+                if d.get("gate_time") is not None
+                else None,
             }
             for u, v, d in hw_graph.graph.edges(data=True)
         ]

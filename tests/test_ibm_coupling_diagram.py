@@ -59,6 +59,5 @@ def test_render_coupling_diagram_closes_figure_on_render_failure(monkeypatch):
     # Verify no figures leaked: all created figures should be closed
     final_fignums = plt.get_fignums()
     assert final_fignums == initial_fignums, (
-        f"Figure leak detected: started with {initial_fignums}, "
-        f"ended with {final_fignums}"
+        f"Figure leak detected: started with {initial_fignums}, ended with {final_fignums}"
     )

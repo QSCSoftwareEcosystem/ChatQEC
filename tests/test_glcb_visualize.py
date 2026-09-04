@@ -1,12 +1,16 @@
 def test_glcb_registered():
     from chatqec_mcp_tools.server import build_server
+
     assert "glcb_visualize_url" in {t.name for t in build_server().list_tools()}
 
 
 def test_bell_pair_matches_known_url_exactly():
     from chatqec_mcp_tools.tools.glcb_visualize import (
-        GlcbGate, GlcbVisualizeInput, glcb_visualize_url,
+        GlcbGate,
+        GlcbVisualizeInput,
+        glcb_visualize_url,
     )
+
     out = glcb_visualize_url(
         GlcbVisualizeInput(
             qubits=2,
@@ -26,8 +30,13 @@ def test_bell_pair_matches_known_url_exactly():
 
 def test_prep_and_postselect_matches_known_url_exactly():
     from chatqec_mcp_tools.tools.glcb_visualize import (
-        GlcbGate, GlcbPostselect, GlcbPrep, GlcbVisualizeInput, glcb_visualize_url,
+        GlcbGate,
+        GlcbPostselect,
+        GlcbPrep,
+        GlcbVisualizeInput,
+        glcb_visualize_url,
     )
+
     out = glcb_visualize_url(
         GlcbVisualizeInput(
             qubits=3,
@@ -49,8 +58,11 @@ def test_prep_and_postselect_matches_known_url_exactly():
 
 def test_out_of_range_target_returns_ok_false():
     from chatqec_mcp_tools.tools.glcb_visualize import (
-        GlcbGate, GlcbVisualizeInput, glcb_visualize_url,
+        GlcbGate,
+        GlcbVisualizeInput,
+        glcb_visualize_url,
     )
+
     out = glcb_visualize_url(
         GlcbVisualizeInput(qubits=2, gates=[GlcbGate(gate="h", column=0, targets=[5])])
     )

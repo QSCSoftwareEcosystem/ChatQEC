@@ -38,11 +38,19 @@ def test_ibm_map_circuit_success_with_explicit_backend(monkeypatch, tmp_path):
     fake_service = SimpleNamespace(backend=lambda name: SimpleNamespace(name=name))
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service", return_value=fake_service),
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph", return_value=_fake_hw_graph()),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service",
+            return_value=fake_service,
+        ),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph",
+            return_value=_fake_hw_graph(),
+        ),
     ):
         out = ibm_map_circuit(
-            IbmMapCircuitInput(circuit_preset="bell", backend="ibm_fake", objective="maximum_fidelity")
+            IbmMapCircuitInput(
+                circuit_preset="bell", backend="ibm_fake", objective="maximum_fidelity"
+            )
         )
 
     assert out.ok is True
@@ -85,8 +93,14 @@ def test_ibm_map_circuit_auto_selects_least_busy_operational_backend(monkeypatch
     )
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service", return_value=fake_service),
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph", return_value=_fake_hw_graph()),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service",
+            return_value=fake_service,
+        ),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph",
+            return_value=_fake_hw_graph(),
+        ),
     ):
         out = ibm_map_circuit(IbmMapCircuitInput(circuit_preset="bell"))  # no backend given
 
@@ -119,10 +133,18 @@ def test_ibm_map_circuit_rejects_circuit_too_big_for_backend(monkeypatch, tmp_pa
     fake_service = SimpleNamespace(backend=lambda name: SimpleNamespace(name=name))
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service", return_value=fake_service),
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph", return_value=_fake_hw_graph(n=2)),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service",
+            return_value=fake_service,
+        ),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph",
+            return_value=_fake_hw_graph(n=2),
+        ),
     ):
-        out = ibm_map_circuit(IbmMapCircuitInput(circuit_preset="ghz", num_qubits=5, backend="ibm_fake"))
+        out = ibm_map_circuit(
+            IbmMapCircuitInput(circuit_preset="ghz", num_qubits=5, backend="ibm_fake")
+        )
 
     assert out.ok is False
     assert "qubits" in out.error_message.lower()
@@ -195,8 +217,14 @@ def test_ibm_map_circuit_two_qubit_gate_count_excludes_barrier(monkeypatch, tmp_
     )
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service", return_value=fake_service),
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph", return_value=_fake_hw_graph(n=2)),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service",
+            return_value=fake_service,
+        ),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph",
+            return_value=_fake_hw_graph(n=2),
+        ),
     ):
         out = ibm_map_circuit(IbmMapCircuitInput(circuit_qasm=qasm, backend="ibm_fake"))
 
@@ -214,14 +242,19 @@ def test_ibm_map_circuit_estimated_fidelity_is_a_real_component_product(monkeypa
     fake_service = SimpleNamespace(backend=lambda name: SimpleNamespace(name=name))
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service", return_value=fake_service),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service",
+            return_value=fake_service,
+        ),
         patch(
             "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph",
             return_value=_fake_hw_graph_varied_fidelities(),
         ),
     ):
         out = ibm_map_circuit(
-            IbmMapCircuitInput(circuit_preset="bell", backend="ibm_fake", objective="maximum_fidelity")
+            IbmMapCircuitInput(
+                circuit_preset="bell", backend="ibm_fake", objective="maximum_fidelity"
+            )
         )
 
     assert out.ok is True
@@ -245,8 +278,14 @@ def test_compute_mapping_returns_the_actual_service_and_backend_objects(monkeypa
     fake_service = SimpleNamespace(backend=lambda name: fake_backend)
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service", return_value=fake_service),
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph", return_value=_fake_hw_graph()),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service",
+            return_value=fake_service,
+        ),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph",
+            return_value=_fake_hw_graph(),
+        ),
     ):
         outcome = compute_mapping(
             circuit_qasm=None,

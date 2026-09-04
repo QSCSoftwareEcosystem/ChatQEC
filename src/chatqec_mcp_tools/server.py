@@ -288,8 +288,7 @@ def main() -> None:  # pragma: no cover
     @app.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
     async def list_tools() -> list[Tool]:
         return [
-            Tool(name=t.name, description=t.description, inputSchema=t.input_schema)
-            for t in _TOOLS
+            Tool(name=t.name, description=t.description, inputSchema=t.input_schema) for t in _TOOLS
         ]
 
     @app.call_tool()  # type: ignore[untyped-decorator]

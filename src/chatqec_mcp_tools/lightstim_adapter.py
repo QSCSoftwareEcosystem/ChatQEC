@@ -72,13 +72,9 @@ def _validate_domain(code_family: str, distance: int) -> None:
     if code_family == "color_code_666" and distance % 2 == 0:
         raise ValueError(f"color_code_666 requires odd distance; got {distance}")
     if code_family == "bb_code" and distance not in _BB_CONFIGS:
-        raise ValueError(
-            f"bb_code only supports distance in {sorted(_BB_CONFIGS)}; got {distance}"
-        )
+        raise ValueError(f"bb_code only supports distance in {sorted(_BB_CONFIGS)}; got {distance}")
     if code_family == "pqrm" and distance not in _PQRM_CONFIGS:
-        raise ValueError(
-            f"pqrm only supports distance in {sorted(_PQRM_CONFIGS)}; got {distance}"
-        )
+        raise ValueError(f"pqrm only supports distance in {sorted(_PQRM_CONFIGS)}; got {distance}")
     # toric_code: any distance in this tool's schema range [_MIN_D, _MAX_D] is valid.
 
 
@@ -109,7 +105,9 @@ def _estimate_num_qubits(code_family: str, distance: int) -> int:
         cfg = _PQRM_CONFIGS[distance]
         patch = PQRMPatch(rx=cfg["rx"], rz=cfg["rz"], m=cfg["m"], punctured=True, shift=(0, 0))
         return int(patch.num_qubits)
-    raise ValueError(f"unknown code_family {code_family!r}")  # unreachable; _validate_domain gates this
+    raise ValueError(
+        f"unknown code_family {code_family!r}"
+    )  # unreachable; _validate_domain gates this
 
 
 def _build_toric(distance: int, rounds: int) -> stim.Circuit:

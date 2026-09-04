@@ -48,7 +48,9 @@ def get_or_fetch(key: str, ttl_seconds: float, fetch_fn: Callable[[], Any]) -> C
             fetched_at = float(cached_raw["fetched_at"])
             age = now - fetched_at
             if age < ttl_seconds:
-                return CacheResult(payload=cached_raw["payload"], fetched_at=fetched_at, age_seconds=age)
+                return CacheResult(
+                    payload=cached_raw["payload"], fetched_at=fetched_at, age_seconds=age
+                )
         except (json.JSONDecodeError, KeyError, ValueError, OSError):
             cached_raw = None
 

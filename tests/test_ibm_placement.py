@@ -7,7 +7,13 @@ def _line_hardware_graph(n: int):
     """0-1-2-3-...-n-1 line, uniform quality except qubit 0 is best."""
     g = nx.Graph()
     for q in range(n):
-        g.add_node(q, T1=100.0 if q == 0 else 50.0, T2=90.0 if q == 0 else 45.0, readout_fidelity=0.99, is_operational=True)
+        g.add_node(
+            q,
+            T1=100.0 if q == 0 else 50.0,
+            T2=90.0 if q == 0 else 45.0,
+            readout_fidelity=0.99,
+            is_operational=True,
+        )
     for q in range(n - 1):
         g.add_edge(q, q + 1, gate_fidelity=0.99, gate_time=50.0)
     return g

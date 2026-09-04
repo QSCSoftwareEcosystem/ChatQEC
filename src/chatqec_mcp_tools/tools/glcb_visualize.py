@@ -8,6 +8,7 @@ values (gate names, sampler name, gadget type), numbers as-is. Verified by
 round-tripping the app's own example URLs byte-for-byte before this tool
 was written — do not "clean up" into real JSON, it will not parse.
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal

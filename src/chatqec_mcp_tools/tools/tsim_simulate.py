@@ -23,6 +23,7 @@ is also passed (confirmed empirically: an `OBSERVABLE_INCLUDE`-only circuit
 samples as shape `(shots, 0)` without it) -- this tool always passes
 `append_observables=True` so that field is not a no-op.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -57,10 +58,11 @@ _MAX_TCOUNT = 18  # Ceiling on tsim.Circuit.tcount() -- the number of T-gates
 class TsimSimulateInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     circuit: str = Field(
-        ..., description="Tsim circuit source (Stim syntax + T/T_DAG/R_X/R_Y/"
+        ...,
+        description="Tsim circuit source (Stim syntax + T/T_DAG/R_X/R_Y/"
         "R_Z/U3/TPP/TPP_DAG/R_XX/R_YY/R_ZZ/R_PAULI/CCZ/CCX). Must contain at "
         "least one DETECTOR or OBSERVABLE_INCLUDE instruction -- this tool "
-        "returns detector/observable samples, not raw measurement bits."
+        "returns detector/observable samples, not raw measurement bits.",
     )
     shots: int = Field(1, ge=1, description="Number of shots to sample")
     use_reference_sample: bool = Field(
@@ -109,9 +111,7 @@ def tsim_simulate(inp: TsimSimulateInput) -> TsimSimulateOutput:
             error_message=f"circuit too large (>{_MAX_CIRCUIT_BYTES // 1024} KB)",
         )
     if inp.shots > _MAX_SHOTS:
-        return TsimSimulateOutput(
-            ok=False, error_message=f"shots > {_MAX_SHOTS:,} not permitted"
-        )
+        return TsimSimulateOutput(ok=False, error_message=f"shots > {_MAX_SHOTS:,} not permitted")
 
     try:
         import tsim  # noqa: PLC0415

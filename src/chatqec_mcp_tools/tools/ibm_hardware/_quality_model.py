@@ -25,8 +25,14 @@ class HardwareQualityModel:
         t1_vals = _collect(graph.nodes(data=True), "T1")
         t2_vals = _collect(graph.nodes(data=True), "T2")
         ro_vals = _collect(graph.nodes(data=True), "readout_fidelity")
-        fid_vals = [d["gate_fidelity"] for _, _, d in graph.edges(data=True) if d.get("gate_fidelity") is not None]
-        time_vals = [d["gate_time"] for _, _, d in graph.edges(data=True) if d.get("gate_time") is not None]
+        fid_vals = [
+            d["gate_fidelity"]
+            for _, _, d in graph.edges(data=True)
+            if d.get("gate_fidelity") is not None
+        ]
+        time_vals = [
+            d["gate_time"] for _, _, d in graph.edges(data=True) if d.get("gate_time") is not None
+        ]
 
         self._t1_norm: Callable[[float], float] = _minmax(t1_vals)
         self._t2_norm: Callable[[float], float] = _minmax(t2_vals)
@@ -40,7 +46,11 @@ class HardwareQualityModel:
             return 0.0
 
         if self.objective == "maximum_fidelity":
-            return self._ro_norm(d["readout_fidelity"]) if d.get("readout_fidelity") is not None else 0.5
+            return (
+                self._ro_norm(d["readout_fidelity"])
+                if d.get("readout_fidelity") is not None
+                else 0.5
+            )
 
         parts = []
         if d.get("T1") is not None:

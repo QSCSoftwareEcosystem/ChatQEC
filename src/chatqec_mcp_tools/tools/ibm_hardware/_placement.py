@@ -58,7 +58,9 @@ def place_greedy(
         used_physical.add(seed)
 
         for logical in order[1:]:
-            candidates = _physical_candidates(hw_graph, interaction_graph, logical, assignment, used_physical)
+            candidates = _physical_candidates(
+                hw_graph, interaction_graph, logical, assignment, used_physical
+            )
             if not candidates:
                 continue
 
@@ -104,9 +106,13 @@ def _physical_candidates(
     return candidates
 
 
-_VF2_MAX_INTERACTION_NODES = 20  # cheap pre-filter only; call_limit is the real bound on search cost now
+_VF2_MAX_INTERACTION_NODES = (
+    20  # cheap pre-filter only; call_limit is the real bound on search cost now
+)
 _VF2_DEFAULT_TIME_BUDGET_SECONDS = 2.0
-_VF2_CALL_LIMIT = 100_000  # bounds internal VF2 search states (the real cost driver, per rustworkx's docs)
+_VF2_CALL_LIMIT = (
+    100_000  # bounds internal VF2 search states (the real cost driver, per rustworkx's docs)
+)
 
 
 def place_vf2(

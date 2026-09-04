@@ -77,7 +77,8 @@ def ibm_submit_execution(inp: IbmSubmitExecutionInput) -> IbmSubmitExecutionOutp
         )
     if inp.num_qubits is not None and inp.num_qubits > _MAX_QUBITS:
         return IbmSubmitExecutionOutput(
-            ok=False, error_message=f"num_qubits ({inp.num_qubits}) exceeds the cap of {_MAX_QUBITS}."
+            ok=False,
+            error_message=f"num_qubits ({inp.num_qubits}) exceeds the cap of {_MAX_QUBITS}.",
         )
 
     outcome = compute_mapping(

@@ -8,11 +8,15 @@ from chatqec_mcp_tools.tools.pymatching_decode import (
     pymatching_decode,
 )
 
-_REP = str(stim.Circuit.generated(
-    "repetition_code:memory", distance=3, rounds=3,
-    before_round_data_depolarization=0.05,
-    before_measure_flip_probability=0.05,
-))
+_REP = str(
+    stim.Circuit.generated(
+        "repetition_code:memory",
+        distance=3,
+        rounds=3,
+        before_round_data_depolarization=0.05,
+        before_measure_flip_probability=0.05,
+    )
+)
 
 
 def test_decode_reports_logical_error_rate():

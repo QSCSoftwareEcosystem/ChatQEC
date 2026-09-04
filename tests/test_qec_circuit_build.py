@@ -17,9 +17,7 @@ def test_missing_lightstim_returns_ok_false(monkeypatch):
         qec_circuit_build,
     )
 
-    out = qec_circuit_build(
-        QecCircuitBuildInput(code_family="toric_code", distance=3, rounds=3)
-    )
+    out = qec_circuit_build(QecCircuitBuildInput(code_family="toric_code", distance=3, rounds=3))
     assert out.ok is False
     assert "lightstim" in out.error_message.lower()
 
@@ -36,9 +34,7 @@ def test_toric_code_build_with_real_lightstim():
         qec_circuit_build,
     )
 
-    out = qec_circuit_build(
-        QecCircuitBuildInput(code_family="toric_code", distance=3, rounds=3)
-    )
+    out = qec_circuit_build(QecCircuitBuildInput(code_family="toric_code", distance=3, rounds=3))
     assert out.ok is True
     assert out.num_qubits > 0
     assert out.num_detectors > 0
@@ -92,9 +88,7 @@ def test_bb_code_build_with_real_lightstim():
         qec_circuit_build,
     )
 
-    out = qec_circuit_build(
-        QecCircuitBuildInput(code_family="bb_code", distance=6, rounds=3)
-    )
+    out = qec_circuit_build(QecCircuitBuildInput(code_family="bb_code", distance=6, rounds=3))
     assert out.ok is True
     assert out.num_qubits == 144
     assert out.num_observables == 12
@@ -108,9 +102,7 @@ def test_bb_code_unsupported_distance_returns_ok_false():
         qec_circuit_build,
     )
 
-    out = qec_circuit_build(
-        QecCircuitBuildInput(code_family="bb_code", distance=7, rounds=3)
-    )
+    out = qec_circuit_build(QecCircuitBuildInput(code_family="bb_code", distance=7, rounds=3))
     assert out.ok is False
     assert "bb_code" in out.error_message
     assert "6" in out.error_message and "10" in out.error_message and "12" in out.error_message
@@ -131,9 +123,7 @@ def test_pqrm_build_with_real_lightstim():
         qec_circuit_build,
     )
 
-    out = qec_circuit_build(
-        QecCircuitBuildInput(code_family="pqrm", distance=3, rounds=3)
-    )
+    out = qec_circuit_build(QecCircuitBuildInput(code_family="pqrm", distance=3, rounds=3))
     assert out.ok is True
     assert out.num_qubits == 25
     assert out.num_observables == 1
@@ -147,9 +137,7 @@ def test_pqrm_unsupported_distance_returns_ok_false():
         qec_circuit_build,
     )
 
-    out = qec_circuit_build(
-        QecCircuitBuildInput(code_family="pqrm", distance=5, rounds=3)
-    )
+    out = qec_circuit_build(QecCircuitBuildInput(code_family="pqrm", distance=5, rounds=3))
     assert out.ok is False
     assert "pqrm" in out.error_message
     assert "3" in out.error_message and "7" in out.error_message
@@ -176,9 +164,7 @@ def test_lightstim_api_error_returns_ok_false(monkeypatch):
         qec_circuit_build,
     )
 
-    out = qec_circuit_build(
-        QecCircuitBuildInput(code_family="toric_code", distance=3, rounds=3)
-    )
+    out = qec_circuit_build(QecCircuitBuildInput(code_family="toric_code", distance=3, rounds=3))
     assert out.ok is False
     assert "lightstim api error" in out.error_message.lower()
 
@@ -198,9 +184,7 @@ def test_work_ceiling_rejects_toric_code_worst_case_with_real_lightstim():
         qec_circuit_build,
     )
 
-    out = qec_circuit_build(
-        QecCircuitBuildInput(code_family="toric_code", distance=15, rounds=200)
-    )
+    out = qec_circuit_build(QecCircuitBuildInput(code_family="toric_code", distance=15, rounds=200))
     assert out.ok is False
     assert "work ceiling" in out.error_message.lower()
 
@@ -219,8 +203,6 @@ def test_circuit_text_size_cap_with_real_lightstim():
         qec_circuit_build,
     )
 
-    out = qec_circuit_build(
-        QecCircuitBuildInput(code_family="toric_code", distance=11, rounds=3)
-    )
+    out = qec_circuit_build(QecCircuitBuildInput(code_family="toric_code", distance=11, rounds=3))
     assert out.ok is False
     assert "too large" in out.error_message.lower()

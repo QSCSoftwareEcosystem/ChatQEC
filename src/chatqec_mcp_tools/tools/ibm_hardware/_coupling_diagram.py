@@ -37,7 +37,9 @@ def render_coupling_diagram(hw_graph: nx.Graph, highlighted_qubits: set[int]) ->
         pos = nx.kamada_kawai_layout(hw_graph)
         fig, ax = plt.subplots(figsize=(6, 6))
         try:
-            node_colors = ["#d62728" if n in highlighted_qubits else "#cccccc" for n in hw_graph.nodes]
+            node_colors = [
+                "#d62728" if n in highlighted_qubits else "#cccccc" for n in hw_graph.nodes
+            ]
             nx.draw(
                 hw_graph,
                 pos=pos,

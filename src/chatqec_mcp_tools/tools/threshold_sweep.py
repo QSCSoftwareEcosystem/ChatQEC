@@ -110,10 +110,14 @@ def threshold_sweep(inp: ThresholdSweepInput) -> ThresholdSweepOutput:
                     after_reset_flip_probability=p,
                 )
                 stats = decode_circuit(circuit, inp.shots)
-                rows.append(SweepRow(
-                    distance=d, p=p, shots=inp.shots,
-                    logical_error_rate=stats.logical_error_rate,
-                ))
+                rows.append(
+                    SweepRow(
+                        distance=d,
+                        p=p,
+                        shots=inp.shots,
+                        logical_error_rate=stats.logical_error_rate,
+                    )
+                )
     except (ValueError, RuntimeError) as e:
         return ThresholdSweepOutput(ok=False, error_message=f"sweep error: {e}")
 

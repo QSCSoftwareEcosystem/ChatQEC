@@ -57,7 +57,9 @@ def _skewed_hw_graph(n=5):
         )
     for q in range(n - 1):
         good = q == n - 2
-        g.add_edge(q, q + 1, gate_fidelity=0.999 if good else 0.90, gate_time=40.0 if good else 400.0)
+        g.add_edge(
+            q, q + 1, gate_fidelity=0.999 if good else 0.90, gate_time=40.0 if good else 400.0
+        )
     return SimpleNamespace(graph=g, backend_name="ibm_fake")
 
 
@@ -139,7 +141,9 @@ def test_ibm_submit_execution_rejects_too_many_qubits(monkeypatch, tmp_path):
     service, _resolved = _fake_service()
     with _patched_sdk(service) as (make_sampler, transpile):
         out = ibm_submit_execution(
-            IbmSubmitExecutionInput(circuit_preset="ghz", num_qubits=11, backend="ibm_fake", shots=100)
+            IbmSubmitExecutionInput(
+                circuit_preset="ghz", num_qubits=11, backend="ibm_fake", shots=100
+            )
         )
 
     assert out.ok is False
@@ -197,7 +201,9 @@ def test_ibm_submit_execution_rejects_non_positive_shots(shots):
 # --------------------------------------------------------------------------
 
 
-def test_ibm_submit_execution_submits_the_mapped_circuit_not_an_empty_pub_list(monkeypatch, tmp_path):
+def test_ibm_submit_execution_submits_the_mapped_circuit_not_an_empty_pub_list(
+    monkeypatch, tmp_path
+):
     """CORE REGRESSION TEST.
 
     The tool used to call sampler.run([], shots=...) -- an empty PUB list. That

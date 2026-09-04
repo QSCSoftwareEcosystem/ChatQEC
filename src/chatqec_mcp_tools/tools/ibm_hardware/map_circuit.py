@@ -109,8 +109,12 @@ def _auto_select_backend(service: Any, *, min_qubits: int) -> Any | None:
     with enough qubits; ties broken by name for determinism. Returns None if
     no backend qualifies. The backend list itself is TTL-cached (shared with
     ibm_list_backends) rather than re-fetched on every mapping call."""
-    ttl = float(os.environ.get("CHATQEC_IBM_BACKEND_LIST_TTL_SECONDS", _BACKEND_LIST_DEFAULT_TTL_SECONDS))
-    infos = get_or_fetch(_BACKEND_LIST_CACHE_KEY, ttl, lambda: _fetch_backend_infos(service)).payload
+    ttl = float(
+        os.environ.get("CHATQEC_IBM_BACKEND_LIST_TTL_SECONDS", _BACKEND_LIST_DEFAULT_TTL_SECONDS)
+    )
+    infos = get_or_fetch(
+        _BACKEND_LIST_CACHE_KEY, ttl, lambda: _fetch_backend_infos(service)
+    ).payload
 
     candidates: list[tuple[int, str]] = []
     for info in infos:
@@ -137,7 +141,9 @@ def compute_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error path
     include_svg: bool = True,
 ) -> MappingOutcome:
     if objective not in _VALID_OBJECTIVES:
-        return MappingOutcome(ok=False, error_message=f"objective must be one of {_VALID_OBJECTIVES}")
+        return MappingOutcome(
+            ok=False, error_message=f"objective must be one of {_VALID_OBJECTIVES}"
+        )
 
     try:
         spec = parse_circuit_input(

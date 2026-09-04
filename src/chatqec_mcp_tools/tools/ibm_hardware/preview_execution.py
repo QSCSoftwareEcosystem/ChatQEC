@@ -62,7 +62,9 @@ def ibm_preview_execution(inp: IbmPreviewExecutionInput) -> IbmPreviewExecutionO
         status = outcome.sdk_backend.status()
         operational, pending_jobs = status.operational, status.pending_jobs
     except Exception as exc:
-        return IbmPreviewExecutionOutput(ok=False, error_message=f"Failed to check backend status: {exc}")
+        return IbmPreviewExecutionOutput(
+            ok=False, error_message=f"Failed to check backend status: {exc}"
+        )
 
     return IbmPreviewExecutionOutput(
         ok=True,

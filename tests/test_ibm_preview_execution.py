@@ -34,8 +34,14 @@ def test_ibm_preview_execution_success(monkeypatch, tmp_path):
     )
 
     with (
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service", return_value=fake_service),
-        patch("chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph", return_value=_fake_hw_graph()),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.get_ibm_service",
+            return_value=fake_service,
+        ),
+        patch(
+            "chatqec_mcp_tools.tools.ibm_hardware.map_circuit.build_hardware_graph",
+            return_value=_fake_hw_graph(),
+        ),
     ):
         out = ibm_preview_execution(
             IbmPreviewExecutionInput(circuit_preset="bell", backend="ibm_fake", shots=500)
