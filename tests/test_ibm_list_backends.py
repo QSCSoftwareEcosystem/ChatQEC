@@ -37,6 +37,9 @@ def test_ibm_list_backends_success(monkeypatch, tmp_path):
     assert [b.name for b in out.backends] == ["ibm_fez", "ibm_kingston"]
     assert out.backends[0].num_qubits == 156
     assert out.backends[1].pending_jobs == 3
+    assert out.stale is False
+    assert out.age_seconds == 0
+    assert out.fetched_at != ""
 
 
 def test_ibm_list_backends_missing_credentials(monkeypatch, tmp_path):
@@ -63,16 +66,20 @@ def test_ibm_list_backends_missing_credentials(monkeypatch, tmp_path):
 # --------------------------------------------------------------------------
 
 
-def _write_cache(tmp_path, key, payload):
+def _write_cache(tmp_path, key, payload, age_seconds=0.0):
     """Write a cache entry directly, mimicking _cache.get_or_fetch's on-disk
-    format with a TTL far in the future so it is served without refetching."""
+    format. Defaults to "just fetched" so it is served without refetching;
+    pass age_seconds to backdate it past a tool's TTL and force a refetch
+    attempt (used to test the stale-fallback path)."""
     import json
     import time
 
     root = tmp_path / "chatqec-mcp-tools" / "ibm_hardware"
     root.mkdir(parents=True, exist_ok=True)
     (root / f"{key.replace('/', '__')}.json").write_text(
-        json.dumps({"fetched_at": time.time(), "ttl_seconds": 1e9, "payload": payload}),
+        json.dumps(
+            {"fetched_at": time.time() - age_seconds, "ttl_seconds": 1e9, "payload": payload}
+        ),
         encoding="utf-8",
     )
 
@@ -100,6 +107,80 @@ def test_ibm_list_backends_handles_cached_payload_shape_mismatch(monkeypatch, tm
     assert out.backends == []
     assert "unexpected format" in out.error_message
     assert "retry" in out.error_message.lower()
+
+
+def test_ibm_list_backends_reports_stale_when_refetch_fails(monkeypatch, tmp_path):
+    """When a fresh fetch fails (e.g. a transient network error) but an expired
+    cache entry exists, the tool must surface stale=True and the cached data's
+    age -- not silently present it as current."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    from chatqec_mcp_tools.tools.ibm_hardware.list_backends import (
+        IbmListBackendsInput,
+        ibm_list_backends,
+    )
+
+    _write_cache(
+        tmp_path,
+        "list_backends",
+        [
+            {
+                "name": "ibm_fez",
+                "num_qubits": 156,
+                "operational": True,
+                "pending_jobs": 3,
+                "basis_gates": ["cz"],
+            }
+        ],
+        age_seconds=3600,  # older than the 60s default TTL -- forces a refetch attempt
+    )
+
+    with patch(
+        "chatqec_mcp_tools.tools.ibm_hardware.list_backends.get_ibm_service",
+        side_effect=RuntimeError("network down"),
+    ):
+        out = ibm_list_backends(IbmListBackendsInput())
+
+    assert out.ok is True
+    assert out.stale is True
+    assert out.age_seconds >= 3600
+    assert [b.name for b in out.backends] == ["ibm_fez"]
+
+
+def test_ibm_list_backends_credentials_error_not_masked_by_stale_cache(monkeypatch, tmp_path):
+    """Even with an old cached snapshot on disk, a broken/missing credential
+    must surface as ok=False -- not be silently papered over with days-old
+    data that looks current."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError
+    from chatqec_mcp_tools.tools.ibm_hardware.list_backends import (
+        IbmListBackendsInput,
+        ibm_list_backends,
+    )
+
+    _write_cache(
+        tmp_path,
+        "list_backends",
+        [
+            {
+                "name": "ibm_fez",
+                "num_qubits": 156,
+                "operational": True,
+                "pending_jobs": 3,
+                "basis_gates": ["cz"],
+            }
+        ],
+        age_seconds=3600,
+    )
+
+    with patch(
+        "chatqec_mcp_tools.tools.ibm_hardware.list_backends.get_ibm_service",
+        side_effect=IBMCredentialsError("no token configured"),
+    ):
+        out = ibm_list_backends(IbmListBackendsInput())
+
+    assert out.ok is False
+    assert "no token configured" in out.error_message
+    assert out.backends == []
 
 
 def test_ibm_list_backends_handles_non_list_cached_payload(monkeypatch, tmp_path):

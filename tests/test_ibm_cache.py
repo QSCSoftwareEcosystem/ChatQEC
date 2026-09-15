@@ -87,6 +87,23 @@ def test_fetch_failure_with_no_cache_raises():
         get_or_fetch("k5", ttl_seconds=60, fetch_fn=failing_fetch)
 
 
+def test_credentials_error_is_never_masked_by_stale_cache():
+    """A broken/missing credential isn't a transient blip -- serving a days-old
+    cached snapshot in its place would silently look like live data forever.
+    IBMCredentialsError must propagate even when a (possibly very old) cached
+    payload exists, unlike every other fetch failure."""
+    from chatqec_mcp_tools.tools.ibm_hardware._cache import get_or_fetch
+    from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError
+
+    get_or_fetch("k6", ttl_seconds=0, fetch_fn=lambda: {"v": "first"})
+
+    def failing_fetch():
+        raise IBMCredentialsError("no token configured")
+
+    with pytest.raises(IBMCredentialsError, match="no token configured"):
+        get_or_fetch("k6", ttl_seconds=0, fetch_fn=failing_fetch)
+
+
 def test_keys_are_isolated():
     from chatqec_mcp_tools.tools.ibm_hardware._cache import get_or_fetch
 

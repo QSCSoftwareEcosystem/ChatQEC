@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 from typing import Any
 
@@ -29,6 +30,9 @@ class IbmListBackendsInput(BaseModel):
 class IbmListBackendsOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ok: bool
+    fetched_at: str = ""
+    age_seconds: int = 0
+    stale: bool = False
     backends: list[BackendInfo] = Field(default_factory=list)
     error_message: str = ""
 
@@ -76,4 +80,11 @@ def ibm_list_backends(inp: IbmListBackendsInput) -> IbmListBackendsOutput:
             ),
         )
 
-    return IbmListBackendsOutput(ok=True, backends=backends)
+    fetched_at_iso = dt.datetime.fromtimestamp(cache_result.fetched_at, tz=dt.UTC).isoformat()
+    return IbmListBackendsOutput(
+        ok=True,
+        fetched_at=fetched_at_iso,
+        age_seconds=int(cache_result.age_seconds),
+        stale=cache_result.stale,
+        backends=backends,
+    )

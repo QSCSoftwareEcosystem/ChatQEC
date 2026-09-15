@@ -221,7 +221,8 @@ _TOOLS = [
         description=(
             "List IBM Quantum backends visible to the configured account: name, "
             "qubit count, operational status, and pending job queue depth. "
-            "Free, cached for 60 seconds."
+            "Free, cached for 60 seconds; every answer built from this must state "
+            "the data's age (e.g. 'fetched 12 min ago') and flag it if stale=true."
         ),
         input_schema=IbmListBackendsInput.model_json_schema(),
         handler=_ibm_list_backends_handler,

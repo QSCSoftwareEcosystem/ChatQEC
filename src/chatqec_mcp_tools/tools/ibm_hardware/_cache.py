@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from chatqec_mcp_tools.tools.ibm_hardware._client import IBMCredentialsError
+
 
 @dataclass
 class CacheResult:
@@ -36,8 +38,15 @@ def _cache_path(key: str) -> Path:
 def get_or_fetch(key: str, ttl_seconds: float, fetch_fn: Callable[[], Any]) -> CacheResult:
     """Return cached payload if fresh; otherwise call fetch_fn and persist the
     result. If fetch_fn raises and a (possibly expired) cached payload exists,
-    serve it with stale=True instead of failing. If fetch_fn raises and there is
-    no cached payload at all, the exception propagates."""
+    serve it with stale=True instead of failing -- for transient failures (a
+    network blip, an IBM-side outage) that's the right degrade. If fetch_fn
+    raises and there is no cached payload at all, the exception propagates.
+
+    IBMCredentialsError is the one exception excluded from the stale-fallback:
+    missing/invalid credentials aren't transient, and every caller already
+    turns this into an honest ok=False + error_message. Falling back to a
+    days-old snapshot instead would silently present it as current, hiding a
+    broken configuration behind what looks like live data indefinitely."""
     path = _cache_path(key)
     now = time.time()
     cached_raw: dict[str, Any] | None = None
@@ -56,6 +65,8 @@ def get_or_fetch(key: str, ttl_seconds: float, fetch_fn: Callable[[], Any]) -> C
 
     try:
         payload = fetch_fn()
+    except IBMCredentialsError:
+        raise
     except Exception:
         if cached_raw is not None:
             fetched_at = float(cached_raw["fetched_at"])
