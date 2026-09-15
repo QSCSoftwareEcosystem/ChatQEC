@@ -1,4 +1,6 @@
-# ChatQEC
+<p align="center">
+  <img src="docs/images/chatqec_logo_final.png" alt="ChatQEC" width="480">
+</p>
 
 An open-source research assistant for **Quantum Error Correction**.
 
@@ -12,6 +14,21 @@ corpus isn't seeded with them yet — see [Roadmap](#roadmap).)
 > **Status: v0.1.0 — first public release.** The pipeline is end-to-end and
 > testable; it ships with the full 60-page canonical wiki (chunked and embedded
 > into Qdrant) and grows via the watchlist refresh job. See [Roadmap](#roadmap).
+
+---
+
+## System overview
+
+<p align="center">
+  <img src="docs/images/Image Vector Editor-edited.svg" alt="ChatQEC research pipeline: a QEC question is screened and rewritten, then retrieved against the curated corpus, canonical wiki, QAppsWiki, and a web-search fallback; results are scored and reranked and handed to an LLM, which either answers directly or calls Stim, PyMatching, LightStim, Tsim, GLCB, or IBM Quantum tools via MCP before returning a cited answer." width="480">
+</p>
+
+*A question is screened and rewritten, retrieved against four sources (curated
+corpus, canonical wiki, QAppsWiki, and a web-search fallback), scored and
+reranked, then handed to an LLM that either answers from the retrieved
+evidence or calls out to a real QEC simulator via MCP when the question needs
+computation — never a guess. See [How it works](#how-it-works) below for the
+detailed architecture and the query-lane diagram.*
 
 ---
 
@@ -38,10 +55,22 @@ circuit to check their own claim. ChatQEC is built specifically for QEC, with:
 
 ## Quick start
 
+Two ways to run it — pick one, both use the same corpus:
+
+|                                                            | Command line (`chatqec ask` / `chatqec chat`)                                                                            | Streamlit web app                                                                   |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Install + run                                              | `uv sync --extra dev` then `uv run chatqec ask "..."`                                                                    | `uv sync --extra dev` then `uv run streamlit run chatqec_app/streamlit_app.py`  |
+| Qdrant (vector store)                                      | start it yourself first (below)                                                                                              | starts it for you automatically if none is running                                  |
+| + QEC simulators (Stim, PyMatching, LightStim, Tsim, GLCB) | add`--mcp-server chatqec-mcp-tools` — see [Enable QEC tool execution](#enable-qec-tool-execution-stim-lightstim-tsim-glcb) | set`CHATQEC_MCP_SERVER=chatqec-mcp-tools` **before** launching — same link |
+| + QAppsWiki search                                         | pass both servers to`--mcp-server` — see [Enable QAppsWiki search](#enable-qappswiki-search)                               | pass both servers via`CHATQEC_MCP_SERVER` — same link                            |
+
+Full setup for each is below; jump to [Example usage](#example-usage) for
+things to try once it's running.
+
 ### Try it — CLI (`chatqec ask`)
 
 ```bash
-git clone https://github.com/QSCSoftwareThrust/ChatQEC.git
+git clone https://github.com/QSCSoftwareEcosystem/ChatQEC.git
 cd ChatQEC
 uv sync --extra dev
 
@@ -114,7 +143,7 @@ uv run chatqec ask "What is the surface code threshold under depolarizing noise?
 Clone and install the sibling MCP server, then point `--mcp-server` at it:
 
 ```bash
-git clone https://github.com/QSCSoftwareThrust/chatqec-mcp-tools ~/chatqec-mcp-tools
+git clone https://github.com/QSCSoftwareEcosystem/chatqec-mcp-tools ~/chatqec-mcp-tools
 uv tool install --force ~/chatqec-mcp-tools
 
 uv run chatqec ask --mcp-server chatqec-mcp-tools \
@@ -199,8 +228,7 @@ so a broken wiki clone degrades to Stim-only tools rather than a hard failure.
 The wiki's MCP server is a **stdio subprocess that reads its own working
 tree** (there is no hosted endpoint), so **QAppsWiki must be cloned locally**
 and the paths above point at that clone. The `qappswiki` console script isn't
-on `PATH` in this setup, hence launching it via `PYTHONPATH` + `python -m
-qappswiki` rather than a bare `qappswiki serve`.
+on `PATH` in this setup, hence launching it via `PYTHONPATH` + `python -m qappswiki` rather than a bare `qappswiki serve`.
 
 Two knobs in `conf/config.yaml` control the wiki side once its MCP server is
 reachable:
@@ -241,8 +269,7 @@ writing: `chatqec eval run` has no `--mcp-server` option and does not read
 `CHATQEC_MCP_SERVER`, unlike `ask`/`chat`, so today it always evaluates the
 corpus-only pipeline regardless of environment. Until eval wiring picks up an
 MCP server the same way `ask`/`chat` do, spot-check individual questions
-instead: `chatqec ask --mcp-server "chatqec-mcp-tools,sh -c '...'"
-"<question>"` against the same question without `--mcp-server`, comparing
+instead: `chatqec ask --mcp-server "chatqec-mcp-tools,sh -c '...'" "<question>"` against the same question without `--mcp-server`, comparing
 citations.
 
 ### Run the Streamlit app
@@ -406,6 +433,40 @@ permanent corpus. No new dependency: Tavily is called via the existing
 
 ---
 
+## Example usage
+
+A few representative questions to try once the corpus is loaded (see
+[Quick start](#quick-start) above):
+
+```bash
+# Definitional — always answered from the canonical wiki
+uv run chatqec ask "What is the surface code and how does it detect errors?"
+
+# Comparison / math-detail — pulls from arXiv papers in the corpus
+uv run chatqec ask "How does the threshold theorem relate to the break-even point demonstrated on real hardware?"
+
+# Needs a real simulator, not a guess — requires --mcp-server (see Enable QEC tool execution above)
+uv run chatqec ask --mcp-server chatqec-mcp-tools \
+  "Simulate a distance-3 surface code under depolarizing noise at p=0.001 for 5000 shots and report the logical error rate."
+
+# Interactive REPL
+uv run chatqec chat
+```
+
+The same questions work from the **Streamlit Chat page**
+(`uv run streamlit run chatqec_app/streamlit_app.py`, with
+`CHATQEC_MCP_SERVER=chatqec-mcp-tools` set first for the simulator example) —
+answers stream in with clickable citation cards.
+
+Every answer is a **cited answer or an honest refusal** — see [What to expect
+on your first run](#what-to-expect-on-your-first-run) below for the topics
+covered by the current seed corpus. For a much longer, continuously-verified
+list of example queries (QAppsWiki-boosted lookups, LightStim/Tsim circuit
+construction, PDF figure citations, corpus statistics, ...), see
+[`docs/EXAMPLES.md`](docs/EXAMPLES.md).
+
+---
+
 ## What to expect on your first run
 
 **The corpus is intentionally small at v0.1.0.** Beyond a small seed corpus, the
@@ -468,20 +529,20 @@ the fallback kicks in — eval headline numbers should still be run with
 
 ## What's in the box
 
-| Layer           | Module                                                                         | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| --------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Canonical wiki  | [`knowledge/canonical/`](knowledge/canonical/)                                | 60 pages (full v1 roster + v0.4 additions in[`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed`                                                                                                                                                                                                                                                                                                                                                                                           |
-| Source registry | [`sources/registry.jsonl`](sources/registry.jsonl)                            | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Watchlist       | [`sources/watchlist.yaml`](sources/watchlist.yaml)                            | arXiv categories, GitHub repos, YouTube channels                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Ingestion       | [`src/chatqec/ingestion/`](src/chatqec/ingestion/)                            | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub, pinned to an exact commit via`--commit-sha` / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`)                                                                                                                                                                                                                                                                                     |
-| Embedding       | [`src/chatqec/embedding/`](src/chatqec/embedding/)                            | Gemini (default) or local BGE/Nomic; BM25 via fastembed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Store           | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py)                  | Hybrid dense + sparse search                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Retrieval       | [`src/chatqec/retrieval/`](src/chatqec/retrieval/)                            | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Conversation    | [`src/chatqec/conversation/`](src/chatqec/conversation/)                      | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Guards          | [`src/chatqec/guards/`](src/chatqec/guards/)                                  | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Eval            | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)                  | 62-pair Q&A set across 7 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| MCP tools       | [`chatqec-mcp-tools`](https://github.com/QSCSoftwareThrust/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) over MCP stdio |
-| QAppsWiki search | [`src/chatqec/retrieval/wiki_search.py`](src/chatqec/retrieval/wiki_search.py) | Wraps the [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) MCP `search_pages` tool (self-hosted BM25 over ~3,778 sections from 691 concept pages) into `RetrievedChunk`s that join the same cross-encoder rerank pass as corpus chunks; needs the wiki's MCP server named alongside `chatqec-mcp-tools` (see [Enable QAppsWiki search](#enable-qappswiki-search)) |
+| Layer            | Module                                                                            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical wiki   | [`knowledge/canonical/`](knowledge/canonical/)                                   | 60 pages (full v1 roster + v0.4 additions in[`_roster.yaml`](knowledge/canonical/_roster.yaml)); chunked + embedded via `chatqec canonical embed`                                                                                                                                                                                                                                                                                                                                                                                           |
+| Source registry  | [`sources/registry.jsonl`](sources/registry.jsonl)                               | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Watchlist        | [`sources/watchlist.yaml`](sources/watchlist.yaml)                               | arXiv categories, GitHub repos, YouTube channels                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Ingestion        | [`src/chatqec/ingestion/`](src/chatqec/ingestion/)                               | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub, pinned to an exact commit via`--commit-sha` / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`)                                                                                                                                                                                                                                                                                     |
+| Embedding        | [`src/chatqec/embedding/`](src/chatqec/embedding/)                               | Gemini (default) or local BGE/Nomic; BM25 via fastembed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Store            | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py)                     | Hybrid dense + sparse search                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Retrieval        | [`src/chatqec/retrieval/`](src/chatqec/retrieval/)                               | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Conversation     | [`src/chatqec/conversation/`](src/chatqec/conversation/)                         | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Guards           | [`src/chatqec/guards/`](src/chatqec/guards/)                                     | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Eval             | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)                     | 62-pair Q&A set across 7 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| MCP tools        | [`chatqec-mcp-tools`](https://github.com/QSCSoftwareEcosystem/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) over MCP stdio |
+| QAppsWiki search | [`src/chatqec/retrieval/wiki_search.py`](src/chatqec/retrieval/wiki_search.py)   | Wraps the[QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) MCP `search_pages` tool (self-hosted BM25 over ~3,778 sections from 691 concept pages) into `RetrievedChunk`s that join the same cross-encoder rerank pass as corpus chunks; needs the wiki's MCP server named alongside `chatqec-mcp-tools` (see [Enable QAppsWiki search](#enable-qappswiki-search))                                                                                                                                                             |
 
 Full corpus breakdown (chunk counts, per-source stats) lives in
 [`docs/EXAMPLES.md`](docs/EXAMPLES.md); as of 2026-07-28 the store has 2,935
@@ -707,7 +768,7 @@ If ChatQEC helps your research, please cite it as:
   title   = {ChatQEC: an open-source research assistant for Quantum Error Correction},
   version = {0.1.0},
   year    = {2026},
-  url     = {https://github.com/QSCSoftwareThrust/ChatQEC.git}
+  url     = {https://github.com/QSCSoftwareEcosystem/ChatQEC.git}
 }
 ```
 

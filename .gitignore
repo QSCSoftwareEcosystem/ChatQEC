@@ -38,6 +38,15 @@ scratch/
 # -----------------------------------------------------------------------------
 docs/planning/plans/private/
 
+# Private meeting-prep notes (personal reference, not for shared repo history)
+docs/meeting-prep/
+
+# Image-generation prompt briefs (may reference internal/colleague work, not for shared repo history)
+docs/images/*_prompt.md
+
+# Local scratch clone (nested repo, not part of ChatQEC)
+6aa18649dac0c24b522cc5e3/
+
 # -----------------------------------------------------------------------------
 # Secrets and environment files
 # -----------------------------------------------------------------------------

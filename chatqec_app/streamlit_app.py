@@ -4,7 +4,7 @@ import streamlit as st
 
 st.set_page_config(
     page_title="ChatQEC",
-    page_icon="🧪",
+    page_icon="docs/images/chatqec_icon.png",
     layout="wide",
     initial_sidebar_state="expanded",
 )

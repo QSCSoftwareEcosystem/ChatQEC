@@ -5,7 +5,9 @@ from pathlib import Path
 import streamlit as st
 
 from chatqec.ingestion.registry import Registry, SourceStatus
+from chatqec_app.utils import render_branding
 
+render_branding()
 st.title("Sources")
 
 reg_path = Path("sources/registry.jsonl")

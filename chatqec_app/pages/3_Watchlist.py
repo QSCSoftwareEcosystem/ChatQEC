@@ -4,6 +4,9 @@ from pathlib import Path
 
 import streamlit as st
 
+from chatqec_app.utils import render_branding
+
+render_branding()
 st.title("Watchlist")
 
 wl_path = Path("sources/watchlist.yaml")

@@ -6,7 +6,9 @@ from pathlib import Path
 import streamlit as st
 
 from chatqec import __version__
+from chatqec_app.utils import render_branding
 
+render_branding()
 st.title("About ChatQEC")
 
 st.markdown(

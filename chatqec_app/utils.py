@@ -17,6 +17,38 @@ from chatqec.guards.rate_limit import RateLimiter
 from chatqec_app.qdrant_boot import ensure_qdrant
 
 
+def render_branding() -> None:
+    """Show the ChatQEC logo at the top of the sidebar, above the page nav.
+    Call once per page.
+
+    st.logo() docks to that top-of-sidebar slot, but caps the image at
+    20/24/32px tall (size="small"/"medium"/"large") regardless of the
+    source image's resolution -- too small against the full sidebar width.
+    The CSS override below lifts that cap so the logo fills the sidebar's
+    width instead, while keeping st.logo's placement above the nav.
+    """
+    st.logo("docs/images/chatqec_logo_final.svg", size="large")
+    st.html(
+        """
+        <style>
+        [data-testid="stSidebarHeader"] {
+            height: auto;
+            align-items: center;
+        }
+        [data-testid="stSidebarHeader"] [data-testid="stLogoLink"] {
+            width: 100%;
+        }
+        [data-testid="stSidebarLogo"] {
+            height: auto !important;
+            max-height: none !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        </style>
+        """
+    )
+
+
 def _build_bot() -> ChatQEC:
     # Streamlit doesn't go through the CLI's main(), so load .env here to pick up
     # provider keys (GEMINI_API_KEY, ANTHROPIC_API_KEY, ...).
