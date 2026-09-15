@@ -4,6 +4,18 @@ Verified live 2026-09-03 against a free/open-plan account: only the
 "ibm_quantum_platform" channel exists in current qiskit-ibm-runtime (the legacy
 "ibm_quantum" channel raises ValueError), and no instance is required -- the SDK
 auto-selects the account's single open-plan instance when none is passed.
+
+That auto-select only works once the account has at least one provisioned
+Cloud service instance, though. A token that authenticates fine but is tied to
+an account with zero instances makes QiskitRuntimeService.__init__ raise
+IBMInputValueError("No matching instances found..."). Verified live
+2026-09-15: a syntactically valid, non-expired token with zero linked
+instances reproduces this exactly (confirmed directly via
+Account.list_instances() returning []). get_ibm_service below matches on that
+message rather than importing IBMInputValueError itself, so this stays a
+plain string check instead of a second hard import -- this module's whole
+qiskit_ibm_runtime import already stays lazy and inside try/except so a base
+install without the 'ibm' extra never touches it.
 """
 
 from __future__ import annotations
@@ -49,4 +61,11 @@ def get_ibm_service() -> Any:
     try:
         return QiskitRuntimeService(**kwargs)
     except Exception as exc:
+        if "No matching instances found" in str(exc) and not instance:
+            raise IBMCredentialsError(
+                "This IBM Cloud account has no provisioned Quantum service "
+                "instance (the token itself is valid). Create one (e.g. the "
+                "free Open Plan) at https://quantum.cloud.ibm.com/, or if one "
+                "already exists, set QISKIT_IBM_INSTANCE to its CRN or name."
+            ) from exc
         raise IBMCredentialsError(f"Could not authenticate with IBM Quantum: {exc}") from exc

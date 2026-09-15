@@ -92,3 +92,45 @@ def test_get_ibm_service_wraps_sdk_auth_failure(monkeypatch):
 
     with pytest.raises(IBMCredentialsError, match="Unable to retrieve instances"):
         get_ibm_service()
+
+
+def test_get_ibm_service_explains_zero_provisioned_instances(monkeypatch):
+    """A token that authenticates fine but is tied to an IBM Cloud account with
+    no provisioned Quantum service instance raises a generic-looking
+    "No matching instances found" from deep inside the SDK. That should not
+    read as a bad token -- it needs its own message pointing at provisioning
+    an instance instead."""
+    from chatqec_mcp_tools.tools.ibm_hardware._client import (
+        IBMCredentialsError,
+        get_ibm_service,
+    )
+
+    def raising_factory(**kwargs):
+        raise RuntimeError("No matching instances found for the following filters: .")
+
+    _install_fake_qiskit_ibm_runtime(monkeypatch, service_factory=raising_factory)
+    monkeypatch.setenv("QISKIT_IBM_TOKEN", "valid-token-no-instances")
+    monkeypatch.delenv("QISKIT_IBM_INSTANCE", raising=False)
+
+    with pytest.raises(IBMCredentialsError, match="no provisioned Quantum service instance"):
+        get_ibm_service()
+
+
+def test_get_ibm_service_zero_instances_message_not_rewritten_when_instance_set(monkeypatch):
+    """If QISKIT_IBM_INSTANCE was already passed, the same SDK message means
+    something different (a bad/unrecognized instance, not a missing one) --
+    the friendlier "no provisioned instance" rewrite doesn't apply."""
+    from chatqec_mcp_tools.tools.ibm_hardware._client import (
+        IBMCredentialsError,
+        get_ibm_service,
+    )
+
+    def raising_factory(**kwargs):
+        raise RuntimeError("No matching instances found for the following filters: .")
+
+    _install_fake_qiskit_ibm_runtime(monkeypatch, service_factory=raising_factory)
+    monkeypatch.setenv("QISKIT_IBM_TOKEN", "valid-token")
+    monkeypatch.setenv("QISKIT_IBM_INSTANCE", "crn:v1:some-instance")
+
+    with pytest.raises(IBMCredentialsError, match="Could not authenticate"):
+        get_ibm_service()
