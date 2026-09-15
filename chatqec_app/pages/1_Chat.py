@@ -6,7 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from chatqec.trace import disable_trace, enable_trace
+from chatqec.trace import enable_trace
 from chatqec_app.components import citation_card, tool_output
 from chatqec_app.utils import (
     client_ip,
@@ -14,20 +14,22 @@ from chatqec_app.utils import (
     get_chatqec,
     get_cost_budget,
     get_rate_limiter,
+    render_branding,
     utc_now,
 )
 
-st.title("Chat")
-
-# --- verbose trace toggle ---
-verbose = st.sidebar.toggle(
-    "🔍 Verbose trace",
-    value=True,
-    help="Write every pipeline step (classify, rewrite, retrieve, synthesize, "
-    "model/provider, MCP tool calls) with full payloads to a timestamped file "
-    "under logs/ — same as the CLI --log-file. Not shown inline. On by default "
-    "so every prompt run leaves a dated trace for debugging.",
+render_branding()
+st.caption(
+    "Ask cited QEC questions — grounded in curated papers, textbooks, and "
+    "vendor docs, with real circuit simulation and IBM hardware tools when enabled."
 )
+
+EXAMPLE_QUESTIONS = [
+    "What is the surface code and how does it detect errors?",
+    "How does the threshold theorem relate to the break-even point demonstrated on real hardware?",
+    "What IBM Quantum backends do I have access to right now?",
+    "What is the stabilizer formalism and why is it central to quantum error correction?",
+]
 
 # --- session state ---
 if "messages" not in st.session_state:
@@ -69,15 +71,25 @@ for msg in st.session_state.messages:
             tool_output.render(t)
         _render_figures(msg.get("figures", []))
 
+# --- example question chips (first turn only) ---
+if not st.session_state.messages:
+    st.caption("Try asking:")
+    cols = st.columns(len(EXAMPLE_QUESTIONS))
+    for col, example in zip(cols, EXAMPLE_QUESTIONS, strict=True):
+        if col.button(example, use_container_width=True):
+            st.session_state["queued_question"] = example
+            st.rerun()
+
 # --- accept new question (optionally with attached images) ---
 submission = st.chat_input(
     "Ask a QEC question…",
     accept_file="multiple",
     file_type=["png", "jpg", "jpeg", "webp"],
 )
-question = submission.text if submission else None
+queued_question = st.session_state.pop("queued_question", None)
+question = (submission.text if submission else None) or queued_question
 uploaded = submission.files if submission else []
-if submission and (question or uploaded):
+if (submission or queued_question) and (question or uploaded):
     bot = get_chatqec()
     rl = get_rate_limiter()
     budget = get_cost_budget()
@@ -111,19 +123,14 @@ if submission and (question or uploaded):
         for im in images:
             st.image(im.data, width=240)
 
-    # Write the execution trace to a logs/ file (same as the CLI), not the UI.
-    # One timestamped file per Streamlit session; each question appends to it.
-    trace_log_path: Path | None = None
-    if verbose:
-        if "trace_log_path" not in st.session_state:
-            st.session_state["trace_log_path"] = (
-                f"logs/chatqec-trace-{datetime.now():%Y%m%d-%H%M%S}.log"
-            )
-        trace_log_path = enable_trace(
-            True, log_file=st.session_state["trace_log_path"], to_stderr=False
+    # Always write the execution trace to a logs/ file for debugging (same as the
+    # CLI's --log-file) — never shown in the UI. One timestamped file per
+    # Streamlit session; each question appends to it.
+    if "trace_log_path" not in st.session_state:
+        st.session_state["trace_log_path"] = (
+            f"logs/chatqec-trace-{datetime.now():%Y%m%d-%H%M%S}.log"
         )
-    else:
-        disable_trace()
+    enable_trace(True, log_file=st.session_state["trace_log_path"], to_stderr=False)
 
     # When MCP tools are attached, ask_stream() can't stream token-by-token anyway
     # (run_tool_loop blocks until the whole tool loop finishes, then yields the
@@ -165,10 +172,6 @@ if submission and (question or uploaded):
     if images:
         budget.charge(amount_usd=0.01 * len(images), now=now)
 
-    if verbose:
-        disable_trace()
-        if trace_log_path is not None:
-            st.caption(f"🔍 Execution trace written to `{trace_log_path}`")
     st.session_state.messages.append(
         {
             "role": "assistant",
@@ -178,13 +181,3 @@ if submission and (question or uploaded):
             "figures": answer.figure_paths,
         }
     )
-
-# --- footer: usage transparency ---
-ip = client_ip()
-rl = get_rate_limiter()
-budget = get_cost_budget()
-now = utc_now()
-st.caption(
-    f"asks remaining today: {rl.remaining(ip, action='ask', now=now)} · "
-    f"budget remaining: ${budget.remaining(now=now):.2f}"
-)
