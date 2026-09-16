@@ -24,6 +24,25 @@ st.caption(
     "vendor docs, with real circuit simulation and IBM hardware tools when enabled."
 )
 
+# Answers use markdown headings (##, ###) to structure long tool-backed
+# breakdowns (backend tables, calibration sections, ...). Streamlit's default
+# heading sizes are tuned for a full-page document, not a chat bubble, so they
+# read as oversized here -- scale them down without touching the rest of the
+# page's headings (e.g. the h1 "Chat" title used to be here, now gone, but
+# other pages still use normal-sized headings).
+st.html(
+    """
+    <style>
+    [data-testid="stChatMessageContent"] h1 { font-size: 1.3rem; }
+    [data-testid="stChatMessageContent"] h2 { font-size: 1.15rem; }
+    [data-testid="stChatMessageContent"] h3 { font-size: 1.05rem; }
+    [data-testid="stChatMessageContent"] h4,
+    [data-testid="stChatMessageContent"] h5,
+    [data-testid="stChatMessageContent"] h6 { font-size: 1rem; }
+    </style>
+    """
+)
+
 EXAMPLE_QUESTIONS = [
     "What is the surface code and how does it detect errors?",
     "How does the threshold theorem relate to the break-even point demonstrated on real hardware?",
