@@ -220,9 +220,10 @@ _TOOLS = [
             "logical error rate (with std error and decode time): pymatching (MWPM), "
             "tesseract (Google's search-based most-likely-error decoder, strong on "
             "color codes), bposd / bplsd / belief_find (ldpc qLDPC decoders via QuEra "
-            "bloqade-decoders). Pass a Stim circuit, or code_family + distance + p to "
-            "generate a memory experiment. Non-MWPM decoders need the `decoders` extra; "
-            "missing ones report ok=False per decoder."
+            "bloqade-decoders), cudaq_relay_bp / cudaq_bposd (NVIDIA CUDA-Q QEC GPU "
+            "RelayBP and BP+OSD). Pass a Stim circuit, or code_family + distance + p to "
+            "generate a memory experiment. Non-MWPM decoders need the `decoders` or "
+            "`cudaq` extra; missing ones report ok=False per decoder."
         ),
         input_schema=DecoderCompareInput.model_json_schema(),
         handler=_decoder_compare_handler,

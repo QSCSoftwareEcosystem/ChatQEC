@@ -120,3 +120,54 @@ def test_bp_family_decoders_run(name):
         DecoderCompareInput(circuit=_circuit(), decoders=[name], shots=300, seed=2)
     )
     assert out.ok and out.results[0].logical_error_rate < 0.2
+
+
+def _cudaq_gpu_available() -> bool:
+    try:
+        import cudaq
+        import cudaq_qec  # noqa: F401
+    except ImportError:
+        return False
+    return cudaq.num_available_gpus() > 0
+
+
+needs_cudaq_gpu = pytest.mark.skipif(
+    not _cudaq_gpu_available(), reason="cudaq extra or NVIDIA GPU not available"
+)
+
+
+def test_missing_cudaq_extra_points_at_cudaq_extra(monkeypatch):
+    real_import = builtins.__import__
+
+    def fake_import(name, *a, **k):
+        if name.startswith("cudaq"):
+            raise ImportError("no cudaq")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    out = decoder_compare(
+        DecoderCompareInput(
+            circuit=_circuit(), decoders=["pymatching", "cudaq_relay_bp"], shots=100
+        )
+    )
+    by_name = {r.decoder: r for r in out.results}
+    assert out.ok and by_name["cudaq_relay_bp"].ok is False
+    assert "[cudaq]" in by_name["cudaq_relay_bp"].note
+
+
+@needs_cudaq_gpu
+@pytest.mark.parametrize("name", ["cudaq_relay_bp", "cudaq_bposd"])
+def test_cudaq_gpu_decoders_beat_mwpm_on_color_code(name):
+    out = decoder_compare(
+        DecoderCompareInput(
+            code_family="color_code",
+            distance=3,
+            p=0.004,
+            decoders=["pymatching", name],
+            shots=3000,
+            seed=7,
+        )
+    )
+    by_name = {r.decoder: r for r in out.results}
+    assert by_name[name].ok, by_name[name].note
+    assert by_name[name].logical_error_rate < by_name["pymatching"].logical_error_rate

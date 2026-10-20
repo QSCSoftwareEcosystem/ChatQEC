@@ -7,6 +7,8 @@ Decoders:
                     strong on color codes and correlated/hyperedge noise.
   - ``bposd`` / ``bplsd`` / ``belief_find``  BP+OSD, BP+LSD, BP+union-find
                     from the ``ldpc`` package; the usual qLDPC decoders.
+  - ``cudaq_relay_bp`` / ``cudaq_bposd``  NVIDIA CUDA-Q QEC GPU decoders
+                    (RelayBP, BP+OSD); see _cudaq_decoders.py (``[cudaq]`` extra).
 
 The non-MWPM decoders come through QuEra's ``bloqade-decoders`` (``[decoders]``
 extra), whose classes share ``Decoder(dem).decode(detector_bits) -> obs_bits``.
@@ -27,6 +29,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from chatqec_mcp_tools.tools._cudaq_decoders import CUDAQ_DECODERS, cudaq_predict
 from chatqec_mcp_tools.tools.threshold_sweep import _FAMILY_MAP, _ODD_ONLY
 
 if TYPE_CHECKING:
@@ -36,7 +39,9 @@ if TYPE_CHECKING:
 
     BoolArray = NDArray[np.bool_]
 
-DecoderName = Literal["pymatching", "tesseract", "bposd", "bplsd", "belief_find"]
+DecoderName = Literal[
+    "pymatching", "tesseract", "bposd", "bplsd", "belief_find", "cudaq_relay_bp", "cudaq_bposd"
+]
 
 _MAX_CIRCUIT_BYTES = 256 * 1024
 _MAX_SHOTS = 50_000
@@ -63,7 +68,13 @@ class DecoderCompareInput(BaseModel):
     decoders: list[DecoderName] = Field(
         default=["pymatching", "tesseract", "bposd"],
         min_length=1,
-        description="Decoders to compare on identical syndrome samples",
+        description=(
+            "Decoders to compare on identical syndrome samples: pymatching (MWPM, CPU), "
+            "tesseract (Google search decoder, CPU), bposd / bplsd / belief_find (ldpc, CPU), "
+            "cudaq_relay_bp (NVIDIA CUDA-Q RelayBP, GPU), cudaq_bposd (NVIDIA CUDA-Q "
+            "BP+OSD, GPU). Pick the cudaq_* names when the user asks for NVIDIA, CUDA-Q, "
+            "or GPU decoding."
+        ),
     )
     shots: int = Field(
         2_000,
@@ -143,13 +154,16 @@ def _run_one(
     try:
         if name == "pymatching":
             pred, note = _pymatching_predict(circuit, det)
+        elif name in CUDAQ_DECODERS:
+            pred = cudaq_predict(name, dem, det)
         else:
             pred = _bloqade_decoder(name, dem).decode(det)  # type: ignore[attr-defined]
     except ImportError:
+        extra = "cudaq" if name in CUDAQ_DECODERS else "decoders"
         return DecoderResult(
             decoder=name,
             ok=False,
-            note="not installed: uv tool install 'chatqec-mcp-tools[decoders]'",
+            note=f"not installed: uv tool install 'chatqec-mcp-tools[{extra}]'",
         )
     except (ValueError, RuntimeError) as e:
         return DecoderResult(decoder=name, ok=False, note=f"decode error: {e}")
