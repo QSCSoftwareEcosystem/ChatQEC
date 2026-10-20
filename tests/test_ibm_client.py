@@ -15,10 +15,11 @@ def _install_fake_qiskit_ibm_runtime(monkeypatch, *, service_factory=None, raise
         )
         return
 
+    def _record_kwargs(**kwargs):
+        return SimpleNamespace(kwargs=kwargs)
+
     fake_module = ModuleType("qiskit_ibm_runtime")
-    fake_module.QiskitRuntimeService = service_factory or (
-        lambda **kwargs: SimpleNamespace(kwargs=kwargs)
-    )
+    fake_module.QiskitRuntimeService = service_factory or _record_kwargs
     monkeypatch.setitem(sys.modules, "qiskit_ibm_runtime", fake_module)
 
 
