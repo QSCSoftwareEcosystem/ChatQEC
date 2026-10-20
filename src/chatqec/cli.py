@@ -116,10 +116,47 @@ def _try_gemini() -> object | None:  # pragma: no cover
         return None
 
 
-def _build_llm_client(provider: str) -> object:  # pragma: no cover
+def _build_local_client(local_cfg: Mapping[str, Any]) -> object:  # pragma: no cover
+    """Primary + fallback local servers (Muse-Glimmer, then Gemma 4) behind one client.
+
+    Servers come from ``scripts/serve_local_models.sh``. Only servers answering
+    ``/models`` are used; a primary that dies mid-session falls through to the
+    fallback via the ``local llm unavailable`` recoverable marker.
+    """
+    from chatqec.providers.fallback import Backend, FallbackLLMClient
+    from chatqec.providers.local import LocalLLM
+
+    backends: list[Backend] = []
+    for role in ("primary", "fallback"):
+        url = str(local_cfg.get(f"{role}_url") or "")
+        model = str(local_cfg.get(f"{role}_model") or "")
+        if not url or not model:
+            continue
+        client = LocalLLM(
+            base_url=url,
+            reasoning_strength=str(local_cfg.get("reasoning_strength") or "") or None,
+            reasoning_headroom=int(local_cfg.get("reasoning_headroom_tokens", 2048)),
+        )
+        if client.is_up():
+            # Every role resolves to this server's single served model.
+            backends.append(Backend(name=model, client=client, default_model=model))
+        else:
+            logger.warning("local LLM %s at %s is not reachable; skipping it", model, url)
+    if not backends:
+        raise RuntimeError(
+            "no local LLM server is reachable; start them with scripts/serve_local_models.sh"
+        )
+    return FallbackLLMClient(backends=backends)
+
+
+def _build_llm_client(
+    provider: str, local_cfg: Mapping[str, Any] | None = None
+) -> object:  # pragma: no cover
     """Construct the LLM client backing classifier+rewriter+synthesizer."""
     from chatqec.providers.fallback import Backend, FallbackLLMClient
 
+    if provider == "local":
+        return _build_local_client(local_cfg or {})
     if provider == "huggingface":
         hf = _try_huggingface()
         if hf is None:
@@ -173,6 +210,12 @@ def _role_models(
     models_cfg: dict[str, object], provider: str
 ) -> dict[str, str]:  # pragma: no cover
     """Resolve per-role model IDs for the selected provider."""
+    if provider == "local":
+        # The fallback client maps every role onto each server's own model.
+        local = models_cfg.get("local") or {}
+        assert isinstance(local, dict), "models.local must be a mapping"
+        primary = str(local.get("primary_model", "muse-glimmer"))
+        return {"classifier": primary, "rewriter": primary, "synthesizer": primary}
     if provider == "huggingface":
         hf = models_cfg.get("hf") or {}
         assert isinstance(hf, dict), "models.hf must be a mapping"
@@ -311,16 +354,17 @@ def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cove
     )
 
     models = cfg_dict["models"]
-    provider = str(models.get("provider", "anthropic"))
-    client = _build_llm_client(provider)
+    # CHATQEC_PROVIDER=local switches to the local test models without editing config.
+    provider = os.environ.get("CHATQEC_PROVIDER") or str(models.get("provider", "anthropic"))
+    client = _build_llm_client(provider, models.get("local"))
     role_models = _role_models(models, provider)
 
     synthesizer = Synthesizer(client=client, model=role_models["synthesizer"])
     _mcp_client = None
     if mcp_server:
-        if provider not in ("anthropic", "gemini", "auto"):
+        if provider not in ("anthropic", "gemini", "auto", "local"):
             raise ValueError(
-                "--mcp-server requires the anthropic, gemini, or auto provider; "
+                "--mcp-server requires the anthropic, gemini, auto, or local provider; "
                 f"got {provider!r} (huggingface has no tool-use support)"
             )
         from chatqec.conversation.mcp_adapter import MCPAdapter

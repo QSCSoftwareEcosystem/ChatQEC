@@ -6,7 +6,7 @@ project:
   version: "0.1.0-dev"
 
 models:
-  provider: "auto"                  # "auto" | "anthropic" | "gemini" | "huggingface" — auto tries Anthropic, then Gemini, then HF on credit/auth errors
+  provider: "auto"                  # "auto" | "anthropic" | "gemini" | "huggingface" | "local" — auto tries Anthropic, then Gemini, then HF on credit/auth errors
   rewriter: claude-haiku-4-5
   classifier: claude-haiku-4-5
   synthesizer: claude-sonnet-4-6
@@ -21,6 +21,16 @@ models:
     judge: "meta-llama/Llama-3.3-70B-Instruct"
     vision: "meta-llama/Llama-4-Scout-17B-16E-Instruct"  # multimodal; used for image prompts
     serverless_provider: "auto"   # let huggingface_hub pick a routing partner
+  # provider="local": self-hosted OpenAI-compatible servers for token-free testing
+  # (start with scripts/serve_local_models.sh). Primary serves every role; the
+  # fallback takes over if the primary is down or returns 5xx.
+  local:
+    primary_url: "http://localhost:8001/v1"
+    primary_model: "muse-glimmer"      # /home/pza/local_models/Muse-Glimmer-30B
+    fallback_url: "http://localhost:8002/v1"
+    fallback_model: "gemma-4"          # /home/pza/local_models/gemma-4-31B-it
+    reasoning_strength: "low"          # Muse: low | medium | high | xhigh (template default: high)
+    reasoning_headroom_tokens: 2048    # added to every max_tokens so thinking can't starve the answer
   # Per-role overrides when provider="gemini" (needs GEMINI_API_KEY or GOOGLE_API_KEY).
   gemini:
     classifier: "gemini-2.5-flash"

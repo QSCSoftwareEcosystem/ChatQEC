@@ -54,6 +54,7 @@ def _is_recoverable(exc: BaseException) -> bool:
         "429",
         "too many requests",
         "permission",
+        "local llm unavailable",  # LocalLLM: server down, timed out, or 5xx
     )
     return any(m in msg for m in markers)
 
