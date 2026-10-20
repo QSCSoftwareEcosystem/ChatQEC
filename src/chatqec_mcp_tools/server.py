@@ -14,6 +14,10 @@ from chatqec_mcp_tools.tools.code_params import (
     CodeParamsInput,
     code_params,
 )
+from chatqec_mcp_tools.tools.decoder_compare import (
+    DecoderCompareInput,
+    decoder_compare,
+)
 from chatqec_mcp_tools.tools.glcb_visualize import (
     GlcbVisualizeInput,
     glcb_visualize_url,
@@ -98,6 +102,10 @@ def _qec_circuit_build_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _tsim_simulate_handler(args: dict[str, Any]) -> dict[str, Any]:
     return tsim_simulate(TsimSimulateInput.model_validate(args)).model_dump()
+
+
+def _decoder_compare_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return decoder_compare(DecoderCompareInput.model_validate(args)).model_dump()
 
 
 def _glcb_visualize_url_handler(args: dict[str, Any]) -> dict[str, Any]:
@@ -204,6 +212,20 @@ _TOOLS = [
         ),
         input_schema=TsimSimulateInput.model_json_schema(),
         handler=_tsim_simulate_handler,
+    ),
+    ToolSpec(
+        name="decoder_compare",
+        description=(
+            "Compare QEC decoders on identical syndrome samples and rank them by "
+            "logical error rate (with std error and decode time): pymatching (MWPM), "
+            "tesseract (Google's search-based most-likely-error decoder, strong on "
+            "color codes), bposd / bplsd / belief_find (ldpc qLDPC decoders via QuEra "
+            "bloqade-decoders). Pass a Stim circuit, or code_family + distance + p to "
+            "generate a memory experiment. Non-MWPM decoders need the `decoders` extra; "
+            "missing ones report ok=False per decoder."
+        ),
+        input_schema=DecoderCompareInput.model_json_schema(),
+        handler=_decoder_compare_handler,
     ),
     ToolSpec(
         name="glcb_visualize_url",

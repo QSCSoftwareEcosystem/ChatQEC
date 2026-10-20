@@ -48,6 +48,10 @@ ibm = [
   # compiled extension used solely by _placement.place_vf2, which lazy-imports it.
   "rustworkx>=0.15",
 ]
+decoders = [
+    "bloqade-decoders>=0.6,<0.7",
+    "tesseract-decoder>=0.1",
+]
 
 [project.scripts]
 chatqec-mcp-tools = "chatqec_mcp_tools.server:main"

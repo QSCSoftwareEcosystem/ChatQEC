@@ -39,7 +39,7 @@ import pytest
 _BLOCKED = ("rustworkx", "qiskit", "qiskit_ibm_runtime")
 
 _EXPECTED_TOOLS = {
-    # the 8 pre-existing tools -- these are the collateral damage a module-scope
+    # the 9 non-IBM tools -- these are the collateral damage a module-scope
     # extra-only import causes, and the reason this is a regression not a gap
     "code_params",
     "glcb_visualize_url",
@@ -49,6 +49,7 @@ _EXPECTED_TOOLS = {
     "stim_simulate",
     "threshold_sweep",
     "tsim_simulate",
+    "decoder_compare",
     # the 5 IBM tools
     "ibm_backend_calibration",
     "ibm_list_backends",
