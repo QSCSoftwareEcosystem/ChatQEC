@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_qec_circuit_build_registered():
     from chatqec_mcp_tools.server import build_server
 
@@ -206,3 +209,21 @@ def test_circuit_text_size_cap_with_real_lightstim():
     out = qec_circuit_build(QecCircuitBuildInput(code_family="toric_code", distance=11, rounds=3))
     assert out.ok is False
     assert "too large" in out.error_message.lower()
+
+
+def test_p_adds_noise_and_zero_keeps_circuit_noiseless():
+    pytest.importorskip("lightstim")
+    import stim
+
+    from chatqec_mcp_tools.tools.qec_circuit_build import (
+        QecCircuitBuildInput,
+        qec_circuit_build,
+    )
+
+    clean = qec_circuit_build(QecCircuitBuildInput(code_family="toric_code", distance=3, rounds=2))
+    noisy = qec_circuit_build(
+        QecCircuitBuildInput(code_family="toric_code", distance=3, rounds=2, p=0.001)
+    )
+    assert clean.ok and noisy.ok
+    assert stim.Circuit(clean.circuit_text).detector_error_model().num_errors == 0
+    assert stim.Circuit(noisy.circuit_text).detector_error_model().num_errors > 0

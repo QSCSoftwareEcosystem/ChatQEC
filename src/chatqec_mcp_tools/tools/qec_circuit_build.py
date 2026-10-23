@@ -41,6 +41,16 @@ class QecCircuitBuildInput(BaseModel):
     )
     rounds: int = Field(..., ge=1, le=200)
     protocol: Literal["memory"] = "memory"
+    p: float = Field(
+        0.0,
+        ge=0.0,
+        le=0.1,
+        description=(
+            "Uniform circuit-level noise rate (Stim's generated-circuit model: "
+            "depolarizing after gates, flips at measure/reset). 0 = noiseless; set "
+            "p > 0 before decoding or estimating logical error rates."
+        ),
+    )
 
 
 class QecCircuitBuildOutput(BaseModel):
@@ -87,6 +97,10 @@ def qec_circuit_build(inp: QecCircuitBuildInput) -> QecCircuitBuildOutput:
         # distinguishable from "your input was invalid".
         return QecCircuitBuildOutput(ok=False, error_message=f"lightstim API error: {e}")
 
+    if inp.p > 0:
+        from chatqec_mcp_tools.tools._noise import add_uniform_noise  # noqa: PLC0415
+
+        circuit = add_uniform_noise(circuit, inp.p)
     circuit_text = str(circuit)
     circuit_text_bytes = len(circuit_text.encode("utf-8"))
     if circuit_text_bytes > _MAX_CIRCUIT_TEXT_BYTES:

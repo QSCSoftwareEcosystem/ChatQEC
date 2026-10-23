@@ -68,20 +68,47 @@ def test_no_observables_is_reported():
 
 
 def test_missing_extra_fails_per_decoder_not_whole_call(monkeypatch):
-    real_import = builtins.__import__
+    def no_bloqade(*a, **k):
+        raise ImportError("no bloqade")
 
-    def fake_import(name, *a, **k):
-        if name.startswith("bloqade"):
-            raise ImportError("no bloqade")
-        return real_import(name, *a, **k)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr("chatqec_mcp_tools.tools.decoder_compare.predict_isolated", no_bloqade)
     out = decoder_compare(
         DecoderCompareInput(circuit=_circuit(), decoders=["pymatching", "bposd"], shots=200)
     )
     by_name = {r.decoder: r for r in out.results}
     assert out.ok and out.best == "pymatching"
-    assert by_name["bposd"].ok is False and "decoders" in by_name["bposd"].note
+    assert by_name["bposd"].ok is False and "[decoders]" in by_name["bposd"].note
+
+
+def test_noiseless_circuit_is_rejected_before_decoding():
+    noiseless = str(stim.Circuit.generated("repetition_code:memory", distance=3, rounds=3))
+    out = decoder_compare(DecoderCompareInput(circuit=noiseless, decoders=["bposd"]))
+    assert out.ok is False and "no noise" in out.error_message
+
+
+@needs_decoders
+def test_native_decoder_crash_is_isolated():
+    """ldpc BP+OSD segfaults on this star-shaped DEM; the server process must survive."""
+    import numpy as np
+
+    from chatqec_mcp_tools.tools._isolated_decode import predict_isolated
+
+    dem = "\n".join(["error(0.01) D0 L0"] + [f"error(0.01) D0 D{i}" for i in range(1, 6)])
+    with pytest.raises(RuntimeError, match="crashed in native code"):
+        predict_isolated("bposd", dem, np.zeros((2, 6), dtype=bool), timeout=60)
+
+
+@needs_decoders
+@pytest.mark.parametrize("family,d", [("bb_code", 6), ("toric_code", 3)])
+def test_lightstim_families_are_built_with_noise(family, d):
+    pytest.importorskip("lightstim")
+    out = decoder_compare(
+        DecoderCompareInput(
+            code_family=family, distance=d, rounds=2, p=0.002, decoders=["bplsd"], shots=200, seed=1
+        )
+    )
+    assert out.ok, out.error_message
+    assert out.num_observables >= 1 and out.results[0].ok
 
 
 @needs_decoders
