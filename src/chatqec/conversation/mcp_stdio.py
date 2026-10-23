@@ -21,15 +21,34 @@ import contextlib
 import json
 import os
 import shlex
+import sys
 import threading
 from concurrent.futures import TimeoutError as FutureTimeoutError
-from typing import Any
+from typing import Any, TextIO
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from chatqec.conversation.mcp_adapter import MCPToolDef
 from chatqec.trace import trace
+
+
+def _errlog() -> TextIO:
+    """Where the server subprocess's stderr goes; it must have a real file descriptor.
+
+    ``stdio_client`` hands ``errlog`` to the subprocess as its stderr, so it needs
+    ``fileno()``. Jupyter kernels (e.g. under nbmake) replace ``sys.stderr`` with a
+    stream that has none, which made spawning fail with ``UnsupportedOperation:
+    fileno``. Fall back to the process's original stderr, then to /dev/null.
+    """
+    for stream in (sys.stderr, sys.__stderr__):
+        try:
+            if stream is not None:
+                stream.fileno()
+                return stream
+        except (AttributeError, OSError, ValueError):  # io.UnsupportedOperation is both
+            continue
+    return os.fdopen(os.open(os.devnull, os.O_WRONLY), "w")  # open for the server lifetime
 
 
 class StdioMCPClient:
@@ -85,7 +104,7 @@ class StdioMCPClient:
         params = StdioServerParameters(command=argv[0], args=argv[1:], env=os.environ.copy())
         try:
             # Nested (not combined): ClientSession needs the outer context's streams.
-            async with stdio_client(params) as (read, write):  # noqa: SIM117
+            async with stdio_client(params, errlog=_errlog()) as (read, write):  # noqa: SIM117
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     self._session = session
