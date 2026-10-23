@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_tsim_simulate_registered():
     from chatqec_mcp_tools.server import build_server
 
@@ -144,3 +147,19 @@ def test_t_gate_circuit_with_real_tsim():
     )
     assert out.ok is True
     assert out.shots == 200
+
+
+def test_column_rates_match_t_gate_physics():
+    """T on |+>, measured in X: the detector fires with sin^2(pi/8); T then T_DAG never."""
+    pytest.importorskip("tsim")
+    import math
+
+    from chatqec_mcp_tools.tools.tsim_simulate import TsimSimulateInput, tsim_simulate
+
+    t = tsim_simulate(TsimSimulateInput(circuit="RX 0\nT 0\nMX 0\nDETECTOR rec[-1]", shots=20000))
+    ident = tsim_simulate(
+        TsimSimulateInput(circuit="RX 0\nT 0\nT_DAG 0\nMX 0\nDETECTOR rec[-1]", shots=2000)
+    )
+    assert t.ok and ident.ok
+    assert abs(t.column_rates[0] - math.sin(math.pi / 8) ** 2) < 0.015
+    assert ident.column_rates == [0.0]

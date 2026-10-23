@@ -80,6 +80,13 @@ class TsimSimulateOutput(BaseModel):
     shots: int = 0
     summary: str = ""
     samples_preview: list[list[int]] = Field(default_factory=list)
+    column_rates: list[float] = Field(
+        default_factory=list,
+        description=(
+            "Fraction of ALL shots in which each column fired (detectors first, then "
+            "observables) -- the statistic to report, unlike the truncated preview"
+        ),
+    )
     error_message: str = ""
 
 
@@ -155,5 +162,9 @@ def tsim_simulate(inp: TsimSimulateInput) -> TsimSimulateOutput:
         )
     )
     return TsimSimulateOutput(
-        ok=True, shots=samples.shape[0], summary=summary, samples_preview=preview
+        ok=True,
+        shots=samples.shape[0],
+        summary=summary,
+        samples_preview=preview,
+        column_rates=[round(float(r), 6) for r in samples.mean(axis=0)],
     )
