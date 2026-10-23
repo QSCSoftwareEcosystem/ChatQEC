@@ -54,6 +54,7 @@ dev = [
   "mypy>=1.11",
   "pre-commit>=3.7",
   "types-PyYAML>=6.0",
+  "nbmake>=1.5",  # executes notebooks/ as tests: pytest --nbmake notebooks/
 ]
 
 [project.scripts]

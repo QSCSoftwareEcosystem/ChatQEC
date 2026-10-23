@@ -435,6 +435,15 @@ permanent corpus. No new dependency: Tavily is called via the existing
 
 ## Example usage
 
+For a guided tour of every feature with real outputs, open
+[`notebooks/getting_started.ipynb`](notebooks/getting_started.ipynb): each QEC
+tool called directly (code parameters, threshold sweeps, LightStim codes,
+decoder comparisons including NVIDIA GPU RelayBP on IBM's gross code, Tsim T
+gates, GLCB links, IBM mapping), then a few `ChatQEC.ask` questions. Cells skip
+cleanly when an extra, GPU, or account is missing. Re-run it as a test with
+`uv run pytest --nbmake notebooks/` (needs Qdrant and an LLM provider; set
+`CHATQEC_PROVIDER=local` with `scripts/serve_local_models.sh` to avoid API costs).
+
 A few representative questions to try once the corpus is loaded (see
 [Quick start](#quick-start) above):
 
