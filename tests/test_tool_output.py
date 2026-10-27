@@ -4,6 +4,7 @@ from chatqec_app.components.tool_output import (
     _decoder_rows,
     _deltakit_rows,
     _ft_compile_rows,
+    _guppy_rows,
     _pauli_overhead_rows,
     _svg_render_height,
 )
@@ -150,3 +151,14 @@ def test_deltakit_rows_lead_with_the_error_rate_and_name_the_decoder_and_noise()
     assert {"metric": "decoder", "value": "pymatching"} in rows
     assert {"metric": "noise", "value": "ToyNoise(p=0.002, p_measurement_flip=0.002)"} in rows
     assert {"metric": "qubits", "value": 17} in rows
+
+
+def test_guppy_rows_list_outcomes_by_frequency_with_fractions():
+    data = {"ok": True, "registers": ["c0", "c1"], "shots": 200, "counts": {"1,1": 93, "0,0": 107}}
+    rows = _guppy_rows(data)
+    assert [r["outcome"] for r in rows] == ["0,0", "1,1"]
+    assert rows[0] == {"outcome": "0,0", "registers": "c0,c1", "shots": 107, "fraction": 0.535}
+
+
+def test_guppy_rows_are_empty_when_there_are_no_counts():
+    assert _guppy_rows({"ok": True, "registers": [], "shots": 0, "counts": {}}) == []

@@ -119,11 +119,27 @@ def _deltakit_rows(data: dict) -> list[dict]:
     return [{"metric": label, "value": data.get(key)} for label, key in fields]
 
 
+def _guppy_rows(data: dict) -> list[dict]:
+    """Outcome rows for a guppy_run result, most frequent first."""
+    registers = ",".join(data.get("registers", []))
+    shots = data.get("shots") or sum(data.get("counts", {}).values())
+    return [
+        {
+            "outcome": outcome,
+            "registers": registers,
+            "shots": n,
+            "fraction": round(n / shots, 4) if shots else None,
+        }
+        for outcome, n in sorted(data.get("counts", {}).items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+
+
 _ROW_BUILDERS = {
     "decoder_compare": _decoder_rows,
     "ibm_add_pauli_checks": _pauli_overhead_rows,
     "ibm_ft_compile": _ft_compile_rows,
     "deltakit_memory": _deltakit_rows,
+    "guppy_run": _guppy_rows,
 }
 
 
@@ -140,6 +156,8 @@ def _render_dict_output(name: str, data: dict) -> bool:
     """Render a structured tool result; False when this tool has no structured view."""
     if (name in _ROW_BUILDERS or name == "threshold_sweep") and not data.get("ok", True):
         st.error(data.get("error_message") or "tool returned an error")
+        if data.get("stderr_tail"):
+            st.code(data["stderr_tail"], language="text")
         return True
     if name == "threshold_sweep":
         if data.get("rows"):
