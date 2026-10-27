@@ -36,7 +36,7 @@ from unittest.mock import patch
 
 import pytest
 
-_BLOCKED = ("rustworkx", "qiskit", "qiskit_ibm_runtime", "qiskit_paulice", "qiskit_aer", "deltakit")
+_BLOCKED = ("rustworkx", "qiskit", "qiskit_ibm_runtime", "qiskit_paulice", "qiskit_aer", "deltakit", "guppylang", "selene_sim")
 
 _EXPECTED_TOOLS = {
     # the 9 non-IBM tools -- these are the collateral damage a module-scope
@@ -59,6 +59,7 @@ _EXPECTED_TOOLS = {
     "ibm_add_pauli_checks",
     "ibm_ft_compile",
     "deltakit_memory",
+    "guppy_run",
 }
 
 # Runs in a fresh interpreter with no `ibm` extra visible. A meta_path finder

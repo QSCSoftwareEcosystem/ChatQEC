@@ -59,6 +59,10 @@ cudaq = [
 # Exact most-likely-error decoding (bloqade-decoders GurobiDecoder). The pip wheel ships
 # Gurobi's restricted licence: size-limited and for NON-PRODUCTION use only (it says so on
 # first use). Enough for small codes; larger models or production need your own licence.
+guppy = [
+    "guppylang",
+    "selene-sim",
+]
 deltakit = [
     "deltakit",
 ]
@@ -116,7 +120,7 @@ ignore_missing_imports = true
 
 # deltakit ships type hints and pulls in ldpc, whose .pyi stubs mypy cannot parse.
 [[tool.mypy.overrides]]
-module = ["deltakit", "deltakit.*", "deltakit_*"]
+module = ["deltakit", "deltakit.*"]
 follow_imports = "skip"
 ignore_missing_imports = true
 

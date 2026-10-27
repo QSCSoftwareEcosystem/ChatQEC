@@ -26,6 +26,7 @@ from chatqec_mcp_tools.tools.glcb_visualize import (
     GlcbVisualizeInput,
     glcb_visualize_url,
 )
+from chatqec_mcp_tools.tools.guppy_run import GuppyRunInput, guppy_run
 from chatqec_mcp_tools.tools.ibm_hardware.calibration import (
     IbmBackendCalibrationInput,
     ibm_backend_calibration,
@@ -156,6 +157,10 @@ def _deltakit_memory_handler(args: dict[str, Any]) -> dict[str, Any]:
     return deltakit_memory(DeltakitMemoryInput.model_validate(args)).model_dump()
 
 
+def _guppy_run_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return guppy_run(GuppyRunInput.model_validate(args)).model_dump()
+
+
 class _TestServer:
     """Lightweight server registry used in unit tests."""
 
@@ -269,6 +274,21 @@ _TOOLS = [
         ),
         input_schema=DeltakitMemoryInput.model_json_schema(),
         handler=_deltakit_memory_handler,
+    ),
+    ToolSpec(
+        name="guppy_run",
+        description=(
+            "Run a Guppy quantum program on the Selene emulator and return shot counts. "
+            "Pass the program as source: guppylang imports and @guppy functions only, "
+            "defining main() and reporting outcomes with result('name', value); e.g. a Bell "
+            "pair gives only 0,0 and 1,1. Counts are keyed by the register values joined by "
+            "commas. The tool executes the submitted program and has no OS sandbox, so it is "
+            "DISABLED unless the server is started with CHATQEC_ALLOW_GUPPY_EXEC=1; if it "
+            "reports being disabled, tell the user that. A run takes about 15 seconds. "
+            "Needs the `guppy` extra."
+        ),
+        input_schema=GuppyRunInput.model_json_schema(),
+        handler=_guppy_run_handler,
     ),
     ToolSpec(
         name="glcb_visualize_url",
