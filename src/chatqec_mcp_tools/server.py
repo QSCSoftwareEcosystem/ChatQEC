@@ -209,9 +209,13 @@ _TOOLS = [
     ToolSpec(
         name="code_params",
         description=(
-            "Report a named QEC code's parameters — [[n, k]], stabilizer-generator "
-            "count, and the Stim-computed code distance — for a family "
-            "(surface_code_rotated, repetition_code, color_code) at a given distance."
+            "Report a named QEC code's parameters. For surface_code_rotated, "
+            "repetition_code and color_code: [[n, k]], stabilizer-generator count and the "
+            "Stim-computed code distance at a given distance. For the literature families "
+            "bb5 (bivariate bicycle, weight-5 checks), tile, directional_tile and barbell "
+            "(IQM): the [[n, k, d]] codes reported in the papers, each with its arXiv source "
+            "and table/section (not computed here); distance is optional and filters them. "
+            "Always cite the returned source for these."
         ),
         input_schema=CodeParamsInput.model_json_schema(),
         handler=_code_params_handler,
