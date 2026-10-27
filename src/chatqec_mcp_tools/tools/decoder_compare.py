@@ -9,7 +9,7 @@ Decoders:
                     from the ``ldpc`` package; the usual qLDPC decoders.
   - ``mwpf``       hypergraph minimum-weight parity factor (``[decoders]`` extra).
   - ``mle``        exact most-likely-error through Gurobi; small codes only (``[mle]``
-                    extra, the pip wheel's free licence is size-limited).
+                    extra; the pip wheel's licence is size-limited and non-production only).
   - ``table``      lookup table trained on sampled syndromes; at most 30 detectors.
   - ``cudaq_relay_bp`` / ``cudaq_bposd`` / ``cudaq_sliding_window``  NVIDIA CUDA-Q QEC GPU
                     decoders (RelayBP, BP+OSD, windowed decoding); see _cudaq_decoders.py

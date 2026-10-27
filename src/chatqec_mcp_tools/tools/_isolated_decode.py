@@ -14,14 +14,19 @@ GPU decoders stay in-process (forking a CUDA context is unsafe) and fail cleanly
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import multiprocessing as mp
+import os
+import sys
 import time
 from multiprocessing.connection import Connection
 from multiprocessing.context import ForkServerContext
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     import numpy as np
     from numpy.typing import NDArray
 
@@ -83,13 +88,32 @@ def _build_table(bd: Any, dem: Any) -> Any:
     return bd.TableDecoder.from_det_obs_shots(dem, np.concatenate([det, obs], axis=1))
 
 
+@contextlib.contextmanager
+def _stdout_to_stderr() -> Iterator[None]:
+    """Point fd 1 at stderr for the duration, then restore it.
+
+    fd 1 is the MCP server's JSON-RPC channel and the child inherits it. Gurobi prints a
+    licence banner there on first use, which the client rejects as a malformed message.
+    """
+    sys.stdout.flush()
+    saved = os.dup(1)
+    try:
+        os.dup2(2, 1)
+        yield
+    finally:
+        sys.stdout.flush()
+        os.dup2(saved, 1)
+        os.close(saved)
+
+
 def _child(name: str, dem_text: str, det: Any, conn: Connection) -> None:
     try:
         import stim  # noqa: PLC0415
 
-        decoder = _build(name, stim.DetectorErrorModel(dem_text))
-        start = time.perf_counter()
-        pred = decoder.decode(det)
+        with _stdout_to_stderr():
+            decoder = _build(name, stim.DetectorErrorModel(dem_text))
+            start = time.perf_counter()
+            pred = decoder.decode(det)
         conn.send(("ok", pred, time.perf_counter() - start))
     except ImportError as e:
         conn.send(("import", str(e), 0.0))

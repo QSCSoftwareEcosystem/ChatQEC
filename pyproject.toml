@@ -57,7 +57,8 @@ cudaq = [
     "cudaq-qec-cu13>=0.8.1,<0.9",
 ]
 # Exact most-likely-error decoding (bloqade-decoders GurobiDecoder). The pip wheel ships
-# Gurobi's free size-limited licence, enough for small codes; larger models need your own licence.
+# Gurobi's restricted licence: size-limited and for NON-PRODUCTION use only (it says so on
+# first use). Enough for small codes; larger models or production need your own licence.
 mle = [
     "gurobipy>=12",
 ]

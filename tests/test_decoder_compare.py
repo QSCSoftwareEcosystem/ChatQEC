@@ -334,3 +334,18 @@ def test_cudaq_sliding_window_needs_a_multi_round_circuit():
     )
     (r,) = out.results
     assert r.ok is False and "round" in r.note
+
+
+def test_child_stdout_is_kept_off_the_mcp_protocol_stream(capfd):
+    """Gurobi's C library writes a licence banner straight to fd 1, the JSON-RPC channel."""
+    import os
+
+    from chatqec_mcp_tools.tools._isolated_decode import _stdout_to_stderr
+
+    with _stdout_to_stderr():
+        os.write(1, b"Restricted license - for non-production use only\n")
+    os.write(1, b"after\n")
+    captured = capfd.readouterr()
+    assert "Restricted license" not in captured.out
+    assert "Restricted license" in captured.err
+    assert "after" in captured.out
