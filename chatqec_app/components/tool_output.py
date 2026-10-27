@@ -101,10 +101,29 @@ def _ft_compile_rows(data: dict) -> list[dict]:
     ]
 
 
+def _deltakit_rows(data: dict) -> list[dict]:
+    """Metric rows for a deltakit_memory result."""
+    fields = (
+        ("logical error rate", "logical_error_rate"),
+        ("std error", "std_error"),
+        ("shots", "shots"),
+        ("failures", "num_failures"),
+        ("code", "code_family"),
+        ("distance", "distance"),
+        ("rounds", "rounds"),
+        ("qubits", "num_qubits"),
+        ("detectors", "num_detectors"),
+        ("decoder", "decoder"),
+        ("noise", "noise_model"),
+    )
+    return [{"metric": label, "value": data.get(key)} for label, key in fields]
+
+
 _ROW_BUILDERS = {
     "decoder_compare": _decoder_rows,
     "ibm_add_pauli_checks": _pauli_overhead_rows,
     "ibm_ft_compile": _ft_compile_rows,
+    "deltakit_memory": _deltakit_rows,
 }
 
 

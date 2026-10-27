@@ -51,6 +51,12 @@ Tools:
   count; `gridsynth_precision` is decimal digits of rotation accuracy, so more digits
   means more T gates. Use `mode="pbc"` for Pauli-based computation and report the Pauli
   product rotation count. If the compiled circuit is omitted for size, report the counts.
+- To run a quantum-memory experiment with Riverlane's Deltakit (rotated or unrotated
+  planar, toric, or repetition code) and get a logical error rate, call `deltakit_memory`.
+  It decodes locally with PyMatching. Deltakit's other decoders (including the leakage-aware
+  Local Clustering decoder) and leakage simulation are cloud services that are NOT
+  available here: if the user asks for them, say so plainly instead of calling the tool
+  with them, and offer the local PyMatching run.
 - When you call `stim_simulate`/`stim_diagram`/`pymatching_decode`, show the exact
   circuit text you passed as a fenced ```stim code block (verbatim, not a prose
   paraphrase) before discussing results.

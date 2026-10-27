@@ -12,5 +12,6 @@ def test_prompt_mentions_all_qec_tools():
         "decoder_compare",
         "ibm_add_pauli_checks",
         "ibm_ft_compile",
+        "deltakit_memory",
     ):
         assert name in SYNTHESIZER_SYSTEM_PROMPT

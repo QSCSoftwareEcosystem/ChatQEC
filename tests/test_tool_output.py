@@ -2,6 +2,7 @@
 
 from chatqec_app.components.tool_output import (
     _decoder_rows,
+    _deltakit_rows,
     _ft_compile_rows,
     _pauli_overhead_rows,
     _svg_render_height,
@@ -126,3 +127,26 @@ def test_ft_compile_rows_for_pbc_report_rotations_and_no_t_count():
     rows = _ft_compile_rows(data)
     assert rows[0] == {"metric": "Pauli product rotations", "value": 6}
     assert all(r["metric"] not in ("T count", "Clifford gates") for r in rows)
+
+
+def test_deltakit_rows_lead_with_the_error_rate_and_name_the_decoder_and_noise():
+    data = {
+        "ok": True,
+        "code_family": "rotated_planar",
+        "distance": 3,
+        "rounds": 3,
+        "decoder": "pymatching",
+        "noise_model": "ToyNoise(p=0.002, p_measurement_flip=0.002)",
+        "logical_error_rate": 0.0016,
+        "std_error": 0.0003,
+        "shots": 20000,
+        "num_failures": 32,
+        "num_qubits": 17,
+        "num_detectors": 24,
+        "num_observables": 1,
+    }
+    rows = _deltakit_rows(data)
+    assert rows[0] == {"metric": "logical error rate", "value": 0.0016}
+    assert {"metric": "decoder", "value": "pymatching"} in rows
+    assert {"metric": "noise", "value": "ToyNoise(p=0.002, p_measurement_flip=0.002)"} in rows
+    assert {"metric": "qubits", "value": 17} in rows
