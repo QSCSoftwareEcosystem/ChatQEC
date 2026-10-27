@@ -456,6 +456,7 @@ mle = [
 ]
 paulice = [
     { name = "qiskit" },
+    { name = "qiskit-aer" },
     { name = "qiskit-paulice" },
 ]
 tsim = [
@@ -481,6 +482,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "qiskit", marker = "extra == 'ibm'", specifier = ">=1.0" },
     { name = "qiskit", marker = "extra == 'paulice'", specifier = ">=1.0" },
+    { name = "qiskit-aer", marker = "extra == 'paulice'" },
     { name = "qiskit-ibm-runtime", marker = "extra == 'ibm'", specifier = ">=0.48" },
     { name = "qiskit-paulice", marker = "extra == 'paulice'" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },

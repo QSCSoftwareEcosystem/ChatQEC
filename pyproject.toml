@@ -62,6 +62,7 @@ cudaq = [
 paulice = [
     "qiskit-paulice",
     "qiskit>=1.0",
+    "qiskit-aer",  # noisy stabilizer simulation for the postselection discard rate
 ]
 mle = [
     "gurobipy>=12",
