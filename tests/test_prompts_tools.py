@@ -10,5 +10,6 @@ def test_prompt_mentions_all_qec_tools():
         "threshold_sweep",
         "code_params",
         "decoder_compare",
+        "ibm_add_pauli_checks",
     ):
         assert name in SYNTHESIZER_SYSTEM_PROMPT

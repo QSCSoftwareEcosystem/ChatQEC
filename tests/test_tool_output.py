@@ -1,6 +1,10 @@
 """Streamlit tool-output SVG sizing — the height helper is a pure function."""
 
-from chatqec_app.components.tool_output import _decoder_rows, _svg_render_height
+from chatqec_app.components.tool_output import (
+    _decoder_rows,
+    _pauli_overhead_rows,
+    _svg_render_height,
+)
 
 
 def test_height_from_viewbox_matches_aspect_ratio():
@@ -53,3 +57,39 @@ def test_decoder_rows_rank_successes_by_error_rate_and_put_failures_last():
     assert [r["decoder"] for r in rows] == ["tesseract", "pymatching", "bposd"]
     assert rows[0]["logical error rate"] == 0.005 and rows[0]["note"] == "capped at 5,000 shots"
     assert rows[2]["logical error rate"] is None and "not installed" in rows[2]["note"]
+
+
+def test_pauli_overhead_rows_pair_before_and_after_and_add_discard_rate():
+    data = {
+        "ok": True,
+        "overhead": {
+            "qubits_before": 3,
+            "qubits_after": 4,
+            "gates_before": 3,
+            "gates_after": 12,
+            "depth_before": 4,
+            "depth_after": 11,
+        },
+        "cost_gamma": 1.07,
+        "postselection_discard_rate": 0.0668,
+    }
+    rows = _pauli_overhead_rows(data)
+    assert rows[0] == {"metric": "qubits", "before": 3, "after": 4}
+    assert {"metric": "depth", "before": 4, "after": 11} in rows
+    assert rows[-1] == {"metric": "postselection discard rate", "before": None, "after": 0.0668}
+
+
+def test_pauli_overhead_rows_omit_discard_rate_when_not_estimated():
+    data = {
+        "ok": True,
+        "overhead": {
+            "qubits_before": 3,
+            "qubits_after": 4,
+            "gates_before": 3,
+            "gates_after": 12,
+            "depth_before": 4,
+            "depth_after": 11,
+        },
+        "postselection_discard_rate": None,
+    }
+    assert all(r["metric"] != "postselection discard rate" for r in _pauli_overhead_rows(data))

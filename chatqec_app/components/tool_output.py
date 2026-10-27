@@ -67,6 +67,24 @@ def _decoder_rows(data: dict) -> list[dict]:
     return rows
 
 
+def _pauli_overhead_rows(data: dict) -> list[dict]:
+    """Before/after rows for an ibm_add_pauli_checks result, plus the discard rate if known."""
+    o = data.get("overhead") or {}
+    rows = [
+        {"metric": m, "before": o.get(f"{m}_before"), "after": o.get(f"{m}_after")}
+        for m in ("qubits", "gates", "depth")
+    ]
+    if data.get("postselection_discard_rate") is not None:
+        rows.append(
+            {
+                "metric": "postselection discard rate",
+                "before": None,
+                "after": data["postselection_discard_rate"],
+            }
+        )
+    return rows
+
+
 def _parsed(out: str) -> dict | None:
     """The tool output as a dict when it is a Python/JSON literal dict, else None."""
     try:
@@ -78,7 +96,9 @@ def _parsed(out: str) -> dict | None:
 
 def _render_dict_output(name: str, data: dict) -> bool:
     """Render a structured tool result; False when this tool has no structured view."""
-    if name in ("threshold_sweep", "decoder_compare") and not data.get("ok", True):
+    if name in ("threshold_sweep", "decoder_compare", "ibm_add_pauli_checks") and not data.get(
+        "ok", True
+    ):
         st.error(data.get("error_message") or "tool returned an error")
         return True
     if name == "threshold_sweep":
@@ -90,6 +110,11 @@ def _render_dict_output(name: str, data: dict) -> bool:
         return True
     if name == "decoder_compare":
         st.dataframe(_decoder_rows(data))
+        return True
+    if name == "ibm_add_pauli_checks":
+        st.dataframe(_pauli_overhead_rows(data))
+        if data.get("circuit_qasm"):
+            st.code(data["circuit_qasm"], language="text")
         return True
     if name in ("pymatching_decode", "code_params"):
         st.json(data)

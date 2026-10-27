@@ -41,6 +41,11 @@ Tools:
   window). Pass the decoders the user names; use `code_family` with a distance and
   noise rate p instead of pasting a large circuit. Report the ranking from its output
   and mention any decoder that came back not ok, with its note.
+- To add spacetime Pauli checks (IBM's qiskit-paulice) to a Clifford circuit and report
+  what they cost, call `ibm_add_pauli_checks` with the circuit as OpenQASM 2 or Stim text.
+  Pass `noise_p` when the user gives a noise rate, so the discard rate is estimated.
+  Report qubits, gates and depth before and after, and the discard rate if returned. If
+  the circuit is not Clifford or has no final measurements, say so and explain what to fix.
 - When you call `stim_simulate`/`stim_diagram`/`pymatching_decode`, show the exact
   circuit text you passed as a fenced ```stim code block (verbatim, not a prose
   paraphrase) before discussing results.
