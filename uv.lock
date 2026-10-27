@@ -443,6 +443,9 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+ft = [
+    { name = "qiskit" },
+]
 ibm = [
     { name = "qiskit" },
     { name = "qiskit-ibm-runtime" },
@@ -480,6 +483,7 @@ requires-dist = [
     { name = "pymatching", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
+    { name = "qiskit", marker = "extra == 'ft'", specifier = ">=2.5" },
     { name = "qiskit", marker = "extra == 'ibm'", specifier = ">=1.0" },
     { name = "qiskit", marker = "extra == 'paulice'", specifier = ">=1.0" },
     { name = "qiskit-aer", marker = "extra == 'paulice'" },
@@ -490,7 +494,7 @@ requires-dist = [
     { name = "stim", specifier = ">=1.13" },
     { name = "tesseract-decoder", marker = "extra == 'decoders'", specifier = ">=0.1" },
 ]
-provides-extras = ["dev", "lightstim", "tsim", "ibm", "decoders", "cudaq", "paulice", "mle"]
+provides-extras = ["dev", "lightstim", "tsim", "ibm", "decoders", "cudaq", "ft", "paulice", "mle"]
 
 [[package]]
 name = "click"

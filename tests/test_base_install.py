@@ -57,6 +57,7 @@ _EXPECTED_TOOLS = {
     "ibm_preview_execution",
     "ibm_submit_execution",
     "ibm_add_pauli_checks",
+    "ibm_ft_compile",
 }
 
 # Runs in a fresh interpreter with no `ibm` extra visible. A meta_path finder

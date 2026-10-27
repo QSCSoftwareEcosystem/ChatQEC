@@ -26,6 +26,10 @@ from chatqec_mcp_tools.tools.ibm_hardware.calibration import (
     IbmBackendCalibrationInput,
     ibm_backend_calibration,
 )
+from chatqec_mcp_tools.tools.ibm_hardware.ft_compile import (
+    IbmFtCompileInput,
+    ibm_ft_compile,
+)
 from chatqec_mcp_tools.tools.ibm_hardware.list_backends import (
     IbmListBackendsInput,
     ibm_list_backends,
@@ -138,6 +142,10 @@ def _ibm_submit_execution_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _ibm_add_pauli_checks_handler(args: dict[str, Any]) -> dict[str, Any]:
     return ibm_add_pauli_checks(IbmAddPauliChecksInput.model_validate(args)).model_dump()
+
+
+def _ibm_ft_compile_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return ibm_ft_compile(IbmFtCompileInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -262,6 +270,20 @@ _TOOLS = [
         ),
         input_schema=IbmAddPauliChecksInput.model_json_schema(),
         handler=_ibm_add_pauli_checks_handler,
+    ),
+    ToolSpec(
+        name="ibm_ft_compile",
+        description=(
+            "Compile an OpenQASM 2 circuit for fault-tolerant execution with Qiskit's "
+            "preset pass managers. mode=clifford_t approximates rotations with gridsynth "
+            "into Clifford+T and reports the T count (gridsynth_precision is decimal "
+            "digits: more digits, more T gates); mode=pbc converts to Pauli-based "
+            "computation and reports the Pauli product rotation count. Very large "
+            "compiled circuits are summarised by counts only. Needs Qiskit >= 2.5 (the "
+            "`ft` extra)."
+        ),
+        input_schema=IbmFtCompileInput.model_json_schema(),
+        handler=_ibm_ft_compile_handler,
     ),
     ToolSpec(
         name="ibm_list_backends",

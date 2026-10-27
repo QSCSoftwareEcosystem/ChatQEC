@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from chatqec_mcp_tools.tools.ibm_hardware import _pauli_checks_impl as impl
 
 _MAX_CIRCUIT_BYTES = 256 * 1024
+_MAX_RETURNED_QASM_BYTES = 20_000  # keep a big checked circuit out of the LLM context
 _MAX_QUBITS = 24  # the check search grows quickly with width; keeps calls inside the 60 s budget
 _INSTALL_HINT = "uv tool install 'chatqec-mcp-tools[paulice]'"
 
@@ -41,7 +42,9 @@ class IbmAddPauliChecksInput(BaseModel):
         ),
     )
     shots: int = Field(2_000, ge=1, le=50_000, description="Shots for the discard-rate estimate")
-    seed: int | None = Field(None, description="Seed for the check search and the simulation")
+    seed: int | None = Field(
+        default=None, description="Seed for the check search and the simulation"
+    )
 
 
 class PauliCheckOverhead(BaseModel):
@@ -94,6 +97,12 @@ def ibm_add_pauli_checks(inp: IbmAddPauliChecksInput) -> IbmAddPauliChecksOutput
         return _fail(str(exc))
 
     after = checked.circuit
+    if len(qasm.encode("utf-8")) > _MAX_RETURNED_QASM_BYTES:
+        omitted = (
+            f"checked circuit omitted: {len(qasm) // 1024} KB of OpenQASM is too large to return"
+        )
+        note = f"{note} {omitted}".strip()
+        qasm = ""
     return IbmAddPauliChecksOutput(
         ok=True,
         circuit_qasm=qasm,

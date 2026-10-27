@@ -121,3 +121,13 @@ def test_missing_extra_reports_the_paulice_hint(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
     out = _run()
     assert out.ok is False and "[paulice]" in out.error_message
+
+
+def test_large_checked_circuit_omits_the_qasm_but_keeps_the_overhead():
+    """A big circuit's QASM would flood the LLM context; return the numbers, not the text."""
+    body = "h q[0];\n" + "cx q[0],q[1];\ncx q[1],q[2];\n" * 1100 + "measure q -> c;\n"
+    qasm = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\ncreg c[3];\n' + body
+    out = ibm_add_pauli_checks(IbmAddPauliChecksInput(circuit=qasm, num_checks=1, seed=1))
+    assert out.ok, out.error_message
+    assert out.overhead.gates_after > 2200
+    assert out.circuit_qasm == "" and "omitted" in out.notes
