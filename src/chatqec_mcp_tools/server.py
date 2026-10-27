@@ -34,6 +34,10 @@ from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import (
     IbmMapCircuitInput,
     ibm_map_circuit,
 )
+from chatqec_mcp_tools.tools.ibm_hardware.pauli_checks import (
+    IbmAddPauliChecksInput,
+    ibm_add_pauli_checks,
+)
 from chatqec_mcp_tools.tools.ibm_hardware.preview_execution import (
     IbmPreviewExecutionInput,
     ibm_preview_execution,
@@ -130,6 +134,10 @@ def _ibm_preview_execution_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _ibm_submit_execution_handler(args: dict[str, Any]) -> dict[str, Any]:
     return ibm_submit_execution(IbmSubmitExecutionInput.model_validate(args)).model_dump()
+
+
+def _ibm_add_pauli_checks_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return ibm_add_pauli_checks(IbmAddPauliChecksInput.model_validate(args)).model_dump()
 
 
 class _TestServer:
@@ -241,6 +249,19 @@ _TOOLS = [
         ),
         input_schema=GlcbVisualizeInput.model_json_schema(),
         handler=_glcb_visualize_url_handler,
+    ),
+    ToolSpec(
+        name="ibm_add_pauli_checks",
+        description=(
+            "Add spacetime Pauli checks (IBM's qiskit-paulice) to a Clifford circuit "
+            "(OpenQASM 2 or Stim, ending in measurements) for error detection by "
+            "postselection. Returns the checked circuit as OpenQASM and the overhead: "
+            "qubits, gate count and depth before and after, Paulice's sampling cost, and, "
+            "when noise_p is given, the fraction of shots postselection would discard. "
+            "Non-Clifford circuits are rejected. Needs the `paulice` extra."
+        ),
+        input_schema=IbmAddPauliChecksInput.model_json_schema(),
+        handler=_ibm_add_pauli_checks_handler,
     ),
     ToolSpec(
         name="ibm_list_backends",
