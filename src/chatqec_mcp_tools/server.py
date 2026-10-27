@@ -18,6 +18,10 @@ from chatqec_mcp_tools.tools.decoder_compare import (
     DecoderCompareInput,
     decoder_compare,
 )
+from chatqec_mcp_tools.tools.deltakit_memory import (
+    DeltakitMemoryInput,
+    deltakit_memory,
+)
 from chatqec_mcp_tools.tools.glcb_visualize import (
     GlcbVisualizeInput,
     glcb_visualize_url,
@@ -148,6 +152,10 @@ def _ibm_ft_compile_handler(args: dict[str, Any]) -> dict[str, Any]:
     return ibm_ft_compile(IbmFtCompileInput.model_validate(args)).model_dump()
 
 
+def _deltakit_memory_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return deltakit_memory(DeltakitMemoryInput.model_validate(args)).model_dump()
+
+
 class _TestServer:
     """Lightweight server registry used in unit tests."""
 
@@ -246,6 +254,21 @@ _TOOLS = [
         ),
         input_schema=DecoderCompareInput.model_json_schema(),
         handler=_decoder_compare_handler,
+    ),
+    ToolSpec(
+        name="deltakit_memory",
+        description=(
+            "Run a quantum-memory experiment with Riverlane's Deltakit: build a rotated or "
+            "unrotated planar, toric or repetition code memory circuit, add circuit-level "
+            "noise (ToyNoise: two-qubit error p and measurement flip), sample it and decode "
+            "with Deltakit's local PyMatching decoder. Returns the logical error rate with "
+            "its standard error plus qubit, detector and observable counts. Runs fully "
+            "locally. Deltakit's other decoders (including the leakage-aware local "
+            "clustering decoder) and leakage simulation are cloud services that are NOT "
+            "configured here and are refused. Needs the `deltakit` extra."
+        ),
+        input_schema=DeltakitMemoryInput.model_json_schema(),
+        handler=_deltakit_memory_handler,
     ),
     ToolSpec(
         name="glcb_visualize_url",

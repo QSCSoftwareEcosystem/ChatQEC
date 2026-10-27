@@ -59,6 +59,9 @@ cudaq = [
 # Exact most-likely-error decoding (bloqade-decoders GurobiDecoder). The pip wheel ships
 # Gurobi's restricted licence: size-limited and for NON-PRODUCTION use only (it says so on
 # first use). Enough for small codes; larger models or production need your own licence.
+deltakit = [
+    "deltakit",
+]
 # Qiskit 2.5 added the Clifford+T (gridsynth) and PBC preset pass managers.
 ft = [
     "qiskit>=2.5",
@@ -109,6 +112,12 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["tsim.*"]
+ignore_missing_imports = true
+
+# deltakit ships type hints and pulls in ldpc, whose .pyi stubs mypy cannot parse.
+[[tool.mypy.overrides]]
+module = ["deltakit", "deltakit.*", "deltakit_*"]
+follow_imports = "skip"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
