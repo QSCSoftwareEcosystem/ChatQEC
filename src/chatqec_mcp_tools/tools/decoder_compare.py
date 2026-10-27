@@ -7,8 +7,13 @@ Decoders:
                     strong on color codes and correlated/hyperedge noise.
   - ``bposd`` / ``bplsd`` / ``belief_find``  BP+OSD, BP+LSD, BP+union-find
                     from the ``ldpc`` package; the usual qLDPC decoders.
-  - ``cudaq_relay_bp`` / ``cudaq_bposd``  NVIDIA CUDA-Q QEC GPU decoders
-                    (RelayBP, BP+OSD); see _cudaq_decoders.py (``[cudaq]`` extra).
+  - ``mwpf``       hypergraph minimum-weight parity factor (``[decoders]`` extra).
+  - ``mle``        exact most-likely-error through Gurobi; small codes only (``[mle]``
+                    extra, the pip wheel's free licence is size-limited).
+  - ``table``      lookup table trained on sampled syndromes; at most 30 detectors.
+  - ``cudaq_relay_bp`` / ``cudaq_bposd`` / ``cudaq_sliding_window``  NVIDIA CUDA-Q QEC GPU
+                    decoders (RelayBP, BP+OSD, windowed decoding); see _cudaq_decoders.py
+                    (``[cudaq]`` extra). cudaq-qec 0.8.1 has no AI pre-decoder, so none is offered.
 
 The CPU non-MWPM decoders come through QuEra's ``bloqade-decoders`` (``[decoders]``
 extra) and run in a child process (_isolated_decode.py), because ldpc's BP+OSD
@@ -48,12 +53,23 @@ if TYPE_CHECKING:
     BoolArray = NDArray[np.bool_]
 
 DecoderName = Literal[
-    "pymatching", "tesseract", "bposd", "bplsd", "belief_find", "cudaq_relay_bp", "cudaq_bposd"
+    "pymatching",
+    "tesseract",
+    "bposd",
+    "bplsd",
+    "belief_find",
+    "mwpf",
+    "mle",
+    "table",
+    "cudaq_relay_bp",
+    "cudaq_bposd",
+    "cudaq_sliding_window",
 ]
 
 _MAX_CIRCUIT_BYTES = 256 * 1024
 _MAX_SHOTS = 50_000
 _MAX_TESSERACT_SHOTS = 5_000  # ~3 ms/shot at d=5 keeps the call inside the 60 s MCP budget
+_MAX_MLE_SHOTS = 500  # one Gurobi MIP solve per shot
 _DECODER_TIMEOUT_S = 50.0  # per CPU decoder child process
 _MIN_D, _MAX_D = 3, 15
 _LIGHTSTIM_FAMILIES = ("toric_code", "color_code_666", "bb_code", "pqrm")
@@ -96,8 +112,12 @@ class DecoderCompareInput(BaseModel):
             "Decoders to compare on identical syndrome samples: pymatching (MWPM, CPU), "
             "tesseract (Google search decoder, CPU), bposd / bplsd / belief_find (ldpc, CPU), "
             "cudaq_relay_bp (NVIDIA CUDA-Q RelayBP, GPU), cudaq_bposd (NVIDIA CUDA-Q "
-            "BP+OSD, GPU). Pick the cudaq_* names when the user asks for NVIDIA, CUDA-Q, "
-            "or GPU decoding."
+            "BP+OSD, GPU), cudaq_sliding_window (NVIDIA CUDA-Q sliding-window decoding, "
+            "GPU; set window_size and window_step), mwpf (hypergraph minimum-weight "
+            "parity factor, CPU), mle (exact most-likely-error via Gurobi, CPU, small codes "
+            "only, needs the mle extra), table (lookup-table decoder trained on sampled "
+            "syndromes, CPU, small codes only). Pick the cudaq_* names when the user asks "
+            "for NVIDIA, CUDA-Q, or GPU decoding."
         ),
     )
     shots: int = Field(
@@ -107,9 +127,17 @@ class DecoderCompareInput(BaseModel):
         description=f"Shots (tesseract decodes at most {_MAX_TESSERACT_SHOTS:,})",
     )
     seed: int | None = Field(None, description="Sampler seed for reproducibility")
+    window_size: int | None = Field(
+        None, ge=2, description="Rounds per window, only for cudaq_sliding_window"
+    )
+    window_step: int | None = Field(
+        None, ge=1, description="Rounds the window advances, only for cudaq_sliding_window"
+    )
 
     @model_validator(mode="after")
     def _one_source(self) -> DecoderCompareInput:
+        if (self.window_size or self.window_step) and "cudaq_sliding_window" not in self.decoders:
+            raise ValueError("window_size and window_step apply only to cudaq_sliding_window")
         if (self.circuit is None) == (self.code_family is None):
             raise ValueError("pass exactly one of circuit or code_family")
         if self.code_family in (*_ODD_ONLY, "color_code_666") and self.distance % 2 == 0:
@@ -154,25 +182,31 @@ def _pymatching_predict(circuit: stim.Circuit, det: BoolArray) -> tuple[BoolArra
 
 
 def _run_one(
-    name: str, circuit: stim.Circuit, dem: stim.DetectorErrorModel, det: BoolArray, obs: BoolArray
+    name: str,
+    circuit: stim.Circuit,
+    dem: stim.DetectorErrorModel,
+    det: BoolArray,
+    obs: BoolArray,
+    window: tuple[int | None, int | None] = (None, None),
 ) -> DecoderResult:
     note = ""
-    if name == "tesseract" and len(det) > _MAX_TESSERACT_SHOTS:
-        det, obs = det[:_MAX_TESSERACT_SHOTS], obs[:_MAX_TESSERACT_SHOTS]
-        note = f"capped at {_MAX_TESSERACT_SHOTS:,} shots"
+    cap = {"tesseract": _MAX_TESSERACT_SHOTS, "mle": _MAX_MLE_SHOTS}.get(name)
+    if cap is not None and len(det) > cap:
+        det, obs = det[:cap], obs[:cap]
+        note = f"capped at {cap:,} shots"
     start = time.perf_counter()
     try:
         if name == "pymatching":
             pred, note = _pymatching_predict(circuit, det)
         elif name in CUDAQ_DECODERS:
-            pred = cudaq_predict(name, dem, det)
+            pred = cudaq_predict(name, dem, det, *window)
         else:
             pred, child_seconds = predict_isolated(name, str(dem), det, _DECODER_TIMEOUT_S)
             start = time.perf_counter() - child_seconds  # report decode time, not fork time
             if name == "bposd" and dem.num_errors > OSD_CS_MAX_ERRORS:
                 note = "large error model: OSD order 0 instead of OSD-CS 5"
     except ImportError:
-        extra = "cudaq" if name in CUDAQ_DECODERS else "decoders"
+        extra = "cudaq" if name in CUDAQ_DECODERS else "mle" if name == "mle" else "decoders"
         return DecoderResult(
             decoder=name,
             ok=False,
@@ -249,7 +283,10 @@ def decoder_compare(inp: DecoderCompareInput) -> DecoderCompareOutput:
 
     sampler = circuit.compile_detector_sampler(seed=inp.seed)
     det, obs = sampler.sample(shots=inp.shots, separate_observables=True)
-    results = [_run_one(name, circuit, dem, det, obs) for name in dict.fromkeys(inp.decoders)]
+    window = (inp.window_size, inp.window_step)
+    results = [
+        _run_one(name, circuit, dem, det, obs, window) for name in dict.fromkeys(inp.decoders)
+    ]
     ranked = sorted(
         (r for r in results if r.ok), key=lambda r: (r.logical_error_rate, r.decode_seconds)
     )
