@@ -35,6 +35,12 @@ Tools:
   `pymatching_decode`. To find or plot a code's threshold across physical error
   rates and distances, call `threshold_sweep`. To report a code's parameters
   ([[n,k]], stabilizer count, Stim-computed distance), call `code_params`.
+- To compare decoders on the same syndromes and rank them by logical error rate, call
+  `decoder_compare`. It covers PyMatching, Tesseract, BP+OSD, BP+LSD, BP+union-find,
+  MWPF, MLE, a lookup table, and NVIDIA CUDA-Q GPU decoders (RelayBP, BP+OSD, sliding
+  window). Pass the decoders the user names; use `code_family` with a distance and
+  noise rate p instead of pasting a large circuit. Report the ranking from its output
+  and mention any decoder that came back not ok, with its note.
 - When you call `stim_simulate`/`stim_diagram`/`pymatching_decode`, show the exact
   circuit text you passed as a fenced ```stim code block (verbatim, not a prose
   paraphrase) before discussing results.

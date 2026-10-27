@@ -35,6 +35,68 @@ def _render_svg(svg: str) -> None:
     st.components.v1.html(html, height=_svg_render_height(svg), scrolling=True)
 
 
+def _decoder_rows(data: dict) -> list[dict]:
+    """Table rows for a decoder_compare result: successes ranked by error rate, failures last."""
+    ok = sorted(
+        (r for r in data.get("results", []) if r.get("ok")),
+        key=lambda r: (r.get("logical_error_rate", 0.0), r.get("decode_seconds", 0.0)),
+    )
+    failed = [r for r in data.get("results", []) if not r.get("ok")]
+    rows = [
+        {
+            "decoder": r["decoder"],
+            "logical error rate": r.get("logical_error_rate"),
+            "std error": r.get("std_error"),
+            "shots": r.get("shots"),
+            "decode s": r.get("decode_seconds"),
+            "note": r.get("note", ""),
+        }
+        for r in ok
+    ]
+    rows += [
+        {
+            "decoder": r["decoder"],
+            "logical error rate": None,
+            "std error": None,
+            "shots": None,
+            "decode s": None,
+            "note": r.get("note", ""),
+        }
+        for r in failed
+    ]
+    return rows
+
+
+def _parsed(out: str) -> dict | None:
+    """The tool output as a dict when it is a Python/JSON literal dict, else None."""
+    try:
+        data = ast.literal_eval(out)
+    except (ValueError, SyntaxError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _render_dict_output(name: str, data: dict) -> bool:
+    """Render a structured tool result; False when this tool has no structured view."""
+    if name in ("threshold_sweep", "decoder_compare") and not data.get("ok", True):
+        st.error(data.get("error_message") or "tool returned an error")
+        return True
+    if name == "threshold_sweep":
+        if data.get("rows"):
+            st.dataframe(data["rows"])
+        svg = data.get("plot_svg") or ""
+        if "<svg" in svg:
+            _render_svg(svg)
+        return True
+    if name == "decoder_compare":
+        st.dataframe(_decoder_rows(data))
+        return True
+    if name in ("pymatching_decode", "code_params"):
+        st.json(data)
+        return True
+    return False
+
+
 def render(call: ToolCall) -> None:
     st.markdown(f"**Tool:** `{call.name}`")
     st.code(str(call.input), language="json")
@@ -46,30 +108,9 @@ def render(call: ToolCall) -> None:
         _render_svg(out[start:end])
         return
 
-    if call.name == "threshold_sweep":
-        try:
-            data = ast.literal_eval(out)
-        except (ValueError, SyntaxError):
-            data = None
-        if isinstance(data, dict):
-            if not data.get("ok", True):
-                st.error(data.get("error_message") or "tool returned an error")
-                return
-            if data.get("rows"):
-                st.dataframe(data["rows"])
-            svg = data.get("plot_svg") or ""
-            if "<svg" in svg:
-                _render_svg(svg)
-            return
-
-    if call.name in ("pymatching_decode", "code_params"):
-        try:
-            data = ast.literal_eval(out)
-        except (ValueError, SyntaxError):
-            data = None
-        if isinstance(data, dict):
-            st.json(data)
-            return
+    data = _parsed(out)
+    if data is not None and _render_dict_output(call.name, data):
+        return
 
     st.code(out[:_MAX_INLINE_CHARS], language="json")
     if len(out) > _MAX_INLINE_CHARS:
