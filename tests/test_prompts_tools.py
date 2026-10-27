@@ -11,5 +11,6 @@ def test_prompt_mentions_all_qec_tools():
         "code_params",
         "decoder_compare",
         "ibm_add_pauli_checks",
+        "ibm_ft_compile",
     ):
         assert name in SYNTHESIZER_SYSTEM_PROMPT

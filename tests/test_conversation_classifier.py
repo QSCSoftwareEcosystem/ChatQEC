@@ -162,3 +162,24 @@ def test_classifier_history_respects_history_turns_limit():
     assert "first on-topic question" not in content
     assert "second question" in content
     assert "second answer" in content
+
+
+def test_classifier_prompt_covers_fault_tolerant_compilation_and_vendor_tools():
+    # Regression guard: "Compile this rotation to Clifford+T and give the T count" was
+    # refused as off_topic in 2 of 3 local-model runs, so the ibm_ft_compile tool never ran.
+    # Each tool-backed topic must be named in the prompt as on_topic.
+    client = _make_anthropic_with_response("on_topic")
+    clf = OffTopicClassifier(client=client, model="claude-haiku-4-5")
+    clf.classify("Compile this one-qubit rotation to Clifford+T and give me the T count")
+    system = client.messages.create.call_args.kwargs["system"].lower()
+    for phrase in (
+        "clifford+t",
+        "t count",
+        "gridsynth",
+        "pauli-based",
+        "pauli checks",
+        "postselection",
+        "deltakit",
+        "guppy",
+    ):
+        assert phrase in system, phrase

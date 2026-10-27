@@ -2,6 +2,7 @@
 
 from chatqec_app.components.tool_output import (
     _decoder_rows,
+    _ft_compile_rows,
     _pauli_overhead_rows,
     _svg_render_height,
 )
@@ -93,3 +94,35 @@ def test_pauli_overhead_rows_omit_discard_rate_when_not_estimated():
         "postselection_discard_rate": None,
     }
     assert all(r["metric"] != "postselection discard rate" for r in _pauli_overhead_rows(data))
+
+
+def test_ft_compile_rows_for_clifford_t_report_t_count_first():
+    data = {
+        "ok": True,
+        "mode": "clifford_t",
+        "t_count": 65,
+        "clifford_count": 84,
+        "depth": 120,
+        "num_qubits": 1,
+    }
+    assert _ft_compile_rows(data) == [
+        {"metric": "T count", "value": 65},
+        {"metric": "Clifford gates", "value": 84},
+        {"metric": "depth", "value": 120},
+        {"metric": "qubits", "value": 1},
+    ]
+
+
+def test_ft_compile_rows_for_pbc_report_rotations_and_no_t_count():
+    data = {
+        "ok": True,
+        "mode": "pbc",
+        "t_count": None,
+        "clifford_count": None,
+        "num_rotations": 6,
+        "depth": 6,
+        "num_qubits": 2,
+    }
+    rows = _ft_compile_rows(data)
+    assert rows[0] == {"metric": "Pauli product rotations", "value": 6}
+    assert all(r["metric"] not in ("T count", "Clifford gates") for r in rows)

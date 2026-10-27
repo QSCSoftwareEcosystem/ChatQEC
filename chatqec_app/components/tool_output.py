@@ -85,6 +85,29 @@ def _pauli_overhead_rows(data: dict) -> list[dict]:
     return rows
 
 
+def _ft_compile_rows(data: dict) -> list[dict]:
+    """Metric rows for an ibm_ft_compile result (Clifford+T counts, or PBC rotations)."""
+    if data.get("mode") == "pbc":
+        rows = [{"metric": "Pauli product rotations", "value": data.get("num_rotations")}]
+    else:
+        rows = [
+            {"metric": "T count", "value": data.get("t_count")},
+            {"metric": "Clifford gates", "value": data.get("clifford_count")},
+        ]
+    return [
+        *rows,
+        {"metric": "depth", "value": data.get("depth")},
+        {"metric": "qubits", "value": data.get("num_qubits")},
+    ]
+
+
+_ROW_BUILDERS = {
+    "decoder_compare": _decoder_rows,
+    "ibm_add_pauli_checks": _pauli_overhead_rows,
+    "ibm_ft_compile": _ft_compile_rows,
+}
+
+
 def _parsed(out: str) -> dict | None:
     """The tool output as a dict when it is a Python/JSON literal dict, else None."""
     try:
@@ -96,9 +119,7 @@ def _parsed(out: str) -> dict | None:
 
 def _render_dict_output(name: str, data: dict) -> bool:
     """Render a structured tool result; False when this tool has no structured view."""
-    if name in ("threshold_sweep", "decoder_compare", "ibm_add_pauli_checks") and not data.get(
-        "ok", True
-    ):
+    if (name in _ROW_BUILDERS or name == "threshold_sweep") and not data.get("ok", True):
         st.error(data.get("error_message") or "tool returned an error")
         return True
     if name == "threshold_sweep":
@@ -108,11 +129,10 @@ def _render_dict_output(name: str, data: dict) -> bool:
         if "<svg" in svg:
             _render_svg(svg)
         return True
-    if name == "decoder_compare":
-        st.dataframe(_decoder_rows(data))
-        return True
-    if name == "ibm_add_pauli_checks":
-        st.dataframe(_pauli_overhead_rows(data))
+    if name in _ROW_BUILDERS:
+        st.dataframe(_ROW_BUILDERS[name](data))
+        if data.get("notes"):
+            st.caption(data["notes"])
         if data.get("circuit_qasm"):
             st.code(data["circuit_qasm"], language="text")
         return True

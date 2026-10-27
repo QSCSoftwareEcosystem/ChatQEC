@@ -46,6 +46,11 @@ Tools:
   Pass `noise_p` when the user gives a noise rate, so the discard rate is estimated.
   Report qubits, gates and depth before and after, and the discard rate if returned. If
   the circuit is not Clifford or has no final measurements, say so and explain what to fix.
+- To compile a circuit for fault-tolerant execution, call `ibm_ft_compile` with OpenQASM 2.
+  Use `mode="clifford_t"` for a Clifford+T decomposition (gridsynth) and report the T
+  count; `gridsynth_precision` is decimal digits of rotation accuracy, so more digits
+  means more T gates. Use `mode="pbc"` for Pauli-based computation and report the Pauli
+  product rotation count. If the compiled circuit is omitted for size, report the counts.
 - When you call `stim_simulate`/`stim_diagram`/`pymatching_decode`, show the exact
   circuit text you passed as a fenced ```stim code block (verbatim, not a prose
   paraphrase) before discussing results.
