@@ -1,5 +1,6 @@
 """guppy_run: run a Guppy program on Selene. Off by default; source-gated; isolated child."""
 
+import importlib.metadata
 import os
 
 import pytest
@@ -8,6 +9,16 @@ from pydantic import ValidationError
 from chatqec_mcp_tools.tools import guppy_run as gr
 from chatqec_mcp_tools.tools.guppy_run import GuppyRunInput, guppy_run
 
+
+def _guppy_major() -> int:
+    try:
+        return int(importlib.metadata.version("guppylang").split(".")[0])
+    except importlib.metadata.PackageNotFoundError:
+        return 0
+
+
+# guppylang >= 1.0 returns a Measurement future that result() cannot take; read it first.
+_READ = ".read()" if _guppy_major() >= 1 else ""
 HEADER = (
     "from guppylang import guppy\n"
     "from guppylang.std.builtins import result\n"
@@ -17,7 +28,7 @@ BELL = (
     HEADER
     + "@guppy\ndef main() -> None:\n"
     + "    q0 = qubit()\n    q1 = qubit()\n    h(q0)\n    cx(q0, q1)\n"
-    + '    result("c0", measure(q0))\n    result("c1", measure(q1))\n'
+    + f'    result("c0", measure(q0){_READ})\n    result("c1", measure(q1){_READ})\n'
 )
 
 

@@ -59,12 +59,15 @@ cudaq = [
 # Exact most-likely-error decoding (bloqade-decoders GurobiDecoder). The pip wheel ships
 # Gurobi's restricted licence: size-limited and for NON-PRODUCTION use only (it says so on
 # first use). Enough for small codes; larger models or production need your own licence.
+# Tested on 3.11 with guppylang 0.21 / selene-sim 0.2 and on 3.13 with guppylang 1.2 / selene-sim 0.3
+# (guppylang 1.x needs Python >= 3.12; measure() results need .read() there).
 guppy = [
-    "guppylang",
-    "selene-sim",
+    "guppylang>=0.21,<2",
+    "selene-sim>=0.2,<0.4",
 ]
+# Tested with deltakit 0.9 (Python 3.11) and 0.10 (Python 3.13).
 deltakit = [
-    "deltakit",
+    "deltakit>=0.9,<0.11",
 ]
 # Qiskit 2.5 added the Clifford+T (gridsynth) and PBC preset pass managers.
 ft = [
