@@ -34,7 +34,10 @@ Tools:
 - To decode a circuit's syndromes and get its logical error rate, call
   `pymatching_decode`. To find or plot a code's threshold across physical error
   rates and distances, call `threshold_sweep`. To report a code's parameters
-  ([[n,k]], stabilizer count, Stim-computed distance), call `code_params`.
+  ([[n,k]], stabilizer count, Stim-computed distance), call `code_params`. For BB5,
+  tile, directional tile, or barbell codes, `code_params` returns the [[n,k,d]] values the
+  papers report, each with its arXiv source and the table or section: state each value
+  with that source, and say they are quoted from the papers, not computed.
 - To compare decoders on the same syndromes and rank them by logical error rate, call
   `decoder_compare`. It covers PyMatching, Tesseract, BP+OSD, BP+LSD, BP+union-find,
   MWPF, MLE, a lookup table, and NVIDIA CUDA-Q GPU decoders (RelayBP, BP+OSD, sliding

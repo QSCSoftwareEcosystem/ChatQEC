@@ -134,6 +134,18 @@ def _guppy_rows(data: dict) -> list[dict]:
     ]
 
 
+def _code_params_rows(data: dict) -> list[dict]:
+    """Literature-family rows of a code_params result: the code, its source, and where in it."""
+    return [
+        {
+            "code": f"[[{r['n']}, {r['k']}, {r['d']}]]",
+            "source": r.get("source"),
+            "where": r.get("locator"),
+        }
+        for r in data.get("rows", [])
+    ]
+
+
 _ROW_BUILDERS = {
     "decoder_compare": _decoder_rows,
     "ibm_add_pauli_checks": _pauli_overhead_rows,
@@ -172,6 +184,11 @@ def _render_dict_output(name: str, data: dict) -> bool:
             st.caption(data["notes"])
         if data.get("circuit_qasm"):
             st.code(data["circuit_qasm"], language="text")
+        return True
+    if name == "code_params" and data.get("rows"):
+        st.dataframe(_code_params_rows(data))
+        if data.get("notes"):
+            st.caption(data["notes"])
         return True
     if name in ("pymatching_decode", "code_params"):
         st.json(data)

@@ -1,6 +1,7 @@
 """Streamlit tool-output SVG sizing — the height helper is a pure function."""
 
 from chatqec_app.components.tool_output import (
+    _code_params_rows,
     _decoder_rows,
     _deltakit_rows,
     _ft_compile_rows,
@@ -162,3 +163,21 @@ def test_guppy_rows_list_outcomes_by_frequency_with_fractions():
 
 def test_guppy_rows_are_empty_when_there_are_no_counts():
     assert _guppy_rows({"ok": True, "registers": [], "shots": 0, "counts": {}}) == []
+
+
+def test_code_params_rows_show_the_code_its_source_and_where_it_came_from():
+    data = {
+        "ok": True,
+        "rows": [
+            {"n": 30, "k": 4, "d": 5, "source": "arXiv:2503.22071", "locator": "Table 1, weight 5"},
+            {"n": 48, "k": 4, "d": 7, "source": "arXiv:2503.22071", "locator": "Table 1, weight 5"},
+        ],
+    }
+    assert _code_params_rows(data) == [
+        {"code": "[[30, 4, 5]]", "source": "arXiv:2503.22071", "where": "Table 1, weight 5"},
+        {"code": "[[48, 4, 7]]", "source": "arXiv:2503.22071", "where": "Table 1, weight 5"},
+    ]
+
+
+def test_code_params_rows_are_empty_for_a_stim_result():
+    assert _code_params_rows({"ok": True, "n": 9, "k": 1, "stim_code_distance": 3}) == []
