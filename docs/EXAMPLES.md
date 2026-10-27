@@ -593,6 +593,34 @@ clearest gaps). Note: a question whose *topic* is well-covered but whose *specif
 isn't (e.g. "cat-qubit CNOT fidelity on a specific chip" → 0.90) stays corpus-answered by
 design — the curated content is relevant even if the exact figure isn't present.
 
+### Vendor QEC tools via MCP (added 2026-10-27)
+
+All measured through the chat pipeline on the local Muse-Glimmer model (`CHATQEC_PROVIDER=local`),
+with the tool outputs below taken from `notebooks/getting_started.ipynb`. Install and the
+per-tool extras are in the README section "Vendor QEC tools".
+
+| Prompt | Tool | Result |
+|---|---|---|
+| *Compare PyMatching, MWPF, a lookup table and the exact MLE decoder on a distance-3 repetition code at p=0.02.* | `decoder_compare` | logical error rate: MLE 0.008 (capped at 500 shots), MWPF 0.012, table 0.012, PyMatching 0.014 (1000 shots, seed 1) |
+| *Decode a d=5 surface code with 10 rounds at p=0.002 using the CUDA-Q sliding window decoder and compare it with PyMatching.* | `decoder_compare` | sliding window 0.0025 against PyMatching 0.0020 (2000 shots), GPU |
+| *Add spacetime Pauli checks to this GHZ-3 OpenQASM circuit and report the overhead at a physical error rate of 0.01.* | `ibm_add_pauli_checks` | 3 to 4 qubits, 3 to 12 gates, depth 4 to 11, gamma 1.07, 6.2% of shots discarded |
+| *Compile this rotation to Clifford+T at 6 digits of precision and give me the T count.* | `ibm_ft_compile` | `rz(0.3)`: 20, 42, 65 and 101 T gates at 2, 4, 6 and 10 digits; `rz(pi/4)` is exactly 1 |
+| *Run a Deltakit memory experiment on a distance-3 rotated surface code at p=0.002.* | `deltakit_memory` | logical error rate 0.0013, falling to 0.0004 at d=5 and 0.0001 at d=7 |
+| *Run a Deltakit experiment with leakage and the leakage-aware LCD decoder.* | none | the assistant says that is a Deltakit cloud service that is not configured, and offers the local run |
+| *Run this Guppy program on the Selene emulator with 100 shots* (a Bell pair) | `guppy_run` | only `0,0` and `1,1`; with `CHATQEC_ALLOW_GUPPY_EXEC` unset the tool refuses and the assistant says how to enable it |
+| *What are the parameters of BB5 codes?* | `code_params` | five codes, from arXiv:2503.22071 and 2606.06455, each with its table |
+
+`code_params` also lists the tile (4 codes, arXiv:2504.09171), directional tile (13, arXiv:2606.19482)
+and barbell (27, arXiv:2606.06062) codes. Every value is quoted from the paper, and
+`tests/test_paper_codes.py` in the sibling repo re-checks each one against the ingested text.
+
+Two behaviours worth knowing:
+
+- `guppylang` 1.x rejects `result("c", measure(q))`; the compile error names the fix, and the
+  assistant retries once with `measure(q).read()` and says what it changed.
+- The off-topic classifier used to refuse "compile this circuit to Clifford+T" (2 of 3 runs); it now
+  lists fault-tolerant compilation and the vendor tools as on-topic.
+
 ## Feature examples
 
 ### 1. Semantic retrieval — paraphrase with zero keyword overlap

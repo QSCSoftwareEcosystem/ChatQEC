@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Vendor QEC tools in the sibling `chatqec-mcp-tools` repo, wired into the prompts, the Streamlit
+  tool-output renderer, the off-topic classifier and `notebooks/getting_started.ipynb`
+  (design: `docs/planning/specs/2026-10-26-integrate-qec-tools-design.md`):
+  - `decoder_compare` gains `mwpf`, `mle` (exact most-likely-error via Gurobi, new `mle` extra),
+    `table` and `cudaq_sliding_window`; the Gurobi licence banner no longer corrupts the MCP stream.
+  - `ibm_add_pauli_checks` (qiskit-paulice): spacetime Pauli checks with qubit, gate and depth
+    overhead and the postselection discard rate.
+  - `ibm_ft_compile` (Qiskit 2.5): Clifford+T via gridsynth, or Pauli-based computation.
+  - `deltakit_memory` (Deltakit): memory experiments with the local PyMatching decoder; the cloud
+    decoders and leakage simulation are refused as "not configured".
+  - `guppy_run` (Guppy + Selene): off by default (`CHATQEC_ALLOW_GUPPY_EXEC=1`), source-gated and
+    run in an isolated child process.
+  - `code_params` returns BB5, tile, directional tile and barbell code parameters quoted from
+    the papers (49 rows, each with its arXiv source and table), and the barbell and directional
+    tile papers (arXiv:2606.06062, 2606.19482) were ingested.
+- The off-topic classifier now treats fault-tolerant compilation and the vendor tools as on-topic
+  (a Clifford+T question was refused in 2 of 3 local-model runs).
 - Pinned GitHub-repo ingestion: `chatqec ingest --github <org>/<repo> --commit-sha
   <sha> [--github-paths ...]` (`cli.py`), reusing the existing
   `GitHubMetadata`/`files_to_chunks` fetcher (`ingestion/fetchers/github.py`).
@@ -113,6 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Verbose trace" toggle that renders the trace inline.
 
 ### Fixed
+- A decoder child process printing to stdout (the Gurobi licence banner) no longer breaks the
+  MCP JSON-RPC stream.
 - Off-topic classifier now sees recent conversation history
   (`OffTopicClassifier.classify(query, memory=...)`), not just the bare current
   message. A context-dependent follow-up with no QEC keywords of its own (e.g.

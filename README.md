@@ -207,6 +207,56 @@ Anthropic first and **automatically fails over to Gemini** on credit/auth errors
 so Stim answers keep working even when the Claude API is unavailable. (The
 `huggingface` provider has no tool-use support.)
 
+### Vendor QEC tools (decoders, Pauli checks, fault-tolerant compilation, Deltakit, Guppy)
+
+The same `chatqec-mcp-tools` server also exposes the vendor tools below. Each one lives
+behind an optional extra and returns `ok=False` with an install hint when its extra is
+missing, so the base install keeps working. Install everything with:
+
+```bash
+uv tool install --force "~/chatqec-mcp-tools[lightstim,tsim,ibm,decoders,mle,cudaq,paulice,ft,deltakit,guppy]"
+```
+
+| Tool | What it does | Extra | Notes |
+|---|---|---|---|
+| `decoder_compare` | same syndromes through several decoders, ranked by logical error rate | `decoders`, `mle`, `cudaq` | PyMatching, Tesseract, BP+OSD/LSD, BP+union-find, **MWPF**, **MLE**, **lookup table**, CUDA-Q RelayBP, BP+OSD and **sliding window** (GPU) |
+| `ibm_add_pauli_checks` | spacetime Pauli checks (IBM `qiskit-paulice`) on a Clifford circuit, with the overhead | `paulice` | qubits, gates, depth, sampling cost, and the postselection discard rate when `noise_p` is given |
+| `ibm_ft_compile` | Qiskit fault-tolerant compilation: Clifford+T (gridsynth) or Pauli-based computation | `ft` | needs Qiskit 2.5 or newer; reports the T count or the rotation count |
+| `deltakit_memory` | Riverlane Deltakit memory experiments decoded with PyMatching | `deltakit` | runs fully locally; see the note below |
+| `guppy_run` | run a Guppy program on the Selene emulator | `guppy` | **off by default**; see the warning below |
+| `code_params` | now also BB5, tile, directional tile and barbell codes | none | values quoted from the papers with their arXiv source, not computed |
+
+> **`mle` uses Gurobi.** The pip wheel ships a size-limited licence that is for
+> non-production use only, which is enough for small codes. Larger models, or production
+> use, need your own Gurobi licence.
+
+> **`deltakit_memory` is local only.** In Deltakit 0.9 and 0.10 only the PyMatching decoder runs
+> locally. Its MWPM, BP+OSD, BeliefMatching, Local Clustering (the leakage-aware LCD),
+> Ambiguity Clustering and Collision Clustering decoders, and leakage simulation, are cloud
+> services that need an account and can cost money. The tool refuses them with "not configured".
+
+> **`guppy_run` executes a program supplied through chat, and there is no OS sandbox.** Unprivileged
+> user namespaces are blocked on many machines, so it is protected in three other ways: it is
+> disabled unless the MCP server is started with `CHATQEC_ALLOW_GUPPY_EXEC=1`; a source gate accepts
+> only `guppylang` imports and `@guppy` functions (no `import os`, top-level calls, `py(...)`, or
+> dunder access); and the program runs in a separate process with a scrubbed environment, a private
+> temporary directory, CPU, file and memory limits, and a hard time limit. It does not stop a bug
+> inside the Guppy compiler, and it does not block network access. Enable it only for programs you
+> would be willing to run, for example
+> `CHATQEC_ALLOW_GUPPY_EXEC=1 uv run streamlit run chatqec_app/streamlit_app.py`.
+
+> **Python version.** `uv tool install` picks your newest Python (3.13 on a current machine), and
+> guppylang 1.x needs 3.12 or newer, so you get different package versions from the 3.11 development
+> environment (guppylang 1.2 against 0.21; in 1.x a measurement must be read with
+> `measure(q).read()`). The tool suite is verified on both Python 3.11 and 3.13.
+
+> **Running next to local vLLM models.** Two things break the app on a shared GPU box.
+> (1) An expired `HF_TOKEN` exported in your shell (for example in `~/.bashrc`) is not overridden by
+> `.env`, and `huggingface_hub` then answers 401 even for the public, cached reranker; refresh the
+> token or start the app with `HF_HUB_OFFLINE=1`. (2) The reranker and the CUDA-Q decoders default
+> to GPU 0, which a served model can fill (`CUDA out of memory`, and CUDA-Q prints its error on
+> stdout, which corrupts the MCP stream); pin them to a free GPU with `CUDA_VISIBLE_DEVICES=<n>`.
+
 ### Enable QAppsWiki search
 
 ChatQEC can pull prose sections from [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki)
