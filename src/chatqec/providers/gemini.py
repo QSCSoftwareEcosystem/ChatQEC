@@ -142,12 +142,66 @@ _GEMINI_SCHEMA_DROP = frozenset(
 )
 
 
-def _sanitize_schema(schema: Any) -> Any:
-    """Strip JSON-schema keys Gemini's function declarations reject."""
+def _resolve_ref(ref: str, root: dict[str, Any]) -> dict[str, Any] | None:
+    """Resolve a local JSON-pointer ``$ref`` like ``#/$defs/Name`` against root.
+
+    Returns None for anything not a simple local pointer (e.g. an external
+    URI) — the caller degrades to an untyped field rather than crashing.
+    """
+    if not ref.startswith("#/"):
+        return None
+    node: Any = root
+    for part in ref[2:].split("/"):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node if isinstance(node, dict) else None
+
+
+def _sanitize_schema(schema: Any, *, root: dict[str, Any] | None = None) -> Any:
+    """Strip/translate JSON-schema constructs Gemini's function declarations
+    reject outright (``ValueError: Unknown field for Schema: <key>``) rather
+    than ignore.
+
+    Two constructs need real handling, not just dropping a key:
+
+    - ``anyOf``: Pydantic renders every ``X | None`` field (e.g. ``rounds:
+      int | None`` in threshold_sweep's input model) as
+      ``{"anyOf": [{...X...}, {"type": "null"}]}``. For that common
+      Optional[X] shape — exactly one non-null variant — collapse to the
+      variant's own schema so type info survives. A true multi-type union
+      has no single equivalent Gemini schema, so it degrades to an untyped
+      field.
+    - ``$ref``/``$defs``: a tool with nested Pydantic submodels (e.g.
+      glcb_visualize_url's list-of-gate-objects fields) renders each nested
+      type once under a top-level ``$defs`` map and points to it via
+      ``$ref: "#/$defs/Name"``. Gemini's Schema proto has neither ``$ref``
+      nor ``$defs``, so each reference is resolved and inlined here (using
+      the original top-level schema as ``root`` throughout the recursion,
+      since ``$ref`` paths are always relative to the document root, not to
+      whichever nested dict is being processed) before ``$defs`` itself is
+      dropped as unused.
+    """
     if isinstance(schema, dict):
-        return {k: _sanitize_schema(v) for k, v in schema.items() if k not in _GEMINI_SCHEMA_DROP}
+        root = schema if root is None else root
+        if "$ref" in schema:
+            resolved = _resolve_ref(schema["$ref"], root)
+            if resolved is None:
+                return {}
+            merged = {**{k: v for k, v in schema.items() if k != "$ref"}, **resolved}
+            return _sanitize_schema(merged, root=root)
+        if "anyOf" in schema:
+            variants = [v for v in schema["anyOf"] if v.get("type") != "null"]
+            schema = {k: v for k, v in schema.items() if k != "anyOf"}
+            if len(variants) == 1:
+                schema = {**schema, **variants[0]}
+        return {
+            k: _sanitize_schema(v, root=root)
+            for k, v in schema.items()
+            if k not in _GEMINI_SCHEMA_DROP
+        }
     if isinstance(schema, list):
-        return [_sanitize_schema(v) for v in schema]
+        return [_sanitize_schema(v, root=root) for v in schema]
     return schema
 
 

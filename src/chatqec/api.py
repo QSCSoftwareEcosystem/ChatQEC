@@ -258,6 +258,8 @@ class ChatQEC:
             ],
             confidence=result.confidence,
             figure_paths=figure_paths,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
         )
 
     def ask_stream(

@@ -2,11 +2,14 @@
 
 from unittest.mock import MagicMock
 
-from chatqec.api import Citation
+from chatqec.api import Citation, ToolCall
 from chatqec.eval.metrics import (
     citation_accuracy,
     faithfulness_via_judge,
+    numeric_fact_match,
     recall_at_k,
+    tool_call_accuracy,
+    unsafe_tool_invoked,
 )
 from chatqec.retrieval.hybrid import RetrievedChunk
 
@@ -87,3 +90,64 @@ def test_faithfulness_returns_zero_when_judge_says_no():
         )
         == 0.0
     )
+
+
+def _tc(name: str, output: str = "{}") -> ToolCall:
+    return ToolCall(name=name, input={}, output=output)
+
+
+def test_tool_call_accuracy_perfect_match():
+    calls = [_tc("stim_simulate"), _tc("pymatching_decode")]
+    result = tool_call_accuracy(calls, expected_tools=["stim_simulate", "pymatching_decode"])
+    assert result["precision"] == 1.0
+    assert result["recall"] == 1.0
+    assert result["f1"] == 1.0
+    assert result["exact_set_match"] == 1.0
+
+
+def test_tool_call_accuracy_missing_tool():
+    calls = [_tc("stim_simulate")]
+    result = tool_call_accuracy(calls, expected_tools=["stim_simulate", "pymatching_decode"])
+    assert result["precision"] == 1.0
+    assert result["recall"] == 0.5
+    assert result["exact_set_match"] == 0.0
+
+
+def test_tool_call_accuracy_wrong_tool_invoked():
+    # known-bad case: a plausible sibling tool fires instead of the right one
+    calls = [_tc("tsim_simulate")]
+    result = tool_call_accuracy(calls, expected_tools=["stim_simulate"])
+    assert result["precision"] == 0.0
+    assert result["recall"] == 0.0
+    assert result["exact_set_match"] == 0.0
+
+
+def test_tool_call_accuracy_empty_expected_returns_empty_dict():
+    assert tool_call_accuracy([_tc("stim_simulate")], expected_tools=[]) == {}
+
+
+def test_unsafe_tool_invoked_flags_ibm_submit_execution():
+    assert unsafe_tool_invoked([_tc("ibm_submit_execution")]) is True
+    assert unsafe_tool_invoked([_tc("ibm_preview_execution")]) is False
+
+
+def test_numeric_fact_match_checks_across_all_tool_outputs():
+    calls = [_tc("code_params", output='{"n": 9, "k": 1, "stim_code_distance": 3}')]
+    result = numeric_fact_match(calls, expected={"n": 9, "k": 1, "stim_code_distance": 3})
+    assert result == {"n": True, "k": True, "stim_code_distance": True}
+
+
+def test_numeric_fact_match_flags_mismatch_and_missing_key():
+    calls = [_tc("code_params", output='{"n": 9, "k": 1}')]
+    result = numeric_fact_match(calls, expected={"n": 25, "k": 1, "stim_code_distance": 3})
+    assert result == {"n": False, "k": True, "stim_code_distance": False}
+
+
+def test_numeric_fact_match_ignores_unparseable_output():
+    calls = [_tc("stim_simulate", output="not json")]
+    result = numeric_fact_match(calls, expected={"n": 9})
+    assert result == {"n": False}
+
+
+def test_numeric_fact_match_empty_expected_returns_empty_dict():
+    assert numeric_fact_match([_tc("code_params")], expected={}) == {}

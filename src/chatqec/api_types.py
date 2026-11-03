@@ -32,6 +32,8 @@ class Answer:
     tool_calls: list[ToolCall] = field(default_factory=list)
     confidence: str = "low"
     figure_paths: list[str] = field(default_factory=list)
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 @dataclass(frozen=True)

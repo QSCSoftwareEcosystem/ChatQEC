@@ -67,3 +67,42 @@ def test_subtype_enum_covers_expected_classes():
         "hardware_mapping",
     }
     assert {s.value for s in QuestionSubtype} == expected
+
+
+def test_eval_case_defaults_for_new_routing_fields():
+    c = EvalCase(
+        id="def-001",
+        subtype=QuestionSubtype.DEFINITION,
+        question="What is the surface code?",
+    )
+    assert c.complexity == "simple"
+    assert c.expected_tools == []
+    assert c.target_capability == []
+    assert c.is_adversarial is False
+    assert c.expected_numeric_facts == {}
+
+
+def test_eval_case_accepts_routing_fields():
+    c = EvalCase(
+        id="route-stim-001",
+        subtype=QuestionSubtype.CODE_EXECUTION,
+        question="Simulate a distance-3 surface code and decode it.",
+        complexity="compound",
+        expected_tools=["stim_simulate", "pymatching_decode"],
+        target_capability=["stim"],
+        is_adversarial=True,
+        expected_numeric_facts={"n": 9, "k": 1, "d": 3},
+    )
+    assert c.complexity == "compound"
+    assert c.expected_tools == ["stim_simulate", "pymatching_decode"]
+    assert c.target_capability == ["stim"]
+    assert c.is_adversarial is True
+    assert c.expected_numeric_facts == {"n": 9, "k": 1, "d": 3}
+
+
+def test_existing_qa_set_still_loads():
+    repo_root = Path(__file__).parent.parent
+    cases = load_eval_set(repo_root / "eval" / "qa_set.jsonl")
+    assert len(cases) == 62
+    assert all(c.complexity == "simple" for c in cases)
+    assert all(c.expected_tools == [] for c in cases)

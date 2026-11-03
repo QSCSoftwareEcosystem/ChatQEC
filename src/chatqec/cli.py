@@ -1647,7 +1647,17 @@ def eval_group() -> None:
     show_default=True,
 )
 @click.option("--judge-model", default="claude-haiku-4-5", show_default=True)
-def eval_run(cases_path: Path, output_path: Path, judge_model: str) -> None:
+@click.option(
+    "--mcp-server",
+    default=None,
+    help=(
+        "Command to launch an MCP tool server (e.g. 'chatqec-mcp-tools'). "
+        "Required for any case with expected_tools set — without it the tool "
+        "loop never runs, and such a case reads as a routing failure (0 tools "
+        "invoked) when it's really a harness misconfiguration."
+    ),
+)
+def eval_run(cases_path: Path, output_path: Path, judge_model: str, mcp_server: str | None) -> None:
     """Run the eval set against the configured ChatQEC and emit JSON metrics."""
     import json
 
@@ -1655,7 +1665,7 @@ def eval_run(cases_path: Path, output_path: Path, judge_model: str) -> None:
     from chatqec.eval.runner import run_eval
 
     cases = load_eval_set(cases_path)
-    bot = _build_chatqec()
+    bot = _build_chatqec(mcp_server=mcp_server)
     judge = _make_judge_client()
 
     report = run_eval(cases=cases, bot=bot, judge_client=judge, judge_model=judge_model)
@@ -1676,6 +1686,36 @@ def eval_run(cases_path: Path, output_path: Path, judge_model: str) -> None:
                     }
                     for k, v in report.per_subtype.items()
                 },
+                "per_complexity": {
+                    k: {
+                        "n": v.n,
+                        "recall_at_k": v.recall_at_k,
+                        "citation_accuracy": v.citation_accuracy,
+                        "faithfulness": v.faithfulness,
+                        "tool_call_f1": v.tool_call_f1,
+                    }
+                    for k, v in report.per_complexity.items()
+                },
+                "per_capability": {
+                    k: {
+                        "n": v.n,
+                        "recall_at_k": v.recall_at_k,
+                        "citation_accuracy": v.citation_accuracy,
+                        "faithfulness": v.faithfulness,
+                        "tool_call_f1": v.tool_call_f1,
+                    }
+                    for k, v in report.per_capability.items()
+                },
+                "adversarial_vs_non": {
+                    k: {
+                        "n": v.n,
+                        "recall_at_k": v.recall_at_k,
+                        "citation_accuracy": v.citation_accuracy,
+                        "faithfulness": v.faithfulness,
+                        "tool_call_f1": v.tool_call_f1,
+                    }
+                    for k, v in report.adversarial_vs_non.items()
+                },
                 "raw": report.raw,
             },
             indent=2,
@@ -1688,6 +1728,73 @@ def eval_run(cases_path: Path, output_path: Path, judge_model: str) -> None:
         f"faithfulness={report.overall_faithfulness:.2f}"
     )
     click.echo(f"report: {output_path}")
+
+
+@eval_group.command("generate")
+@click.option(
+    "--seeds",
+    "seeds_path",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    required=True,
+    help="Seed JSONL file (id/subtype/question/complexity/expected_tools/...).",
+)
+@click.option(
+    "--mcp-server",
+    default="chatqec-mcp-tools",
+    show_default=True,
+    help="Command to launch an MCP tool server — routing-focused seeds need real tools.",
+)
+@click.option("--judge-model", default="claude-haiku-4-5", show_default=True)
+@click.option(
+    "--log",
+    "log_path",
+    type=click.Path(path_type=Path),
+    default=Path("eval/generation_logs/run.jsonl"),
+    show_default=True,
+    help="Structured JSONL log — one full record per seed case (appended).",
+)
+@click.option(
+    "--candidates-out",
+    "candidates_path",
+    type=click.Path(path_type=Path),
+    default=Path("eval/routing_qa_set.candidates.jsonl"),
+    show_default=True,
+    help="Where candidate EvalCase rows are written for human review.",
+)
+def eval_generate(
+    seeds_path: Path,
+    mcp_server: str | None,
+    judge_model: str,
+    log_path: Path,
+    candidates_path: Path,
+) -> None:
+    """Run seed questions live through chatQEC + a judge; emit review candidates.
+
+    Never writes to a real eval set (qa_set.jsonl / routing_qa_set.jsonl) —
+    candidates need a human review pass (read the _judge_verdict/_routing_flag
+    hints plus the full log) before being promoted.
+    """
+    import json
+
+    from chatqec.eval.generate import generate_candidates, load_seed_cases
+
+    seeds = load_seed_cases(seeds_path)
+    bot = _build_chatqec(mcp_server=mcp_server)
+    judge = _make_judge_client()
+
+    candidates = generate_candidates(
+        seeds=seeds, bot=bot, judge_client=judge, judge_model=judge_model, log_path=log_path
+    )
+    candidates_path.parent.mkdir(parents=True, exist_ok=True)
+    with candidates_path.open("a", encoding="utf-8") as f:
+        for cand in candidates:
+            f.write(json.dumps(cand) + "\n")
+
+    click.echo(
+        f"{len(candidates)} candidate(s) from {len(seeds)} seed(s) written to {candidates_path}"
+    )
+    click.echo(f"generation log: {log_path}")
+    click.echo("human review required before merging into eval/routing_qa_set.jsonl")
 
 
 @main.command("corpus-stats")

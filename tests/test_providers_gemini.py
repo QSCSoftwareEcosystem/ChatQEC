@@ -30,6 +30,70 @@ def test_sanitize_schema_strips_keys_gemini_rejects():
     assert out["required"] == ["circuit"]
 
 
+def test_sanitize_schema_collapses_optional_any_of_to_its_type():
+    # Pydantic's rendering of `rounds: int | None` (threshold_sweep's actual
+    # input model) — Gemini's Schema proto has no "anyOf" field and raises
+    # ValueError on it rather than ignoring it, so this must not crash.
+    schema = {
+        "type": "object",
+        "properties": {
+            "rounds": {
+                "anyOf": [{"type": "integer"}, {"type": "null"}],
+                "default": None,
+                "description": "Rounds per shot; defaults to distance",
+            },
+        },
+    }
+    out = _sanitize_schema(schema)
+    assert "anyOf" not in out["properties"]["rounds"]
+    assert out["properties"]["rounds"]["type"] == "integer"
+    assert out["properties"]["rounds"]["description"] == "Rounds per shot; defaults to distance"
+    assert "default" not in out["properties"]["rounds"]
+
+
+def test_sanitize_schema_resolves_ref_against_defs():
+    # glcb_visualize_url's actual shape: a top-level $defs map, with array
+    # items pointing at it via $ref. Gemini's Schema proto has neither $ref
+    # nor $defs and raises ValueError on either key outright.
+    schema = {
+        "$defs": {
+            "GlcbGate": {
+                "type": "object",
+                "properties": {"gate": {"type": "string"}, "column": {"type": "integer"}},
+                "required": ["gate", "column"],
+            }
+        },
+        "properties": {
+            "gates": {"type": "array", "items": {"$ref": "#/$defs/GlcbGate"}},
+        },
+    }
+    out = _sanitize_schema(schema)
+    assert "$defs" not in out
+    assert out["properties"]["gates"]["items"] == {
+        "type": "object",
+        "properties": {"gate": {"type": "string"}, "column": {"type": "integer"}},
+        "required": ["gate", "column"],
+    }
+
+
+def test_sanitize_schema_degrades_unresolvable_ref_instead_of_crashing():
+    schema = {"properties": {"x": {"$ref": "https://external.example/schema.json"}}}
+    out = _sanitize_schema(schema)
+    assert out["properties"]["x"] == {}
+
+
+def test_sanitize_schema_drops_true_multi_type_union_instead_of_crashing():
+    schema = {
+        "properties": {
+            "value": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
+        },
+    }
+    out = _sanitize_schema(schema)
+    assert "anyOf" not in out["properties"]["value"]
+    # No single equivalent type — degrades to untyped rather than raising.
+    assert out["properties"]["value"] == {}
+
+
 def _part(text=None, fn_name=None, fn_args=None):
     fc = SimpleNamespace(name=fn_name, args=fn_args or {}) if fn_name else None
     return SimpleNamespace(text=text, function_call=fc)
