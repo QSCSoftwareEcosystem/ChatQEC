@@ -258,3 +258,10 @@ Raw/
 # Generated corpus statistics
 data/corpus_stats.json
 snapshots/
+
+# NAACL demo paper (separate Overleaf git repo) and slide decks
+6ac52ba22379cb285b6dc6d7/
+*.pptx
+
+# Benchmark checkouts and generated gold (pinned in eval/benchmarks/pins.yaml)
+data/benchmarks/
