@@ -6,9 +6,12 @@ The real `mcp.server.Server` is created in `main()`; for testing we expose a
 
 from __future__ import annotations
 
+import io
+import os
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TextIO
 
 from chatqec_mcp_tools.tools.code_params import (
     CodeParamsInput,
@@ -393,6 +396,21 @@ def build_server() -> _TestServer:
     return _TestServer(_TOOLS)
 
 
+def _isolate_protocol_stdout() -> TextIO:
+    """Give the MCP protocol a private copy of stdout and point fd 1 at stderr.
+
+    Native libraries (CUDA-Q, Gurobi, ...) write straight to fd 1. Over stdio
+    MCP that line lands in the JSON-RPC stream, the client fails to parse it
+    and closes the connection, so every later tool call in the session fails.
+    After this call such output goes to stderr, which the client only logs.
+    """
+    sys.stdout.flush()
+    proto_fd = os.dup(1)
+    os.dup2(2, 1)
+    sys.stdout = sys.stderr
+    return io.TextIOWrapper(os.fdopen(proto_fd, "wb"), encoding="utf-8", line_buffering=True)
+
+
 def main() -> None:  # pragma: no cover
     """Real MCP entry - wires _TOOLS to mcp.server.Server over stdio."""
     import asyncio  # noqa: PLC0415
@@ -418,8 +436,12 @@ def main() -> None:  # pragma: no cover
                 return [TextContent(type="text", text=json.dumps(result))]
         raise ValueError(f"unknown tool: {name}")
 
+    import anyio  # noqa: PLC0415
+
+    protocol_out = anyio.wrap_file(_isolate_protocol_stdout())
+
     async def run() -> None:
-        async with stdio_server() as (read, write):
+        async with stdio_server(stdout=protocol_out) as (read, write):
             await app.run(read, write, app.create_initialization_options())
 
     asyncio.run(run())

@@ -60,3 +60,24 @@ def test_ibm_preview_execution_is_registered():
 def test_ibm_submit_execution_is_registered():
     server = build_server()
     assert "ibm_submit_execution" in {t.name for t in server.list_tools()}
+
+
+def test_protocol_stdout_is_isolated_from_native_prints():
+    """A native library (CUDA-Q printed 'CUDA ERROR csr.h:61: out of memory')
+    writing to fd 1 must not corrupt the MCP JSON-RPC stream: after isolation,
+    fd 1 goes to stderr and the protocol writes to a private copy of stdout."""
+    import subprocess
+    import sys
+
+    code = (
+        "import os\n"
+        "from chatqec_mcp_tools.server import _isolate_protocol_stdout\n"
+        "proto = _isolate_protocol_stdout()\n"
+        "os.write(1, b'native junk\\n')\n"
+        "print('python print')\n"
+        'proto.write(\'{"jsonrpc": "2.0"}\\n\'); proto.flush()\n'
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout == '{"jsonrpc": "2.0"}\n'
+    assert "native junk" in out.stderr
+    assert "python print" in out.stderr
