@@ -59,7 +59,7 @@ def test_eval_generate_writes_log_and_candidates(tmp_path: Path, monkeypatch):
         )
     ]
     judge_client.messages.create.return_value = judge_msg
-    monkeypatch.setattr("chatqec.cli._make_judge_client", lambda: judge_client)
+    monkeypatch.setattr("chatqec.cli._make_judge_client", lambda **_: judge_client)
 
     runner = CliRunner()
     result = runner.invoke(

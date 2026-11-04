@@ -1639,15 +1639,48 @@ def retrieve(
         console.print(f"[dim]Matched canonical topics: {', '.join(result.matched_topics)}[/]")
 
 
-def _make_judge_client() -> object:  # pragma: no cover
+def _load_config() -> dict[str, Any]:  # pragma: no cover
+    """The resolved Hydra config as a dict (same source as _build_chatqec)."""
+    import os
+
+    from hydra import compose, initialize_config_dir
+    from omegaconf import OmegaConf
+
+    conf_dir = str(Path(os.environ.get("CHATQEC_CONF_DIR", "conf")).resolve())
+    with initialize_config_dir(version_base=None, config_dir=conf_dir):
+        cfg = compose(config_name="config")
+    data = OmegaConf.to_container(cfg, resolve=True)
+    assert isinstance(data, dict)
+    return {str(k): v for k, v in data.items()}
+
+
+def _make_judge_client(
+    provider: str = "auto", model: str | None = None
+) -> object:  # pragma: no cover
     """Build the LLM-judge client used in eval runs.
 
-    Reuses the ``auto`` fallback chain so the judge fails over from Anthropic to
-    Gemini/HF on credit/auth errors — same robustness as the answer path. The
-    judge model (e.g. ``claude-haiku-4-5``) is remapped per backend by the
-    fallback client.
+    ``auto`` reuses the fallback chain (Anthropic, then Gemini/HF), and the judge model
+    (e.g. ``claude-haiku-4-5``) is remapped per backend. ``local`` judges with exactly one
+    served local model, named by ``model`` (e.g. ``gemma-4``), so development runs spend no
+    API credits; pick a different model from the one answering, so no model grades itself.
     """
-    return _build_llm_client("auto")
+    if provider != "local":
+        return _build_llm_client(provider)
+    from chatqec.providers.fallback import Backend, FallbackLLMClient
+    from chatqec.providers.local import LocalLLM
+
+    local = _load_config().get("models", {}).get("local", {})
+    for role in ("primary", "fallback"):
+        if local.get(f"{role}_model") == model:
+            client = LocalLLM(
+                base_url=str(local[f"{role}_url"]),
+                reasoning_strength=str(local.get("reasoning_strength") or "") or None,
+                reasoning_headroom=int(local.get("reasoning_headroom_tokens", 2048)),
+            )
+            return FallbackLLMClient(
+                backends=[Backend(name=str(model), client=client, default_model=str(model))]
+            )
+    raise click.UsageError(f"--judge-model {model!r} is not a configured local model")
 
 
 @main.group("eval")
@@ -1672,6 +1705,13 @@ def eval_group() -> None:
 )
 @click.option("--judge-model", default="claude-haiku-4-5", show_default=True)
 @click.option(
+    "--judge-provider",
+    type=click.Choice(["auto", "local", "anthropic", "gemini"]),
+    default="auto",
+    show_default=True,
+    help="local: judge with the served local model named by --judge-model (no API credits)",
+)
+@click.option(
     "--mcp-server",
     default=None,
     help=(
@@ -1681,7 +1721,13 @@ def eval_group() -> None:
         "invoked) when it's really a harness misconfiguration."
     ),
 )
-def eval_run(cases_path: Path, output_path: Path, judge_model: str, mcp_server: str | None) -> None:
+def eval_run(
+    cases_path: Path,
+    output_path: Path,
+    judge_model: str,
+    judge_provider: str,
+    mcp_server: str | None,
+) -> None:
     """Run the eval set against the configured ChatQEC and emit JSON metrics."""
     import json
 
@@ -1690,7 +1736,7 @@ def eval_run(cases_path: Path, output_path: Path, judge_model: str, mcp_server: 
 
     cases = load_eval_set(cases_path)
     bot = _build_chatqec(mcp_server=mcp_server)
-    judge = _make_judge_client()
+    judge = _make_judge_client(provider=judge_provider, model=judge_model)
 
     report = run_eval(cases=cases, bot=bot, judge_client=judge, judge_model=judge_model)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1770,6 +1816,13 @@ def eval_run(cases_path: Path, output_path: Path, judge_model: str, mcp_server: 
 )
 @click.option("--judge-model", default="claude-haiku-4-5", show_default=True)
 @click.option(
+    "--judge-provider",
+    type=click.Choice(["auto", "local", "anthropic", "gemini"]),
+    default="auto",
+    show_default=True,
+    help="local: judge with the served local model named by --judge-model (no API credits)",
+)
+@click.option(
     "--log",
     "log_path",
     type=click.Path(path_type=Path),
@@ -1789,6 +1842,7 @@ def eval_generate(
     seeds_path: Path,
     mcp_server: str | None,
     judge_model: str,
+    judge_provider: str,
     log_path: Path,
     candidates_path: Path,
 ) -> None:
@@ -1804,7 +1858,7 @@ def eval_generate(
 
     seeds = load_seed_cases(seeds_path)
     bot = _build_chatqec(mcp_server=mcp_server)
-    judge = _make_judge_client()
+    judge = _make_judge_client(provider=judge_provider, model=judge_model)
 
     candidates = generate_candidates(
         seeds=seeds, bot=bot, judge_client=judge, judge_model=judge_model, log_path=log_path
