@@ -119,6 +119,27 @@ def _deltakit_rows(data: dict) -> list[dict]:
     return [{"metric": label, "value": data.get(key)} for label, key in fields]
 
 
+def _ft_primitive_rows(data: dict) -> list[dict]:
+    """Metric rows for an ft_primitive_simulate result (FTPrimitiveBench)."""
+    rounds = data.get("rounds") or {}
+    rounds_text = ", ".join(f"{k.removesuffix('_rounds')} {v}" for k, v in rounds.items())
+    rows = [
+        ("logical error rate", data.get("logical_error_rate")),
+        ("95% interval", f"[{data.get('ci95_low')}, {data.get('ci95_high')}]"),
+        ("shots", data.get("shots")),
+        ("failures", data.get("num_failures")),
+        ("primitive", data.get("primitive")),
+        ("patch (X x Z distance)", f"{data.get('x_distance')} x {data.get('z_distance')}"),
+        ("rounds", rounds_text),
+        ("measurement basis", data.get("meas_basis")),
+        ("noise", data.get("noise_model")),
+        ("decoder", data.get("decoder")),
+        ("qubits", data.get("num_qubits")),
+        ("detectors", data.get("num_detectors")),
+    ]
+    return [{"metric": label, "value": value} for label, value in rows]
+
+
 def _guppy_rows(data: dict) -> list[dict]:
     """Outcome rows for a guppy_run result, most frequent first."""
     registers = ",".join(data.get("registers", []))
@@ -151,6 +172,7 @@ _ROW_BUILDERS = {
     "ibm_add_pauli_checks": _pauli_overhead_rows,
     "ibm_ft_compile": _ft_compile_rows,
     "deltakit_memory": _deltakit_rows,
+    "ft_primitive_simulate": _ft_primitive_rows,
     "guppy_run": _guppy_rows,
 }
 

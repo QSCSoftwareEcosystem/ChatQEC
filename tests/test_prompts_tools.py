@@ -14,6 +14,7 @@ def test_prompt_mentions_all_qec_tools():
         "ibm_ft_compile",
         "deltakit_memory",
         "guppy_run",
+        "ft_primitive_simulate",
     ):
         assert name in SYNTHESIZER_SYSTEM_PROMPT
 

@@ -181,3 +181,23 @@ def test_code_params_rows_show_the_code_its_source_and_where_it_came_from():
 
 def test_code_params_rows_are_empty_for_a_stim_result():
     assert _code_params_rows({"ok": True, "n": 9, "k": 1, "stim_code_distance": 3}) == []
+
+
+def test_ft_primitive_rows_show_rate_interval_primitive_and_noise():
+    from chatqec_app.components.tool_output import _ROW_BUILDERS, _ft_primitive_rows
+
+    data = {
+        "ok": True, "primitive": "lattice_surgery", "x_distance": 3, "z_distance": 5,
+        "rounds": {"pre_rounds": 5, "merge_rounds": 5, "post_rounds": 5}, "meas_basis": "Z",
+        "noise_model": "pauli_biased(p=0.001, axis=Z, bias_factor=10.0)", "decoder": "pymatching",
+        "logical_error_rate": 0.012, "ci95_low": 0.008, "ci95_high": 0.017, "shots": 2000,
+        "num_failures": 24, "num_qubits": 58, "num_detectors": 400, "num_observables": 1,
+    }  # fmt: skip
+    rows = {r["metric"]: r["value"] for r in _ft_primitive_rows(data)}
+    assert _ft_primitive_rows(data)[0]["metric"] == "logical error rate"
+    assert rows["95% interval"] == "[0.008, 0.017]"
+    assert rows["primitive"] == "lattice_surgery"
+    assert rows["patch (X x Z distance)"] == "3 x 5"
+    assert rows["rounds"] == "pre 5, merge 5, post 5"
+    assert "pauli_biased" in rows["noise"]
+    assert "ft_primitive_simulate" in _ROW_BUILDERS

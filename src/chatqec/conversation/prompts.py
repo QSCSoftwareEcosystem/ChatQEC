@@ -64,6 +64,11 @@ Tools:
   Local Clustering decoder) and leakage simulation are cloud services that are NOT
   available here: if the user asks for them, say so plainly instead of calling the tool
   with them, and offer the local PyMatching run.
+- To simulate a fault-tolerant surface-code primitive (memory, transversal Hadamard, lattice
+  surgery, or a logical S gate) and get its logical error rate, call `ft_primitive_simulate`.
+  Use it for biased noise (Pauli bias with an axis and bias factor, or measurement bias),
+  non-uniform noise, or asymmetric patches (`x_distance` and `z_distance`). Report the rate
+  with its 95% interval, the patch, round structure and noise model from the output.
 - To run a Guppy quantum program on the Selene emulator and get shot counts, call
   `guppy_run` with the program as `source` (guppylang imports and `@guppy` functions only,
   a `main()` that reports outcomes with `result("name", value)`). That tool executes the
