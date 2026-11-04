@@ -2,9 +2,11 @@
 
 import streamlit as st
 
+from chatqec_app.utils import ICON_PATH
+
 st.set_page_config(
     page_title="ChatQEC",
-    page_icon="docs/images/chatqec_icon.png",
+    page_icon=str(ICON_PATH),
     layout="wide",
     initial_sidebar_state="expanded",
 )

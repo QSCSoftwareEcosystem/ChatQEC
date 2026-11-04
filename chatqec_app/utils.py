@@ -16,6 +16,12 @@ from chatqec.guards.cost_budget import CostBudget
 from chatqec.guards.rate_limit import RateLimiter
 from chatqec_app.qdrant_boot import ensure_qdrant
 
+# Resolve assets from the repo root, not the cwd, so the app (and AppTest
+# runs that chdir into a temp dir) find them wherever they are launched from.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+LOGO_PATH = REPO_ROOT / "docs" / "images" / "chatqec_logo_final.svg"
+ICON_PATH = REPO_ROOT / "docs" / "images" / "chatqec_icon.png"
+
 
 def render_branding() -> None:
     """Show the ChatQEC logo at the top of the sidebar, above the page nav.
@@ -27,7 +33,7 @@ def render_branding() -> None:
     The CSS override below lifts that cap so the logo fills the sidebar's
     width instead, while keeping st.logo's placement above the nav.
     """
-    st.logo("docs/images/chatqec_logo_final.svg", size="large")
+    st.logo(str(LOGO_PATH), size="large")
     st.html(
         """
         <style>
