@@ -349,3 +349,61 @@ def test_child_stdout_is_kept_off_the_mcp_protocol_stream(capfd):
     assert "Restricted license" not in captured.out
     assert "Restricted license" in captured.err
     assert "after" in captured.out
+
+
+# --- decoder-bench parity mode -------------------------------------------------------------
+
+
+def test_decoder_bench_mode_uses_the_benchmark_circuit():
+    from chatqec_mcp_tools.tools import _decoder_bench_run as dbr
+
+    out = decoder_compare(
+        DecoderCompareInput(
+            code_family="surface_code_rotated", distance=3, p=0.005, decoders=["pymatching"],
+            shots=300, seed=4, circuit_source="decoder_bench",
+        )
+    )  # fmt: skip
+    assert out.ok, out.error_message
+    assert out.circuit_source == "decoder_bench"
+    assert "SI1000" in out.noise_model
+    assert out.circuit_sha256 == dbr.circuit_sha256(dbr.build_circuit("surface", 3, 0.005))
+    assert "decoder-bench" in out.source
+
+
+def test_decoder_bench_mode_maps_decoder_names_and_refuses_others():
+    out = decoder_compare(
+        DecoderCompareInput(
+            code_family="surface_code_rotated", distance=3, p=0.005,
+            decoders=["belief_find", "bplsd", "tesseract"], shots=200, seed=4,
+            circuit_source="decoder_bench",
+        )
+    )  # fmt: skip
+    by = {r.decoder: r for r in out.results}
+    assert by["belief_find"].ok and by["bplsd"].ok
+    assert not by["tesseract"].ok and "decoder-bench" in by["tesseract"].note
+
+
+@pytest.mark.parametrize(
+    "kwargs, msg",
+    [
+        ({"code_family": "repetition_code", "distance": 3}, "surface_code_rotated, color_code"),
+        ({"code_family": "bb_code", "distance": 7}, "6, 10, 12"),
+        ({"code_family": "surface_code_rotated", "distance": 3, "rounds": 5}, "rounds"),
+    ],
+)
+def test_decoder_bench_mode_validates_inputs(kwargs, msg):
+    out = decoder_compare(
+        DecoderCompareInput(
+            decoders=["pymatching"], shots=10, circuit_source="decoder_bench", **kwargs
+        )
+    )
+    assert not out.ok and msg in out.error_message
+
+
+def test_relay_bp_is_only_available_in_decoder_bench_mode():
+    out = decoder_compare(
+        DecoderCompareInput(code_family="surface_code_rotated", distance=3, p=0.005,
+                            decoders=["pymatching", "relay_bp"], shots=100, seed=1)
+    )  # fmt: skip
+    rb = next(r for r in out.results if r.decoder == "relay_bp")
+    assert not rb.ok and "circuit_source='decoder_bench'" in rb.note

@@ -65,6 +65,15 @@ guppy = [
     "guppylang>=0.21,<2",
     "selene-sim>=0.2,<0.4",
 ]
+# decoder-bench parity mode of decoder_compare: the benchmark's own decoder classes are
+# vendored (MIT); this extra adds the packages they call. relay-bp is IBM's Relay-BP (Apache-2.0),
+# not NVIDIA's CUDA-Q RelayBP.
+decoderbench = [
+    "relay-bp>=0.2.2,<0.3",
+    "ldpc>=2.3",
+    "mwpf>=0.2",
+    "pymatching>=2.1",
+]
 # FTPrimitiveBench (MIT, arXiv:2605.04049) is not on PyPI; pinned to the commit the
 # chatQEC benchmark evaluation uses, so circuits match the benchmark exactly.
 ftprimitive = [
@@ -104,6 +113,10 @@ allow-direct-references = true
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Third-party code copied verbatim (see its __init__.py); only our shim _graph.py is linted.
+extend-exclude = [
+    "src/chatqec_mcp_tools/tools/_vendor/decoder_bench/[!_]*.py",
+]
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -116,6 +129,7 @@ ignore = ["E501", "PLR0913"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
+exclude = ["src/chatqec_mcp_tools/tools/_vendor/decoder_bench/(?!_graph)[^/]+\\.py$"]
 files = ["src"]
 disable_error_code = ["import-untyped"]
 

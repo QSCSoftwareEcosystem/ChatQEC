@@ -64,6 +64,7 @@ DecoderName = Literal[
     "cudaq_relay_bp",
     "cudaq_bposd",
     "cudaq_sliding_window",
+    "relay_bp",
 ]
 
 _MAX_CIRCUIT_BYTES = 256 * 1024
@@ -74,6 +75,16 @@ _DECODER_TIMEOUT_S = 50.0  # per CPU decoder child process
 _MIN_D, _MAX_D = 3, 15
 _LIGHTSTIM_FAMILIES = ("toric_code", "color_code_666", "bb_code", "pqrm")
 _MAX_P = 0.1
+# circuit_source="decoder_bench": our names -> decoder-bench registry names, and our families
+# -> its generators (SI1000 noise, rounds = distance, Z basis).
+_DB_DECODERS = {
+    "pymatching": "pymatching",
+    "belief_find": "belieffind",
+    "bplsd": "bplsd",
+    "mwpf": "mwpf",
+    "relay_bp": "relay-bp",
+}
+_DB_FAMILIES = {"surface_code_rotated": "surface", "color_code": "color", "bb_code": "qldpc"}
 
 
 class DecoderCompareInput(BaseModel):
@@ -133,6 +144,17 @@ class DecoderCompareInput(BaseModel):
     window_step: int | None = Field(
         None, ge=1, description="Rounds the window advances, only for cudaq_sliding_window"
     )
+    circuit_source: Literal["chatqec", "decoder_bench"] = Field(
+        "chatqec",
+        description=(
+            "chatqec: build code_family with uniform depolarizing noise p. decoder_bench: "
+            "use decoder-bench's own memory circuit (SI1000 circuit noise at p, rounds = "
+            "distance, Z basis) and its own decoders and parameters, for comparison with the "
+            "decoder-bench benchmark; supports surface_code_rotated, color_code (odd d) and "
+            "bb_code (d = 6, 10, 12) with pymatching, belief_find, bplsd, mwpf and relay_bp "
+            "(IBM Relay-BP, only in this mode)"
+        ),
+    )
 
     @model_validator(mode="after")
     def _one_source(self) -> DecoderCompareInput:
@@ -164,6 +186,10 @@ class DecoderCompareOutput(BaseModel):
     best: str = ""
     num_detectors: int = 0
     num_observables: int = 0
+    circuit_source: str = "chatqec"
+    noise_model: str = ""
+    circuit_sha256: str = ""
+    source: str = ""
     error_message: str = ""
 
 
@@ -194,6 +220,13 @@ def _run_one(
     if cap is not None and len(det) > cap:
         det, obs = det[:cap], obs[:cap]
         note = f"capped at {cap:,} shots"
+    if name == "relay_bp":
+        return DecoderResult(
+            decoder=name,
+            ok=False,
+            note="relay_bp (IBM Relay-BP) runs only with circuit_source='decoder_bench'; "
+            "use cudaq_relay_bp for NVIDIA's RelayBP on a chatQEC circuit",
+        )
     start = time.perf_counter()
     try:
         if name == "pymatching":
@@ -256,7 +289,77 @@ def _build_circuit(inp: DecoderCompareInput) -> stim.Circuit:
     )
 
 
+def _decoder_bench_compare(inp: DecoderCompareInput) -> DecoderCompareOutput:
+    """decoder-bench's own circuit and decoders (vendored), for scoring against the benchmark."""
+    from chatqec_mcp_tools.tools import _decoder_bench_run as dbr  # noqa: PLC0415
+
+    family = _DB_FAMILIES.get(inp.code_family or "")
+    if inp.circuit is not None or family is None:
+        return DecoderCompareOutput(
+            ok=False,
+            error_message="circuit_source='decoder_bench' needs code_family "
+            "surface_code_rotated, color_code or bb_code (no circuit text)",
+        )
+    if inp.rounds is not None and inp.rounds != inp.distance:
+        return DecoderCompareOutput(
+            ok=False, error_message="decoder-bench circuits use rounds = distance; omit rounds"
+        )
+    try:
+        circuit = dbr.build_circuit(family, inp.distance, inp.p)  # type: ignore[arg-type]
+    except ValueError as e:
+        return DecoderCompareOutput(ok=False, error_message=str(e))
+    names = list(dict.fromkeys(inp.decoders))
+    runnable = [n for n in names if n in _DB_DECODERS]
+    ran = {
+        r.decoder: r
+        for r in dbr.run(circuit, [_DB_DECODERS[n] for n in runnable], inp.shots, inp.seed)
+    }
+    results = []
+    for n in names:
+        if n not in _DB_DECODERS:
+            results.append(
+                DecoderResult(decoder=n, ok=False, note="not one of decoder-bench's decoders")
+            )
+            continue
+        r = ran[_DB_DECODERS[n]]
+        if not r.ok:
+            results.append(DecoderResult(decoder=n, ok=False, note=r.note))
+            continue
+        results.append(
+            DecoderResult(
+                decoder=n,
+                ok=True,
+                logical_error_rate=r.num_errors / r.shots,
+                std_error=dbr.std_error(r.num_errors, r.shots),
+                num_errors=r.num_errors,
+                shots=r.shots,
+                decode_seconds=r.decode_seconds,
+            )
+        )
+    ranked = sorted(
+        (r for r in results if r.ok), key=lambda r: (r.logical_error_rate, r.decode_seconds)
+    )
+    return DecoderCompareOutput(
+        ok=bool(ranked),
+        results=results,
+        best=ranked[0].decoder if ranked else "",
+        num_detectors=circuit.num_detectors,
+        num_observables=circuit.num_observables,
+        circuit_source="decoder_bench",
+        noise_model=f"SI1000(p={inp.p})",
+        circuit_sha256=dbr.circuit_sha256(circuit),
+        source=dbr.SOURCE,
+        error_message="" if ranked else "no decoder succeeded",
+    )
+
+
 def decoder_compare(inp: DecoderCompareInput) -> DecoderCompareOutput:
+    if inp.circuit_source == "decoder_bench":
+        return _decoder_bench_compare(inp)
+    return _chatqec_compare(inp)
+
+
+def _chatqec_compare(inp: DecoderCompareInput) -> DecoderCompareOutput:
     if inp.circuit is not None and len(inp.circuit.encode("utf-8")) > _MAX_CIRCUIT_BYTES:
         return DecoderCompareOutput(
             ok=False, error_message=f"circuit too large (>{_MAX_CIRCUIT_BYTES // 1024} KB)"

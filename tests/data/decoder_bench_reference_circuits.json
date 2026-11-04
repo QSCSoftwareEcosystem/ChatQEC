@@ -1,0 +1,202 @@
+{
+ "color_circuit_7_0.0005.h5": {
+  "code": "color",
+  "d": 7,
+  "p": 0.0005,
+  "basis": "z",
+  "sha256": "1b6313e51b78fe6a3b4e2ca2256747bb0c2a7bc2bb57bc5d69b767ed45fc4b0d",
+  "num_qubits": 73,
+  "num_detectors": 252,
+  "num_observables": 1
+ },
+ "color_circuit_7_0.001.h5": {
+  "code": "color",
+  "d": 7,
+  "p": 0.001,
+  "basis": "z",
+  "sha256": "a7a012dbc4aa66297d04c7714f542f9d98a977c79a0c0b4035c9c3d9d7da14a2",
+  "num_qubits": 73,
+  "num_detectors": 252,
+  "num_observables": 1
+ },
+ "color_circuit_7_0.003.h5": {
+  "code": "color",
+  "d": 7,
+  "p": 0.003,
+  "basis": "z",
+  "sha256": "ace9a55d29a645f257111832a1f529e07eaaa673000c4872bba20f6d9b94356b",
+  "num_qubits": 73,
+  "num_detectors": 252,
+  "num_observables": 1
+ },
+ "color_circuit_7_0.005.h5": {
+  "code": "color",
+  "d": 7,
+  "p": 0.005,
+  "basis": "z",
+  "sha256": "430095d44634105379c8c468560c82e460c89796abad008be57428ec137edf8a",
+  "num_qubits": 73,
+  "num_detectors": 252,
+  "num_observables": 1
+ },
+ "qldpc_circuit_12_0.0005_z.h5": {
+  "code": "qldpc",
+  "d": 12,
+  "p": 0.0005,
+  "basis": "z",
+  "sha256": "c3874fca866de828d36d82c61f582ad7cfb87d2164e7c6f42bb86c2edc59d538",
+  "num_qubits": 288,
+  "num_detectors": 936,
+  "num_observables": 12
+ },
+ "qldpc_circuit_12_0.001_z.h5": {
+  "code": "qldpc",
+  "d": 12,
+  "p": 0.001,
+  "basis": "z",
+  "sha256": "3d01cd8697f50f81f8f39e538f453bcdc257977dc3469a26a09f21dc3228709a",
+  "num_qubits": 288,
+  "num_detectors": 936,
+  "num_observables": 12
+ },
+ "qldpc_circuit_12_0.003_z.h5": {
+  "code": "qldpc",
+  "d": 12,
+  "p": 0.003,
+  "basis": "z",
+  "sha256": "0020020a217aa27534861646532ca67f2e423b8addd18d7d8124390258ddfbfd",
+  "num_qubits": 288,
+  "num_detectors": 936,
+  "num_observables": 12
+ },
+ "qldpc_circuit_12_0.005_z.h5": {
+  "code": "qldpc",
+  "d": 12,
+  "p": 0.005,
+  "basis": "z",
+  "sha256": "a213a8dfe157d8fcc7966f724f902ee7c5b91ab38d29543ed7a69aca86f7db0c",
+  "num_qubits": 288,
+  "num_detectors": 936,
+  "num_observables": 12
+ },
+ "qldpc_circuit_6_0.0005_z.h5": {
+  "code": "qldpc",
+  "d": 6,
+  "p": 0.0005,
+  "basis": "z",
+  "sha256": "fac37bcfe55ce3856c34fae9ea6f386d47c70e07adf50076494e67dde4adfe6d",
+  "num_qubits": 144,
+  "num_detectors": 252,
+  "num_observables": 12
+ },
+ "qldpc_circuit_6_0.001_z.h5": {
+  "code": "qldpc",
+  "d": 6,
+  "p": 0.001,
+  "basis": "z",
+  "sha256": "bd733a25c6df54dcbf9f390e21b6f2047a62bd759216b693428d63ffeceafbc4",
+  "num_qubits": 144,
+  "num_detectors": 252,
+  "num_observables": 12
+ },
+ "qldpc_circuit_6_0.003_z.h5": {
+  "code": "qldpc",
+  "d": 6,
+  "p": 0.003,
+  "basis": "z",
+  "sha256": "53ea3a207a782df7f5045372ae7cb10cefc7ed0004090d336090f471135fe782",
+  "num_qubits": 144,
+  "num_detectors": 252,
+  "num_observables": 12
+ },
+ "qldpc_circuit_6_0.005_z.h5": {
+  "code": "qldpc",
+  "d": 6,
+  "p": 0.005,
+  "basis": "z",
+  "sha256": "0df1b90db0878d9df633a109110b1cc37ba0c4f860cd97d593d915b321b29d34",
+  "num_qubits": 144,
+  "num_detectors": 252,
+  "num_observables": 12
+ },
+ "surface_circuit_11_0.0005_z.h5": {
+  "code": "surface",
+  "d": 11,
+  "p": 0.0005,
+  "basis": "z",
+  "sha256": "be7d7fd451586a437480dca64a3f2aa1e3698444e9180072b68e3e7e8cd2ffb9",
+  "num_qubits": 274,
+  "num_detectors": 1320,
+  "num_observables": 1
+ },
+ "surface_circuit_11_0.001_z.h5": {
+  "code": "surface",
+  "d": 11,
+  "p": 0.001,
+  "basis": "z",
+  "sha256": "ab7a6c91e1807b41b5881e2432353b8f8a3c8a5f809f9c8f3559211f7c17694a",
+  "num_qubits": 274,
+  "num_detectors": 1320,
+  "num_observables": 1
+ },
+ "surface_circuit_11_0.003_z.h5": {
+  "code": "surface",
+  "d": 11,
+  "p": 0.003,
+  "basis": "z",
+  "sha256": "b2e19a94527633767c1b0bf46edd9634ec01495ecdc52c4eff7b519fd1bac7d8",
+  "num_qubits": 274,
+  "num_detectors": 1320,
+  "num_observables": 1
+ },
+ "surface_circuit_11_0.005_z.h5": {
+  "code": "surface",
+  "d": 11,
+  "p": 0.005,
+  "basis": "z",
+  "sha256": "a13dc9a9c97435b0e80704c8c9816f549b8dd290585d0130e7f84ce3669c7004",
+  "num_qubits": 274,
+  "num_detectors": 1320,
+  "num_observables": 1
+ },
+ "surface_circuit_7_0.0005_z.h5": {
+  "code": "surface",
+  "d": 7,
+  "p": 0.0005,
+  "basis": "z",
+  "sha256": "a1ee67e064182d5dc01def68a4e391b15beec337995ee22a8daaba1a9249249a",
+  "num_qubits": 118,
+  "num_detectors": 336,
+  "num_observables": 1
+ },
+ "surface_circuit_7_0.001_z.h5": {
+  "code": "surface",
+  "d": 7,
+  "p": 0.001,
+  "basis": "z",
+  "sha256": "d418c60ff84b257ca73f6f0a2b3f33bdc5f52440ce187240b1003cb26a0a083e",
+  "num_qubits": 118,
+  "num_detectors": 336,
+  "num_observables": 1
+ },
+ "surface_circuit_7_0.003_z.h5": {
+  "code": "surface",
+  "d": 7,
+  "p": 0.003,
+  "basis": "z",
+  "sha256": "9eff7013a188b6d4fe3b9256966029d111b1482dc691ab6eb8e456480cbef83b",
+  "num_qubits": 118,
+  "num_detectors": 336,
+  "num_observables": 1
+ },
+ "surface_circuit_7_0.005_z.h5": {
+  "code": "surface",
+  "d": 7,
+  "p": 0.005,
+  "basis": "z",
+  "sha256": "206565379b29115c2743978b150b52b92da410e1e3853d15dc0d3f70838f7a55",
+  "num_qubits": 118,
+  "num_detectors": 336,
+  "num_observables": 1
+ }
+}
