@@ -36,7 +36,7 @@ from unittest.mock import patch
 
 import pytest
 
-_BLOCKED = ("rustworkx", "qiskit", "qiskit_ibm_runtime", "qiskit_paulice", "qiskit_aer", "deltakit", "guppylang", "selene_sim")
+_BLOCKED = ("rustworkx", "qiskit", "qiskit_ibm_runtime", "qiskit_paulice", "qiskit_aer", "deltakit", "guppylang", "selene_sim", "ft_primitive_bench", "relay_bp")
 
 _EXPECTED_TOOLS = {
     # the 9 non-IBM tools -- these are the collateral damage a module-scope
@@ -50,6 +50,7 @@ _EXPECTED_TOOLS = {
     "threshold_sweep",
     "tsim_simulate",
     "decoder_compare",
+    "ft_primitive_simulate",
     # the 5 IBM tools
     "ibm_backend_calibration",
     "ibm_list_backends",
