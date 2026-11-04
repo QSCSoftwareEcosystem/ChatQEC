@@ -86,3 +86,14 @@ def test_reports_number_accepts_common_formats(text, ok):
 
 def test_reports_zero_when_no_failures():
     assert reports_number("0 failures, LER 0.0", 0.0)
+
+
+def test_bench_list_handles_a_single_resolvable_flag(monkeypatch):
+    """bench list assumed decoder-bench's per-decoder dict and crashed on this adapter."""
+    from click.testing import CliRunner
+
+    from chatqec.eval.benchmarks.cli import bench_group
+
+    res = CliRunner().invoke(bench_group, ["list", "ft-primitive-bench"])
+    assert res.exit_code == 0, res.output
+    assert "resolvable=1/1" in res.output and "resolvable=0/1" in res.output

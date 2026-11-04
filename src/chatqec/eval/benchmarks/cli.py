@@ -47,8 +47,10 @@ def bench_list(name: str) -> None:
     """List a benchmark's items."""
     bench, _ = _bench(name)
     for item in bench.items():
-        resolvable = sum(item.meta.get("resolvable", {}).values())
-        click.echo(f"{item.id}\tresolvable={resolvable}/{len(item.gold)}")
+        flags = item.meta.get("resolvable", {})
+        # per-decoder dict (decoder-bench) or one flag for the item's single rate
+        values = list(flags.values()) if isinstance(flags, dict) else [bool(flags)]
+        click.echo(f"{item.id}\tresolvable={sum(values)}/{len(values)}")
 
 
 @bench_group.command("run")
