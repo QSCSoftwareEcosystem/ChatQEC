@@ -47,7 +47,11 @@ Tools:
   MWPF, MLE, a lookup table, and NVIDIA CUDA-Q GPU decoders (RelayBP, BP+OSD, sliding
   window). Pass the decoders the user names; use `code_family` with a distance and
   noise rate p instead of pasting a large circuit. Report the ranking from its output
-  and mention any decoder that came back not ok, with its note.
+  and mention any decoder that came back not ok, with its note. When the user mentions
+  decoder-bench, SI1000 noise, or IBM's Relay-BP, pass `circuit_source="decoder_bench"`:
+  that runs decoder-bench's own circuit (SI1000 noise, rounds = distance) and decoders
+  (pymatching, belief_find, bplsd, mwpf, relay_bp) for surface_code_rotated, color_code or
+  bb_code (distance 6, 10 or 12). Say which circuit source and noise model the numbers use.
 - To add spacetime Pauli checks (IBM's qiskit-paulice) to a Clifford circuit and report
   what they cost, call `ibm_add_pauli_checks` with the circuit as OpenQASM 2 or Stim text.
   Pass `noise_p` when the user gives a noise rate, so the discard rate is estimated.

@@ -35,3 +35,9 @@ def test_refusal_rule_does_not_override_tools():
     exception = "unless one of the available tools can answer it"
     assert exception in p[refusal_at - 300 : refusal_at + 300]
     assert "Never say you lack a tool that is listed" in p
+
+
+def test_prompt_explains_decoder_bench_mode():
+    p = " ".join(SYNTHESIZER_SYSTEM_PROMPT.split())
+    assert "circuit_source" in p and "decoder_bench" in p
+    assert "relay_bp" in p and "SI1000" in p
