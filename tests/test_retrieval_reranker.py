@@ -68,3 +68,35 @@ def test_reranker_default_is_non_china_model():
     assert rr.model_name == "mixedbread-ai/mxbai-rerank-base-v1"
     assert "bge" not in rr.model_name.lower()
     assert "baai" not in rr.model_name.lower()
+
+
+def _hub_401():
+    from huggingface_hub.errors import RepositoryNotFoundError
+
+    response = MagicMock(status_code=401, headers={})
+    return RepositoryNotFoundError("401 Client Error", response=response)
+
+
+def test_reranker_falls_back_to_local_cache_on_hub_auth_error(monkeypatch):
+    """A stale HF_TOKEN in the shell makes the hub return 401 even for a public,
+    already-cached model. The reranker must then load from the local cache
+    instead of failing the whole question (seen in the Streamlit app)."""
+    mock_ce = MagicMock()
+    mock_ce.predict.return_value = np.array([0.2, 0.8])
+    mock_ce_class = MagicMock(side_effect=[_hub_401(), mock_ce])
+    monkeypatch.setattr("chatqec.retrieval.reranker.CrossEncoder", mock_ce_class)
+
+    out = CrossEncoderReranker(model_name="m").rerank("q", ["a", "b"], top_k=1)
+
+    assert out == [1]
+    assert mock_ce_class.call_args_list[1].kwargs == {"local_files_only": True}
+
+
+def test_reranker_reraises_when_model_not_cached_either(monkeypatch):
+    import pytest
+
+    mock_ce_class = MagicMock(side_effect=[_hub_401(), OSError("not in cache")])
+    monkeypatch.setattr("chatqec.retrieval.reranker.CrossEncoder", mock_ce_class)
+
+    with pytest.raises(Exception, match="401"):
+        CrossEncoderReranker(model_name="m").rerank("q", ["a"], top_k=1)

@@ -12,8 +12,13 @@ download never happens. The model name is configurable via ``models.reranker``.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+from huggingface_hub.errors import HfHubHTTPError
 from sentence_transformers import CrossEncoder
+
+logger = logging.getLogger(__name__)
 
 
 class CrossEncoderReranker:
@@ -25,7 +30,22 @@ class CrossEncoderReranker:
 
     def _model_or_load(self) -> CrossEncoder:
         if self._model is None:
-            self._model = CrossEncoder(self.model_name)
+            try:
+                self._model = CrossEncoder(self.model_name)
+            except HfHubHTTPError as hub_err:
+                # A stale HF_TOKEN in the environment makes the hub answer 401
+                # even for a public model; load_dotenv() never overrides it.
+                # If the model is already cached, answering beats failing.
+                try:
+                    self._model = CrossEncoder(self.model_name, local_files_only=True)
+                except OSError:
+                    raise hub_err from None
+                logger.warning(
+                    "Hugging Face Hub refused %s (%s); loaded it from the local cache. "
+                    "Check HF_TOKEN in your shell profile.",
+                    self.model_name,
+                    hub_err.__class__.__name__,
+                )
         return self._model
 
     def rerank(self, query: str, candidates: list[str], *, top_k: int) -> list[int]:
