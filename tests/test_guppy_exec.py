@@ -71,3 +71,20 @@ def test_file_size_limit_is_enforced():
     code = "open('big.bin', 'wb').write(b'0' * (5 * 2**20))\nprint('wrote')"
     r = run_isolated(code, fsize_mb=1, **_LIMITS)
     assert "wrote" not in r.stdout
+
+
+def test_guppy_comptime_eval_is_disabled_in_the_child():
+    """Defense in depth behind the source gate: Guppy's comptime(...) runs eval() with
+    full builtins at compile time, so the child replaces that evaluator before the
+    program runs. A future gate bypass then fails to compile instead of running Python."""
+    pytest.importorskip("guppylang_internals.checker.expr_checker")
+    code = (
+        "import guppylang_internals.checker.expr_checker as ec\n"
+        "try:\n"
+        "    ec.eval_comptime_expr(None, None)\n"
+        "except RuntimeError as e:\n"
+        "    print('blocked:', e)\n"
+    )
+    r = run_isolated(code, **_LIMITS)
+    assert r.exit_code == 0, r.stderr
+    assert r.stdout.startswith("blocked:") and "comptime" in r.stdout

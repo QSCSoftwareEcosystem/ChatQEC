@@ -11,7 +11,10 @@ defaults and annotations. This gate allows exactly:
 
 Bodies are checked as well, because Guppy's ``py(...)`` and ``comptime`` evaluate arbitrary Python
 at compile time; those names (and dunder access, ``exec``, ``open``, ``getattr`` ...) are refused
-wherever they appear, including through an import alias.
+wherever they appear, including through an import alias. Guppy also parses string annotations
+itself, so a string can smuggle ``comptime`` past a name check: string constants are therefore
+refused everywhere except as the label of ``result(...)``, and body annotations get the same
+check as signature annotations.
 
 This is a gate, not an OS sandbox. A bug in guppylang's own compiler is out of its reach, which is
 why guppy_run is also off by default (see guppy_run.py).
@@ -20,6 +23,7 @@ why guppy_run is also off by default (see guppy_run.py).
 from __future__ import annotations
 
 import ast
+import builtins
 
 _DENIED_NAMES = frozenset(
     {
@@ -27,6 +31,7 @@ _DENIED_NAMES = frozenset(
         "globals", "locals", "vars", "input", "breakpoint", "exit", "quit", "help", "importlib",
     }
 )  # fmt: skip
+_BUILTIN_NAMES = frozenset(dir(builtins))
 _ALLOWED_BODY = (
     ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Return, ast.If, ast.While, ast.For, ast.Break,
     ast.Continue, ast.Pass, ast.Expr, ast.Assert, ast.Call, ast.keyword, ast.BinOp, ast.UnaryOp,
@@ -79,6 +84,8 @@ def _check_import(node: ast.Import | ast.ImportFrom) -> None:
         for alias in node.names:
             if alias.name != "*":
                 _check_identifier(alias.name)
+            if alias.asname:
+                _check_identifier(alias.asname)
         return
     for alias in node.names:
         if not _is_guppylang(alias.name):
@@ -101,10 +108,12 @@ def _check_function(node: ast.FunctionDef) -> None:
         raise ValueError("default argument values are not allowed")
     if getattr(node, "type_params", None):
         raise ValueError("type parameters are not allowed")
+    _check_function_name(node.name)
     for arg in a.args:
         _check_identifier(arg.arg)
         _check_annotation(arg.annotation)
     _check_annotation(node.returns)
+    labels = _result_labels(node)
     for stmt in node.body:
         for sub in ast.walk(stmt):
             if not isinstance(sub, _ALLOWED_BODY):
@@ -113,6 +122,40 @@ def _check_function(node: ast.FunctionDef) -> None:
                 _check_identifier(sub.id)
             elif isinstance(sub, ast.Attribute):
                 _check_identifier(sub.attr)
+            elif isinstance(sub, ast.AnnAssign):
+                # Guppy parses a string annotation itself (a delayed annotation) and
+                # evaluates comptime(...) inside it, so body annotations get the same
+                # check as signature annotations, which refuses strings.
+                _check_annotation(sub.annotation)
+            elif (
+                isinstance(sub, ast.Constant)
+                and isinstance(sub.value, str)
+                and id(sub) not in labels
+            ):
+                raise ValueError("string constants are only allowed as the label of result(...)")
+
+
+def _result_labels(node: ast.FunctionDef) -> set[int]:
+    """ids of the string constants used as the first argument of result(...)."""
+    labels: set[int] = set()
+    for sub in ast.walk(node):
+        if (
+            isinstance(sub, ast.Call)
+            and isinstance(sub.func, ast.Name)
+            and sub.func.id == "result"
+            and sub.args
+            and isinstance(sub.args[0], ast.Constant)
+            and isinstance(sub.args[0].value, str)
+        ):
+            labels.add(id(sub.args[0]))
+    return labels
+
+
+def _check_function_name(name: str) -> None:
+    """Refuse names that would shadow what guppy_run appends (print, dict, _json ...)."""
+    _check_identifier(name)
+    if name.startswith("_") or name in _BUILTIN_NAMES:
+        raise ValueError(f"function name {name!r} would shadow a Python builtin or helper")
 
 
 def validate_guppy_source(source: str) -> None:

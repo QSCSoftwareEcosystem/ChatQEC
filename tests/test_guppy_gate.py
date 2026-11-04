@@ -138,3 +138,54 @@ def test_deeply_nested_source_is_rejected_not_a_crash():
     src = HEADER + "@guppy\ndef main() -> None:\n    x = " + "(" * 5000 + "1" + ")" * 5000 + "\n"
     with pytest.raises(ValueError):
         validate_guppy_source(src)
+
+
+# --- security review 2026-11-04: string annotations in bodies reached comptime eval ---
+ARRAY_HEADER = HEADER.replace("import result\n", "import result, array\n")
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        '"array[int, comptime(1 + 1)]"',  # whole annotation as a string (Guppy parses it)
+        'array[int, "comptime(1 + 1)"]',  # string nested inside the annotation
+        '"int"',  # any string annotation is a delayed annotation Guppy will parse
+    ],
+)
+def test_string_annotation_in_body_is_rejected(annotation):
+    src = _prog(f"x: {annotation} = array(1)\nq = qubit()\nresult('c', measure(q))", ARRAY_HEADER)
+    with pytest.raises(ValueError):
+        validate_guppy_source(src)
+
+
+def test_body_annotation_goes_through_the_annotation_check():
+    src = _prog("x: array[int, py(1)] = array(1)", ARRAY_HEADER)
+    with pytest.raises(ValueError):
+        validate_guppy_source(src)
+
+
+def test_string_constant_outside_result_label_is_rejected():
+    with pytest.raises(ValueError, match="string"):
+        validate_guppy_source(_prog('s = "comptime(1)"\nresult("c", measure(qubit()))'))
+
+
+def test_result_label_string_is_still_allowed():
+    validate_guppy_source(BELL)
+
+
+def test_dunder_import_alias_is_rejected():
+    hdr = HEADER + "from guppylang.std.builtins import result as __import__\n"
+    with pytest.raises(ValueError):
+        validate_guppy_source(_prog("pass", hdr))
+
+
+@pytest.mark.parametrize("name", ["print", "dict", "str", "_json", "_helper"])
+def test_function_names_that_shadow_epilogue_names_are_rejected(name):
+    # A valid main plus one helper, so the only thing wrong is the helper's name.
+    src = BELL + f"\n@guppy\ndef {name}() -> None:\n    pass\n"
+    with pytest.raises(ValueError, match=name):
+        validate_guppy_source(src)
+
+
+def test_valid_helper_function_name_passes():
+    validate_guppy_source(BELL + "\n@guppy\ndef helper() -> None:\n    pass\n")

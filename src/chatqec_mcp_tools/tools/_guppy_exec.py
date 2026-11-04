@@ -48,6 +48,13 @@ resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
 resource.setrlimit(resource.RLIMIT_FSIZE, (fsize * mb, fsize * mb))
 resource.setrlimit(resource.RLIMIT_AS, (mem * mb, mem * mb))
+try:  # Guppy's comptime(...) is eval() with full builtins; refuse it before the program runs
+    import guppylang_internals.checker.expr_checker as _ec
+    def _no_comptime(*_a, **_k):
+        raise RuntimeError("comptime/py expressions are disabled in guppy_run")
+    _ec.eval_comptime_expr = _no_comptime
+except ImportError:
+    pass
 program = sys.argv[1]
 sys.argv = [program]
 runpy.run_path(program, run_name="__main__")
