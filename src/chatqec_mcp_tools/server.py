@@ -452,11 +452,24 @@ def main() -> None:  # pragma: no cover
             Tool(name=t.name, description=t.description, inputSchema=t.input_schema) for t in _TOOLS
         ]
 
+    from pathlib import Path  # noqa: PLC0415
+
+    from chatqec_mcp_tools.result_cache import (  # noqa: PLC0415
+        cache_dir_from_env,
+        cached_call,
+        source_hash,
+    )
+
+    cache_dir = cache_dir_from_env()  # None unless CHATQEC_TOOL_CACHE_DIR is set
+    code_hash = source_hash(Path(__file__).parent) if cache_dir else ""
+
     @app.call_tool()  # type: ignore[untyped-decorator]
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         for t in _TOOLS:
             if t.name == name:
-                result = t.handler(arguments)
+                result = cached_call(
+                    name, arguments, t.handler, cache_dir=cache_dir, code_hash=code_hash
+                )
                 return [TextContent(type="text", text=json.dumps(result))]
         raise ValueError(f"unknown tool: {name}")
 
