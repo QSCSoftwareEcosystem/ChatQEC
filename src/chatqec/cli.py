@@ -116,6 +116,24 @@ def _try_gemini() -> object | None:  # pragma: no cover
         return None
 
 
+_LOCAL_ROLES = ("primary", "fallback")
+
+
+def _local_model_roles(local_cfg: Mapping[str, Any], *, pin: str | None) -> list[str]:
+    """Config roles to build, in fallback order.
+
+    ``pin`` (from ``CHATQEC_LOCAL_MODEL``) keeps only the role serving that model,
+    so a run is attributable to one model instead of silently falling back.
+    """
+    if not pin:
+        return list(_LOCAL_ROLES)
+    roles = [r for r in _LOCAL_ROLES if str(local_cfg.get(f"{r}_model") or "") == pin]
+    if not roles:
+        served = [str(local_cfg.get(f"{r}_model")) for r in _LOCAL_ROLES]
+        raise ValueError(f"CHATQEC_LOCAL_MODEL={pin!r} is not a configured local model {served}")
+    return roles
+
+
 def _build_local_client(local_cfg: Mapping[str, Any]) -> object:  # pragma: no cover
     """Primary + fallback local servers (Muse-Glimmer, then Gemma 4) behind one client.
 
@@ -123,11 +141,13 @@ def _build_local_client(local_cfg: Mapping[str, Any]) -> object:  # pragma: no c
     ``/models`` are used; a primary that dies mid-session falls through to the
     fallback via the ``local llm unavailable`` recoverable marker.
     """
+    import os
+
     from chatqec.providers.fallback import Backend, FallbackLLMClient
     from chatqec.providers.local import LocalLLM
 
     backends: list[Backend] = []
-    for role in ("primary", "fallback"):
+    for role in _local_model_roles(local_cfg, pin=os.environ.get("CHATQEC_LOCAL_MODEL")):
         url = str(local_cfg.get(f"{role}_url") or "")
         model = str(local_cfg.get(f"{role}_model") or "")
         if not url or not model:

@@ -174,3 +174,30 @@ def test_reasoning_controls_are_sent():
     llm.messages.create(model="m", max_tokens=10, messages=[])
     assert seen[0]["max_tokens"] == 110
     assert seen[0]["chat_template_kwargs"] == {"reasoning_strength": "low"}
+
+
+def test_local_model_roles_default_is_primary_then_fallback():
+    from chatqec.cli import _local_model_roles
+
+    cfg = {"primary_model": "muse-glimmer", "fallback_model": "gemma-4"}
+    assert _local_model_roles(cfg, pin=None) == ["primary", "fallback"]
+
+
+def test_local_model_roles_pin_keeps_only_that_model():
+    """CHATQEC_LOCAL_MODEL pins one served model, with no silent fallback, so an
+    eval or UI run is attributable to exactly one model."""
+    from chatqec.cli import _local_model_roles
+
+    cfg = {"primary_model": "muse-glimmer", "fallback_model": "gemma-4"}
+    assert _local_model_roles(cfg, pin="gemma-4") == ["fallback"]
+    assert _local_model_roles(cfg, pin="muse-glimmer") == ["primary"]
+
+
+def test_local_model_roles_unknown_pin_is_an_error():
+    import pytest
+
+    from chatqec.cli import _local_model_roles
+
+    cfg = {"primary_model": "muse-glimmer", "fallback_model": "gemma-4"}
+    with pytest.raises(ValueError, match="gpt-x"):
+        _local_model_roles(cfg, pin="gpt-x")
