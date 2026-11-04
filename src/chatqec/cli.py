@@ -287,9 +287,13 @@ def _start_mcp_clients(commands: Sequence[str], cfg: Mapping[Any, Any]) -> list[
     wiki's own ``check_freshness``, for instance, does network I/O). Without any
     timeout a wedged subprocess would hang the answer for good.
     """
+    import os
+
     from chatqec.conversation.mcp_stdio import StdioMCPClient
 
-    call_timeout = float(cfg.get("mcp", {}).get("request_timeout_seconds", 60))
+    # Benchmark runs call slow decoders; they raise this without touching the config.
+    override = os.environ.get("CHATQEC_MCP_TIMEOUT_SECONDS")
+    call_timeout = float(override or cfg.get("mcp", {}).get("request_timeout_seconds", 60))
     wiki_timeout = float(cfg.get("wiki", {}).get("timeout_seconds", 5))
     clients: list[MCPClient] = []
     for command in commands:
@@ -1858,6 +1862,15 @@ def corpus_stats(chunks_dir: Path, output_path: Path) -> None:
     click.echo(f"by source_type: {stats['by_source_type']}")
     click.echo(f"by tier: {stats['by_tier']}")
     click.echo(f"full report → {output_path}")
+
+
+def _register_bench_commands() -> None:
+    from chatqec.eval.benchmarks.cli import bench_group
+
+    eval_group.add_command(bench_group)
+
+
+_register_bench_commands()
 
 
 if __name__ == "__main__":

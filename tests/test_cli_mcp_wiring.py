@@ -78,3 +78,24 @@ def test_a_client_that_cannot_be_listed_leaves_the_wiki_off():
             raise RuntimeError("server died")
 
     assert _wiki_is_available(_ON, Broken()) is False
+
+
+def test_mcp_call_timeout_comes_from_config_or_the_env_override(monkeypatch):
+    """Benchmark runs use slow decoders (Relay-BP, MWPF), so they raise the MCP call
+    timeout with CHATQEC_MCP_TIMEOUT_SECONDS; the config value stays the default."""
+    from chatqec.conversation import mcp_stdio
+    from chatqec.cli import _start_mcp_clients
+
+    seen = []
+
+    class _Fake:
+        def __init__(self, **kwargs):
+            seen.append(kwargs["call_timeout"])
+
+    monkeypatch.setattr(mcp_stdio, "StdioMCPClient", _Fake)
+    cfg = {"mcp": {"request_timeout_seconds": 60}}
+    monkeypatch.delenv("CHATQEC_MCP_TIMEOUT_SECONDS", raising=False)
+    _start_mcp_clients(["tools"], cfg)
+    monkeypatch.setenv("CHATQEC_MCP_TIMEOUT_SECONDS", "1800")
+    _start_mcp_clients(["tools"], cfg)
+    assert seen == [60.0, 1800.0]
