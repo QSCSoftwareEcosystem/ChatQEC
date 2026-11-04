@@ -1,0 +1,14 @@
+[
+  {"name": "decoder_compare_color", "expected_tools": ["decoder_compare"],
+   "prompt": "Compare PyMatching, Tesseract, MLE and CUDA-Q RelayBP on a distance-5 color code at p=0.002 and rank them."},
+  {"name": "pauli_checks_ghz3", "expected_tools": ["ibm_add_pauli_checks"],
+   "prompt": "Add spacetime Pauli checks to this OpenQASM GHZ-3 circuit and report the qubit, gate and depth overhead at a physical error rate of 0.01.\n\nOPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[3];\ncreg c[3];\nh q[0];\ncx q[0],q[1];\ncx q[1],q[2];\nmeasure q -> c;"},
+  {"name": "ft_compile_rz", "expected_tools": ["ibm_ft_compile"],
+   "prompt": "Compile rz(0.3) to Clifford+T at 6 digits of precision and report the T count."},
+  {"name": "deltakit_memory_d3", "expected_tools": ["deltakit_memory"],
+   "prompt": "Run a Deltakit memory experiment on a distance-3 rotated surface code and report the logical error rate."},
+  {"name": "bb5_params", "expected_tools": ["code_params"],
+   "prompt": "What are the parameters of BB5 codes?"},
+  {"name": "surface_code_definition", "expected_tools": [],
+   "prompt": "What is the surface code and how does it detect errors?"}
+]

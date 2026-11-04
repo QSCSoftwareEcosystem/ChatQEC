@@ -12,12 +12,15 @@ VLLM="${VLLM_BIN:-$HOME/venvs/llmserve/bin/vllm}"
 export PATH="$(dirname "$VLLM"):$PATH"  # vLLM JIT-compiles kernels with the venv's ninja
 MODELS_DIR="${LOCAL_MODELS_DIR:-$HOME/local_models}"
 LOG_DIR="$(dirname "$0")/../logs"
+# Fraction of each GPU vLLM may take. 0.90 leaves ~5 GB, too little when the
+# reranker and CUDA-Q decoders share the GPU; use 0.80 for UI/eval runs.
+GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.90}"
 mkdir -p "$LOG_DIR"
 
 serve() {  # gpu port served_name model_dir tool_parser reasoning_parser
   CUDA_VISIBLE_DEVICES="$1" nohup "$VLLM" serve "$MODELS_DIR/$4" \
     --served-model-name "$3" --port "$2" --quantization fp8_per_tensor \
-    --max-model-len 32768 --gpu-memory-utilization 0.90 \
+    --max-model-len 32768 --gpu-memory-utilization "$GPU_MEM_UTIL" \
     --enable-auto-tool-choice --tool-call-parser "$5" --reasoning-parser "$6" \
     > "$LOG_DIR/vllm_$3.log" 2>&1 &
   echo "$3: pid $! on GPU $1, port $2 (log: $LOG_DIR/vllm_$3.log)"
