@@ -65,6 +65,12 @@ guppy = [
     "guppylang>=0.21,<2",
     "selene-sim>=0.2,<0.4",
 ]
+# FTPrimitiveBench (MIT, arXiv:2605.04049) is not on PyPI; pinned to the commit the
+# chatQEC benchmark evaluation uses, so circuits match the benchmark exactly.
+ftprimitive = [
+    "ft-primitive-bench @ git+https://github.com/ShuwenKan/FTPrimitiveBench@b75fbd1c514bc4fb7fcca75618a191e6b58fa7ed",
+    "pymatching>=2.1",
+]
 # Tested with deltakit 0.9 (Python 3.11) and 0.10 (Python 3.13).
 deltakit = [
     "deltakit>=0.9,<0.11",

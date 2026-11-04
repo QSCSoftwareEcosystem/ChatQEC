@@ -81,3 +81,11 @@ def test_protocol_stdout_is_isolated_from_native_prints():
     assert out.stdout == '{"jsonrpc": "2.0"}\n'
     assert "native junk" in out.stderr
     assert "python print" in out.stderr
+
+
+def test_ft_primitive_simulate_is_registered_with_its_schema():
+    server = build_server()
+    spec = {t.name: t for t in server.list_tools()}["ft_primitive_simulate"]
+    props = spec.input_schema["properties"]
+    assert {"primitive", "noise", "p", "shots", "seed"} <= set(props)
+    assert "FTPrimitiveBench" in spec.description

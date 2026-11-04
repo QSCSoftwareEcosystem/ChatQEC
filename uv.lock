@@ -470,6 +470,10 @@ dev = [
 ft = [
     { name = "qiskit" },
 ]
+ftprimitive = [
+    { name = "ft-primitive-bench" },
+    { name = "pymatching" },
+]
 guppy = [
     { name = "guppylang", version = "0.21.16", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "guppylang", version = "1.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -502,6 +506,7 @@ requires-dist = [
     { name = "bloqade-tsim", marker = "extra == 'tsim'", specifier = ">=0.1.5,<0.2" },
     { name = "cudaq-qec-cu13", marker = "extra == 'cudaq'", specifier = ">=0.8.1,<0.9" },
     { name = "deltakit", marker = "extra == 'deltakit'", specifier = ">=0.9,<0.11" },
+    { name = "ft-primitive-bench", marker = "extra == 'ftprimitive'", git = "https://github.com/ShuwenKan/FTPrimitiveBench?rev=b75fbd1c514bc4fb7fcca75618a191e6b58fa7ed" },
     { name = "guppylang", marker = "extra == 'guppy'", specifier = ">=0.21,<2" },
     { name = "gurobipy", marker = "extra == 'mle'", specifier = ">=12" },
     { name = "lightstim", marker = "extra == 'lightstim'", git = "https://github.com/QuTone/LightStim?rev=47dd74976780192ae901d91958863cced1165354" },
@@ -513,6 +518,7 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.7" },
     { name = "pydantic", specifier = ">=2.8" },
     { name = "pymatching", specifier = ">=2.0" },
+    { name = "pymatching", marker = "extra == 'ftprimitive'", specifier = ">=2.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "qiskit", marker = "extra == 'ft'", specifier = ">=2.5" },
@@ -527,7 +533,7 @@ requires-dist = [
     { name = "stim", specifier = ">=1.13" },
     { name = "tesseract-decoder", marker = "extra == 'decoders'", specifier = ">=0.1" },
 ]
-provides-extras = ["dev", "lightstim", "tsim", "ibm", "decoders", "cudaq", "guppy", "deltakit", "ft", "paulice", "mle"]
+provides-extras = ["dev", "lightstim", "tsim", "ibm", "decoders", "cudaq", "guppy", "ftprimitive", "deltakit", "ft", "paulice", "mle"]
 
 [[package]]
 name = "click"
@@ -1596,6 +1602,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/89/76/c615883b7b521ead2944bb3480398cbb07e12b7b4e4d073d3752eb721558/frozenlist-1.8.0-cp314-cp314t-win_amd64.whl", hash = "sha256:06be8f67f39c8b1dc671f5d83aaefd3358ae5cdcf8314552c57e7ed3e6475bdd", size = 49451, upload-time = "2025-10-06T05:37:53.425Z" },
     { url = "https://files.pythonhosted.org/packages/e0/a3/5982da14e113d07b325230f95060e2169f5311b1017ea8af2a29b374c289/frozenlist-1.8.0-cp314-cp314t-win_arm64.whl", hash = "sha256:102e6314ca4da683dca92e3b1355490fed5f313b768500084fbe6371fddfdb79", size = 42507, upload-time = "2025-10-06T05:37:54.513Z" },
     { url = "https://files.pythonhosted.org/packages/9a/9a/e35b4a917281c0b8419d4207f4334c8e8c5dbf4f3f5f9ada73958d937dcc/frozenlist-1.8.0-py3-none-any.whl", hash = "sha256:0c18a16eab41e82c295618a77502e17b195883241c563b00f0aa5106fc4eaa0d", size = 13409, upload-time = "2025-10-06T05:38:16.721Z" },
+]
+
+[[package]]
+name = "ft-primitive-bench"
+version = "0.1.0"
+source = { git = "https://github.com/ShuwenKan/FTPrimitiveBench?rev=b75fbd1c514bc4fb7fcca75618a191e6b58fa7ed#b75fbd1c514bc4fb7fcca75618a191e6b58fa7ed" }
+dependencies = [
+    { name = "numpy" },
+    { name = "stim" },
 ]
 
 [[package]]

@@ -25,6 +25,10 @@ from chatqec_mcp_tools.tools.deltakit_memory import (
     DeltakitMemoryInput,
     deltakit_memory,
 )
+from chatqec_mcp_tools.tools.ft_primitive_simulate import (
+    FtPrimitiveInput,
+    ft_primitive_simulate,
+)
 from chatqec_mcp_tools.tools.glcb_visualize import (
     GlcbVisualizeInput,
     glcb_visualize_url,
@@ -160,6 +164,10 @@ def _deltakit_memory_handler(args: dict[str, Any]) -> dict[str, Any]:
     return deltakit_memory(DeltakitMemoryInput.model_validate(args)).model_dump()
 
 
+def _ft_primitive_simulate_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return ft_primitive_simulate(FtPrimitiveInput.model_validate(args)).model_dump()
+
+
 def _guppy_run_handler(args: dict[str, Any]) -> dict[str, Any]:
     return guppy_run(GuppyRunInput.model_validate(args)).model_dump()
 
@@ -266,6 +274,22 @@ _TOOLS = [
         ),
         input_schema=DecoderCompareInput.model_json_schema(),
         handler=_decoder_compare_handler,
+    ),
+    ToolSpec(
+        name="ft_primitive_simulate",
+        description=(
+            "Simulate a fault-tolerant surface-code primitive with FTPrimitiveBench "
+            "(arXiv:2605.04049): memory, transversal Hadamard, lattice surgery (MZZ/MXX) or a "
+            "logical S gate, on a square or rectangular patch (x_distance, z_distance), under "
+            "uniform, Pauli-biased (axis, bias_factor), measurement-biased or non-uniform "
+            "(sigma) circuit-level noise. Samples with Stim and decodes with PyMatching. "
+            "Returns the logical error rate with a 95% Wilson interval, the round structure, "
+            "qubit/detector/observable counts and the circuit's SHA-256. Use it for biased "
+            "noise, asymmetric patches, transversal H, lattice surgery or S-gate questions. "
+            "Needs the `ftprimitive` extra."
+        ),
+        input_schema=FtPrimitiveInput.model_json_schema(),
+        handler=_ft_primitive_simulate_handler,
     ),
     ToolSpec(
         name="deltakit_memory",
