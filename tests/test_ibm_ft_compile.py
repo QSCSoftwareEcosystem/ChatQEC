@@ -101,3 +101,29 @@ def test_large_compiled_circuit_omits_the_qasm_but_keeps_the_counts():
     out = _compile(body, qubits=4, gridsynth_precision=10)
     assert out.ok and out.t_count > 1000
     assert out.circuit_qasm == "" and "omitted" in out.notes
+
+
+def test_rotation_dropped_before_final_measurement_is_reported():
+    """Qiskit legally deletes an Rz right before a Z measurement, so asking for
+    the cost of rz(0.3) with a trailing measure returned t_count=0 in the chat
+    UI. The tool must say so and give the cost of the gates without the measure."""
+    qasm = (
+        'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[1];\ncreg c[1];\n'
+        "rz(0.3) q[0];\nmeasure q[0] -> c[0];\n"
+    )
+    out = ibm_ft_compile(IbmFtCompileInput(circuit_qasm=qasm, gridsynth_precision=6))
+    unitary = ibm_ft_compile(
+        IbmFtCompileInput(
+            circuit_qasm=qasm.replace("measure q[0] -> c[0];\n", ""), gridsynth_precision=6
+        )
+    )
+    assert out.ok and out.t_count == 0
+    assert unitary.t_count and unitary.t_count > 0
+    assert "measurement" in out.notes
+    assert f"t_count={unitary.t_count}" in out.notes
+
+
+def test_no_measurement_note_when_counts_agree():
+    qasm = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[1];\ncreg c[1];\nh q[0];\nmeasure q[0] -> c[0];\n'
+    out = ibm_ft_compile(IbmFtCompileInput(circuit_qasm=qasm))
+    assert out.ok and "measurement" not in out.notes

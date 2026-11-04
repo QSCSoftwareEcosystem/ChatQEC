@@ -15,7 +15,7 @@ give 20, 42, 65, 101 T gates.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -90,6 +90,34 @@ def _to_qasm(circuit: object) -> str:
         return str(qasm3.dumps(circuit))
 
 
+def _cost(circuit: Any, mode: str) -> dict[str, int]:
+    ops = circuit.count_ops()
+    if mode == "pbc":
+        return {"num_rotations": ops.get("pauli_product_rotation", 0)}
+    return {"t_count": sum(ops.get(g, 0) for g in _T_GATES)}
+
+
+def _dropped_before_measurement_note(circuit: Any, compiled: Any, pm: Any, mode: str) -> str:
+    """Explain when the optimizer deleted gates because a measurement follows them.
+
+    A diagonal gate (e.g. ``rz``) right before a Z-basis measurement cannot change
+    the outcome, so Qiskit removes it. That is correct for the circuit as given,
+    but a user asking what the gate costs would read the count as zero. Compile
+    the circuit without its final measurements and report that cost too.
+    """
+    if "measure" not in circuit.count_ops():
+        return ""
+    unitary = pm.run(circuit.remove_final_measurements(inplace=False))
+    kept, gates = _cost(compiled, mode), _cost(unitary, mode)
+    if kept == gates:
+        return ""
+    without = ", ".join(f"{k}={v}" for k, v in gates.items())
+    return (
+        "gates acting diagonally right before a final measurement were removed by the "
+        f"optimizer; without the final measurements the circuit costs {without}"
+    )
+
+
 def ibm_ft_compile(inp: IbmFtCompileInput) -> IbmFtCompileOutput:
     if len(inp.circuit_qasm.encode("utf-8")) > _MAX_CIRCUIT_BYTES:
         return _fail(f"circuit too large (>{_MAX_CIRCUIT_BYTES // 1024} KB)")
@@ -107,16 +135,18 @@ def ibm_ft_compile(inp: IbmFtCompileInput) -> IbmFtCompileOutput:
                 f"circuit has {circuit.num_qubits} qubits; at most {_MAX_QUBITS} supported"
             )
         if inp.mode == "pbc":
-            compiled = generate_preset_pbc_pass_manager(seed_transpiler=inp.seed).run(circuit)
+            pm = generate_preset_pbc_pass_manager(seed_transpiler=inp.seed)
         else:
             eps = 10.0**-inp.gridsynth_precision
-            compiled = generate_preset_clifford_t_pass_manager(
+            pm = generate_preset_clifford_t_pass_manager(
                 seed_transpiler=inp.seed,
                 rz_synthesis_config={
                     "rz_synthesis_error": eps,
                     "rz_cache_error": eps * _CACHE_ERROR_FRACTION,
                 },
-            ).run(circuit)
+            )
+        compiled = pm.run(circuit)
+        measurement_note = _dropped_before_measurement_note(circuit, compiled, pm, inp.mode)
     except ImportError:
         return _fail(_INSTALL_HINT)
     except ValueError as exc:
@@ -127,9 +157,9 @@ def ibm_ft_compile(inp: IbmFtCompileInput) -> IbmFtCompileOutput:
     ops = compiled.count_ops()
     is_pbc = inp.mode == "pbc"
     qasm = _to_qasm(compiled)
-    notes = ""
+    notes = measurement_note
     if len(qasm.encode("utf-8")) > _MAX_RETURNED_QASM_BYTES:
-        notes = (
+        notes = (notes + "; " if notes else "") + (
             f"compiled circuit omitted: {len(qasm) // 1024} KB of OpenQASM is too large to "
             "return; the counts above describe it"
         )
