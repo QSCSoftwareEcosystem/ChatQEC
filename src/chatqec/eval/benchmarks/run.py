@@ -11,10 +11,11 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from chatqec.api_types import Answer
+from chatqec.api_types import Answer, ToolCall
 from chatqec.eval.benchmarks.base import Benchmark
 
 Ask = Callable[[str], Answer]
@@ -113,3 +114,30 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         out[key] = sum(vals) / len(vals) if vals else None
         out[f"{key}_n"] = len(vals)
     return out
+
+
+def rescore_rows(bench: Benchmark, path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Score stored rows again with the current adapter and gold, without asking any model.
+
+    Each row keeps its verbatim answer and tool calls, so a corrected gold value or scorer
+    applies to an existing run. The header records when it was rescored.
+    """
+    header, rows = load_rows(path)
+    items = {i.id: i for i in bench.items()}
+    for row in rows:
+        answer = Answer(
+            text=row["answer_text"],
+            tool_calls=[ToolCall(c["name"], c["input"], c["output"]) for c in row["tool_calls"]],
+        )
+        item = items.get(row["id"])
+        if item is not None and not row.get("error"):
+            row["score"] = bench.score(item, answer)
+            row["gold"] = item.gold
+            row["meta"] = item.meta
+    header = {**header, "rescored_utc": datetime.now(UTC).isoformat(timespec="seconds")}
+    return header, rows
+
+
+def write_rows(path: Path, header: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    lines = [json.dumps({"_header": header})] + [json.dumps(r, default=str) for r in rows]
+    path.write_text("\n".join(lines) + "\n")

@@ -153,3 +153,20 @@ def bench_report(paths: tuple[Path, ...]) -> None:
         s = summarize(rows)
         cells = [f"{s[c]:.3f}" if isinstance(s[c], float) else str(s[c]) for c in cols]
         click.echo(f"| {path.name} | {header.get('model', '?')} | " + " | ".join(cells) + " |")
+
+
+@bench_group.command("rescore")
+@click.argument("name")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option("--out", "out_path", type=click.Path(path_type=Path), required=True)
+def bench_rescore(name: str, path: Path, out_path: Path) -> None:
+    """Rescore a stored run with the current scorer and gold (no model calls)."""
+    from chatqec.eval.benchmarks.provenance import sha256_file
+    from chatqec.eval.benchmarks.run import rescore_rows, summarize, write_rows
+
+    bench, gold = _bench(name)
+    header, rows = rescore_rows(bench, path)
+    header["rescore_gold"] = {"path": str(gold), "sha256": sha256_file(gold)}
+    write_rows(out_path, header, rows)
+    click.echo(f"{len(rows)} rows rescored -> {out_path}")
+    click.echo(summarize(rows))

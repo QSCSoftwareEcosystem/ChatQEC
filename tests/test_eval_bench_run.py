@@ -71,3 +71,19 @@ def test_summary_averages_only_applicable_scores(tmp_path):
     assert s["n"] == 3 and abs(s["passed"] - 1 / 3) < 1e-9
     assert abs(s["routed"] - 2 / 3) < 1e-9
     assert s["numeric_in_ci"] == 1.0 and s["numeric_in_ci_n"] == 1
+
+
+def test_rescore_recomputes_scores_from_stored_rows_without_asking(tmp_path):
+    from chatqec.eval.benchmarks.run import rescore_rows
+
+    out = tmp_path / "run.jsonl"
+    run_benchmark(_Toy(), _ask, out, provenance={"model": "m"})
+
+    class _Stricter(_Toy):
+        def score(self, item, answer):
+            return {"routed": bool(answer.tool_calls), "passed": False}
+
+    header, rows = rescore_rows(_Stricter(), out)
+    assert header["model"] == "m" and "rescored_utc" in header
+    assert [r["score"]["passed"] for r in rows] == [False, False, False]
+    assert rows[0]["answer_text"] == "answer to q0"  # stored answer reused, not re-asked
