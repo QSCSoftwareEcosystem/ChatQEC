@@ -18,6 +18,7 @@ PINS = REPO / "eval/benchmarks/pins.yaml"
 # Adapter name -> constructor arguments and the gold file recorded in provenance.
 _DATA: dict[str, dict[str, Path]] = {
     "decoder-bench": {"gold_csv": REPO / "eval/benchmarks/decoder_bench/benchmark_results.csv"},
+    "ft-primitive-bench": {"gold_jsonl": REPO / "eval/benchmarks/ft_primitive_bench/gold.jsonl"},
 }
 
 

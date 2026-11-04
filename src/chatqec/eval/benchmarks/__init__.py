@@ -27,7 +27,10 @@ def get_benchmark(name: str) -> type[Benchmark]:
 
 def _load_adapters() -> None:
     # Importing an adapter registers it.
-    from chatqec.eval.benchmarks import decoder_bench  # noqa: F401
+    from chatqec.eval.benchmarks import (
+        decoder_bench,  # noqa: F401
+        ft_primitive_bench,  # noqa: F401
+    )
 
 
 __all__ = ["BENCHMARKS", "BenchItem", "Benchmark", "get_benchmark", "register_benchmark"]
