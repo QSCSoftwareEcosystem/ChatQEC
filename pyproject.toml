@@ -74,7 +74,7 @@ ft = [
     "qiskit>=2.5",
 ]
 paulice = [
-    "qiskit-paulice",
+    "qiskit-paulice>=0.2.1,<0.3",  # 0.3 raises "Idling noise is not supported." on our noise model
     "qiskit>=1.0",
     "qiskit-aer",  # noisy stabilizer simulation for the postselection discard rate
 ]

@@ -520,7 +520,7 @@ requires-dist = [
     { name = "qiskit", marker = "extra == 'paulice'", specifier = ">=1.0" },
     { name = "qiskit-aer", marker = "extra == 'paulice'" },
     { name = "qiskit-ibm-runtime", marker = "extra == 'ibm'", specifier = ">=0.48" },
-    { name = "qiskit-paulice", marker = "extra == 'paulice'" },
+    { name = "qiskit-paulice", marker = "extra == 'paulice'", specifier = ">=0.2.1,<0.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "rustworkx", marker = "extra == 'ibm'", specifier = ">=0.15" },
     { name = "selene-sim", marker = "extra == 'guppy'", specifier = ">=0.2,<0.4" },
