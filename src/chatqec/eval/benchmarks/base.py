@@ -22,7 +22,7 @@ class BenchItem:
     prompt: str
     expected_tool: str
     expected_args: dict[str, Any]
-    gold: dict[str, float]
+    gold: dict[str, Any]
     meta: dict[str, Any] = field(default_factory=dict)
 
 

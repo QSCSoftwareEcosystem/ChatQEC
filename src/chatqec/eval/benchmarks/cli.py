@@ -20,11 +20,58 @@ _DATA: dict[str, dict[str, Path]] = {
     "decoder-bench": {"gold_csv": REPO / "eval/benchmarks/decoder_bench/benchmark_results.csv"},
     "ft-primitive-bench": {"gold_jsonl": REPO / "eval/benchmarks/ft_primitive_bench/gold.jsonl"},
 }
+COMPARE_PROMPTS = REPO / "eval/compare/prompts.jsonl"
+ARXIV_CACHE = REPO / "eval/compare/arxiv_exists.json"
+# The bare baseline: the same model, no retrieval, no tools, a neutral expert prompt.
+BARE_SYSTEM = (
+    "You are a helpful assistant with expertise in quantum error correction. Answer accurately "
+    "and concisely. Cite sources (for example arXiv ids) when you rely on them."
+)
 
 
-def _bench(name: str) -> tuple[Benchmark, Path]:
+def _bench(name: str, judge_model: str | None = None) -> tuple[Benchmark, Path]:
+    if name == "compare":
+        from chatqec.cli import _make_judge_client
+        from chatqec.eval.benchmarks.arxiv_check import cached_checker, corpus_arxiv_ids
+        from chatqec.eval.benchmarks.compare import CompareBench
+
+        judge = _make_judge_client(provider="local", model=judge_model) if judge_model else None
+        bench = CompareBench(
+            prompts_jsonl=COMPARE_PROMPTS,
+            judge=judge,
+            judge_model=judge_model or "",
+            known_arxiv_ids=corpus_arxiv_ids(REPO / "sources/registry.jsonl"),
+            arxiv_exists=cached_checker(ARXIV_CACHE),
+        )
+        return bench, COMPARE_PROMPTS
     kwargs = _DATA[name]
     return get_benchmark(name)(**kwargs), next(iter(kwargs.values()))
+
+
+def _bare_ask(provider: str, model: str) -> Any:
+    """Ask the model directly: no retrieval, no tools, no chatQEC system prompt."""
+    from chatqec.api_types import Answer
+    from chatqec.cli import _build_llm_client, _load_config
+
+    local = _load_config().get("models", {}).get("local", {})
+    client: Any = _build_llm_client(provider, local)
+
+    def ask(prompt: str) -> Answer:
+        reply = client.messages.create(
+            model=model,
+            max_tokens=4000,
+            system=BARE_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(getattr(b, "text", "") for b in reply.content)
+        usage = getattr(reply, "usage", None)
+        return Answer(
+            text=text,
+            input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+            output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+        )
+
+    return ask
 
 
 def _model_url(model: str) -> str | None:
@@ -63,6 +110,18 @@ def bench_list(name: str) -> None:
 @click.option("--out", "out_path", type=click.Path(path_type=Path), default=None)
 @click.option("--resume", is_flag=True, help="Append to --out, skipping items already in it")
 @click.option("--tool-timeout", type=float, default=1800.0, show_default=True)
+@click.option(
+    "--system",
+    type=click.Choice(["chatqec", "bare"]),
+    default="chatqec",
+    show_default=True,
+    help="chatqec: full pipeline; bare: the same model with no retrieval and no tools",
+)
+@click.option(
+    "--judge-model",
+    default=None,
+    help="compare only: local model that grades definition/abstain items (not the answering one)",
+)
 def bench_run(
     name: str,
     model: str,
@@ -73,8 +132,10 @@ def bench_run(
     out_path: Path | None,
     resume: bool,
     tool_timeout: float,
+    system: str,
+    judge_model: str | None,
 ) -> None:
-    """Ask every item through the full chatQEC pipeline and score it."""
+    """Ask every item through chatQEC (or the bare model) and score it."""
     from chatqec.cli import _build_chatqec
     from chatqec.conversation.memory import ConversationMemory
     from chatqec.eval.benchmarks import provenance
@@ -82,9 +143,14 @@ def bench_run(
 
     if resume and out_path is None:
         raise click.UsageError("--resume needs --out")
-    bench, gold = _bench(name)
+    if name == "compare" and not judge_model:
+        raise click.UsageError("compare needs --judge-model (a local model other than --model)")
+    if judge_model and judge_model == model:
+        raise click.UsageError("--judge-model must differ from --model: no model grades itself")
+    bench, gold = _bench(name, judge_model)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out = out_path or REPO / f"eval/results/{name}_{model}_{stamp}.jsonl"
+    label = f"{system}-{model}" if name == "compare" else model
+    out = out_path or REPO / f"eval/results/{name}_{label}_{stamp}.jsonl"
     os.environ["CHATQEC_PROVIDER"] = provider
     os.environ["CHATQEC_MCP_TIMEOUT_SECONDS"] = str(tool_timeout)
     if provider == "local":
@@ -97,6 +163,9 @@ def bench_run(
         "limit": limit,
         "ids": ids,
         "fresh_memory_per_item": True,
+        "system": system,
+        "judge_model": judge_model,
+        "bare_system_prompt": BARE_SYSTEM if system == "bare" else None,
     }
     header = provenance.collect(
         chatqec_repo=REPO,
@@ -107,11 +176,14 @@ def bench_run(
         model_url=_model_url(model) if provider == "local" else None,
         settings=settings,
     )
-    bot = _build_chatqec(mcp_server=mcp_server)
     selected = set(ids.split(",")) if ids else None
+    if system == "bare":
+        ask = _bare_ask(provider, model)
+    else:
+        bot = _build_chatqec(mcp_server=mcp_server)
 
-    def ask(prompt: str) -> Any:
-        return bot.ask(prompt, memory=ConversationMemory())  # items never share history
+        def ask(prompt: str) -> Any:
+            return bot.ask(prompt, memory=ConversationMemory())  # items never share history
 
     def progress(row: dict[str, Any]) -> None:
         s = row["score"]
@@ -159,12 +231,15 @@ def bench_report(paths: tuple[Path, ...]) -> None:
 @click.argument("name")
 @click.argument("path", type=click.Path(exists=True, path_type=Path))
 @click.option("--out", "out_path", type=click.Path(path_type=Path), required=True)
-def bench_rescore(name: str, path: Path, out_path: Path) -> None:
-    """Rescore a stored run with the current scorer and gold (no model calls)."""
+@click.option("--judge-model", default=None, help="compare only: local judge model")
+def bench_rescore(name: str, path: Path, out_path: Path, judge_model: str | None) -> None:
+    """Rescore a stored run with the current scorer and gold (no answering-model calls)."""
     from chatqec.eval.benchmarks.provenance import sha256_file
     from chatqec.eval.benchmarks.run import rescore_rows, summarize, write_rows
 
-    bench, gold = _bench(name)
+    if name == "compare" and not judge_model:
+        raise click.UsageError("compare needs --judge-model to re-grade definition/abstain rows")
+    bench, gold = _bench(name, judge_model)
     header, rows = rescore_rows(bench, path)
     header["rescore_gold"] = {"path": str(gold), "sha256": sha256_file(gold)}
     write_rows(out_path, header, rows)

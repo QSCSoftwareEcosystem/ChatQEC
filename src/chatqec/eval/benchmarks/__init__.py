@@ -28,6 +28,7 @@ def get_benchmark(name: str) -> type[Benchmark]:
 def _load_adapters() -> None:
     # Importing an adapter registers it.
     from chatqec.eval.benchmarks import (
+        compare,  # noqa: F401
         decoder_bench,  # noqa: F401
         ft_primitive_bench,  # noqa: F401
     )
