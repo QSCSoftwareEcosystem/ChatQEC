@@ -249,3 +249,33 @@ def test_chunk_figure_paths_skips_missing_files(tmp_path):
     chunk = _chunk_with_payload({"meta_figures": ["missing.png"]})
     paths = _chunk_figure_paths([chunk], base_dir=tmp_path)
     assert paths == []
+
+
+def test_ask_with_session_memory_isolates_sessions():
+    """The Streamlit app shares ONE cached ChatQEC across browser sessions. Each
+    session must pass its own memory so visitor B never gets visitor A's turns
+    as history (seen in the UI: a fresh page re-ran the previous prompt's tool)."""
+    bot, _, synthesizer = _build_chatqec()
+    a, b = ConversationMemory(), ConversationMemory()
+
+    bot.ask("Compare decoders on a color code", memory=a)
+    bot.ask("Add Pauli checks to GHZ-3", memory=b)
+
+    history_b = synthesizer.synthesize.call_args.kwargs["history"]
+    assert all("color code" not in str(t) for t in history_b)
+    assert "color code" in str(a.recent(n=6))
+    assert "Pauli" in str(b.recent(n=6))
+    assert bot.memory.recent(n=6) == []  # shared memory untouched
+
+
+def test_ask_stream_with_session_memory_isolates_sessions():
+    bot, _, synthesizer = _build_chatqec()
+    synthesizer.synthesize_stream.return_value = iter([])
+    a, b = ConversationMemory(), ConversationMemory()
+
+    list(bot.ask_stream("Compare decoders on a color code", memory=a))
+    list(bot.ask_stream("Add Pauli checks to GHZ-3", memory=b))
+
+    assert "color code" in str(a.recent(n=6))
+    assert "color code" not in str(b.recent(n=6))
+    assert bot.memory.recent(n=6) == []

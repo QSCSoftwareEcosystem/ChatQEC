@@ -6,6 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from chatqec.conversation.memory import ConversationMemory
 from chatqec.trace import enable_trace
 from chatqec_app.components import citation_card, tool_output
 from chatqec_app.utils import (
@@ -53,6 +54,10 @@ EXAMPLE_QUESTIONS = [
 # --- session state ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
+# The ChatQEC instance is cached and shared by every visitor, so conversation
+# history must live in this session, never on the shared instance.
+if "conversation_memory" not in st.session_state:
+    st.session_state.conversation_memory = ConversationMemory()
 if "captcha_verified" not in st.session_state:
     st.session_state.captcha_verified = False
 
@@ -164,12 +169,16 @@ if (submission or queued_question) and (question or uploaded):
     with st.chat_message("assistant"):
         if mcp_enabled:
             with st.spinner("Running QEC tools…"):
-                answer = bot.ask(question or "", images=images)
+                answer = bot.ask(
+                    question or "", images=images, memory=st.session_state.conversation_memory
+                )
             st.markdown(answer.text)
         else:
             placeholder = st.empty()
             full = ""
-            for chunk in bot.ask_stream(question or "", images=images):
+            for chunk in bot.ask_stream(
+                question or "", images=images, memory=st.session_state.conversation_memory
+            ):
                 full += chunk.delta
                 placeholder.markdown(full + "▌")
             placeholder.markdown(full)
@@ -177,7 +186,9 @@ if (submission or queued_question) and (question or uploaded):
             # Get final structured Answer from a non-stream call to harvest
             # citations/tools (the streaming path doesn't return them yet; M9
             # stays explicit about this limit).
-            answer = bot.ask(question or "", images=images)
+            answer = bot.ask(
+                question or "", images=images, memory=st.session_state.conversation_memory
+            )
 
         # Rendered inside the same chat_message container as the answer text
         # (not after it closes) so a blocked-on-bot.ask() rerun never leaves a

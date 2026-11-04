@@ -182,20 +182,33 @@ class ChatQEC:
             return ""
         return describe_image(client=self.rewriter.client, model=self.rewriter.model, images=images)
 
-    def ask(self, question: str, images: list[ImageAttachment] | None = None) -> Answer:
+    def ask(
+        self,
+        question: str,
+        images: list[ImageAttachment] | None = None,
+        *,
+        memory: ConversationMemory | None = None,
+    ) -> Answer:
+        """Answer one question.
+
+        ``memory`` is this conversation's history. Pass one per user session
+        when a single ChatQEC is shared (the Streamlit app caches one for all
+        visitors); without it the instance's own memory is used.
+        """
+        mem = self.memory if memory is None else memory
         images = images or []
         trace("ask.question", question=question, top_k=self.top_k, candidate_k=self.candidate_k)
         caption = self._caption(images)
         trace("image.caption", n_images=len(images), caption=caption)
         classify_text = f"{question}\n{caption}".strip() if caption else question
-        verdict = self.classifier.classify(classify_text, memory=self.memory)
+        verdict = self.classifier.classify(classify_text, memory=mem)
         trace("classify.verdict", on_topic=verdict.on_topic, refusal=verdict.refusal_message)
         if not verdict.on_topic:
-            self.memory.add_user(question)
-            self.memory.add_assistant(verdict.refusal_message)
+            mem.add_user(question)
+            mem.add_assistant(verdict.refusal_message)
             return Answer(text=verdict.refusal_message, confidence="low")
 
-        rewrite = self.rewriter.rewrite(question, memory=self.memory)
+        rewrite = self.rewriter.rewrite(question, memory=mem)
         queries = [rewrite.rewritten, *rewrite.variants]
         if caption:
             queries.append(caption)
@@ -233,7 +246,7 @@ class ChatQEC:
             question=question,
             retrieved=retrieval.chunks + web_chunks,
             canonical_chunks=canonical_chunks,
-            history=self.memory.recent(n=_HISTORY_TURNS),
+            history=mem.recent(n=_HISTORY_TURNS),
             images=figure_images,
         )
         trace(
@@ -246,8 +259,8 @@ class ChatQEC:
             output_tokens=result.output_tokens,
         )
 
-        self.memory.add_user(question)
-        self.memory.add_assistant(result.text)
+        mem.add_user(question)
+        mem.add_assistant(result.text)
 
         return Answer(
             text=result.text,
@@ -263,22 +276,28 @@ class ChatQEC:
         )
 
     def ask_stream(
-        self, question: str, images: list[ImageAttachment] | None = None
+        self,
+        question: str,
+        images: list[ImageAttachment] | None = None,
+        *,
+        memory: ConversationMemory | None = None,
     ) -> Iterator[StreamChunk]:
+        """Streaming ``ask``; ``memory`` has the same per-session meaning."""
+        mem = self.memory if memory is None else memory
         images = images or []
         trace("ask_stream.question", question=question)
         caption = self._caption(images)
         trace("image.caption", n_images=len(images), caption=caption)
         classify_text = f"{question}\n{caption}".strip() if caption else question
-        verdict = self.classifier.classify(classify_text, memory=self.memory)
+        verdict = self.classifier.classify(classify_text, memory=mem)
         trace("classify.verdict", on_topic=verdict.on_topic, refusal=verdict.refusal_message)
         if not verdict.on_topic:
-            self.memory.add_user(question)
-            self.memory.add_assistant(verdict.refusal_message)
+            mem.add_user(question)
+            mem.add_assistant(verdict.refusal_message)
             yield StreamChunk(delta=verdict.refusal_message)
             return
 
-        rewrite = self.rewriter.rewrite(question, memory=self.memory)
+        rewrite = self.rewriter.rewrite(question, memory=mem)
         queries = [rewrite.rewritten, *rewrite.variants]
         if caption:
             queries.append(caption)
@@ -311,11 +330,11 @@ class ChatQEC:
             question=question,
             retrieved=retrieval.chunks + web_chunks,
             canonical_chunks=canonical_chunks,
-            history=self.memory.recent(n=_HISTORY_TURNS),
+            history=mem.recent(n=_HISTORY_TURNS),
             images=figure_images,
         ):
             full_text += delta
             yield StreamChunk(delta=delta)
 
-        self.memory.add_user(question)
-        self.memory.add_assistant(full_text)
+        mem.add_user(question)
+        mem.add_assistant(full_text)
