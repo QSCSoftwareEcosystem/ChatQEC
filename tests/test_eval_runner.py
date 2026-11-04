@@ -54,6 +54,7 @@ def test_runner_aggregates_metrics_per_subtype():
                 )
             ],
             confidence="medium",
+            retrieved_source_ids=["canonical:surface-code"],  # a cited source was retrieved
         )
 
     bot.ask.side_effect = fake_ask
@@ -169,3 +170,24 @@ def test_runner_computes_numeric_fact_match():
     )
 
     assert report.raw[0]["numeric_fact_match"] == {"n": True, "k": True}
+
+
+def test_recall_uses_retrieved_sources_not_citations(tmp_path):
+    """A source that was retrieved but not cited must count for recall@k."""
+    from unittest.mock import MagicMock
+
+    from chatqec.api_types import Answer
+    from chatqec.eval.dataset import EvalCase
+    from chatqec.eval.runner import run_eval
+
+    case = EvalCase(
+        id="c1", subtype="definition", question="q", expected_topics=[],
+        expected_source_id_prefixes=["canonical:surface"], gold_answer_summary="g",
+    )  # fmt: skip
+    bot = MagicMock()
+    bot.ask.return_value = Answer(
+        text="a", citations=[], retrieved_source_ids=["canonical:surface-code"]
+    )
+    judge = MagicMock()
+    report = run_eval(cases=[case], bot=bot, judge_client=judge, judge_model="m")
+    assert report.overall_recall_at_k == 1.0

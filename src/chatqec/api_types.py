@@ -34,6 +34,9 @@ class Answer:
     figure_paths: list[str] = field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
+    # Sources of every chunk the synthesizer was given (canonical, retrieved, web), in
+    # order and de-duplicated: what retrieval delivered, whether or not it was cited.
+    retrieved_source_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

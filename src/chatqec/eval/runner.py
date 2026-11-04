@@ -84,20 +84,22 @@ def run_eval(
         t0 = time.monotonic()
         answer = bot.ask(case.question)
         elapsed_s = time.monotonic() - t0
-        approximated_retrieved = [
+        # recall@k measures retrieval: the sources the synthesizer was actually given,
+        # not just the ones it chose to cite.
+        retrieved = [
             RetrievedChunk(
-                chunk_id=c.chunk_id,
-                source_id=c.source_id,
+                chunk_id=sid,
+                source_id=sid,
                 text="",
-                title=c.title,
+                title="",
                 authority_tier="",
                 score=0.0,
                 payload={},
             )
-            for c in answer.citations
+            for sid in answer.retrieved_source_ids
         ]
         r = recall_at_k(
-            approximated_retrieved,
+            retrieved,
             expected_source_id_prefixes=case.expected_source_id_prefixes,
         )
         ca = citation_accuracy(

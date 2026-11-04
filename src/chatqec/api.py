@@ -273,6 +273,11 @@ class ChatQEC:
             figure_paths=figure_paths,
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
+            retrieved_source_ids=list(
+                dict.fromkeys(
+                    c.source_id for c in [*canonical_chunks, *retrieval.chunks, *web_chunks]
+                )
+            ),
         )
 
     def ask_stream(

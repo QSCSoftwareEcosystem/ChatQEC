@@ -279,3 +279,11 @@ def test_ask_stream_with_session_memory_isolates_sessions():
     assert "color code" in str(a.recent(n=6))
     assert "color code" not in str(b.recent(n=6))
     assert bot.memory.recent(n=6) == []
+
+
+def test_answer_exposes_the_sources_that_reached_the_model():
+    """Eval recall@k must measure retrieval, not citations: the runner used to rebuild the
+    'retrieved' list from answer.citations, so a source retrieved but not cited scored 0."""
+    bot, _, _ = _build_chatqec()
+    answer = bot.ask("What is the surface code?")
+    assert answer.retrieved_source_ids == ["x"]  # the stub retriever's one chunk
