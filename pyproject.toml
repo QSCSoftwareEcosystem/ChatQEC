@@ -86,6 +86,8 @@ ignore = ["E501", "PLR0913"]
 # Lazy imports for heavy/optional deps (trafilatura, requests, arxiv, unstructured).
 # Auto-fix would move them to module-level and defeat cold-start optimisation.
 "src/chatqec/cli.py" = ["PLC0415"]
+"src/chatqec/eval/benchmarks/cli.py" = ["PLC0415"]       # lazy: heavy bot/provider imports
+"src/chatqec/eval/benchmarks/__init__.py" = ["PLC0415"]  # lazy: adapters register on import
 "src/chatqec/ingestion/fetchers/pdf.py" = ["PLC0415"]
 "src/chatqec/ingestion/fetchers/arxiv.py" = ["PLC0415"]
 "src/chatqec/ingestion/fetchers/arxiv_source.py" = ["PLC0415"]

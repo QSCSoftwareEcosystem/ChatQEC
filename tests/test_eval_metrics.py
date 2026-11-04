@@ -151,3 +151,13 @@ def test_numeric_fact_match_ignores_unparseable_output():
 
 def test_numeric_fact_match_empty_expected_returns_empty_dict():
     assert numeric_fact_match([_tc("code_params")], expected={}) == {}
+
+
+def test_numeric_fact_match_reads_python_repr_tool_output():
+    """api.py records tool output as str(dict), a Python repr. The metric only tried
+    json.loads, so on every real run it found no facts and returned all False."""
+    from chatqec.api_types import ToolCall
+    from chatqec.eval.metrics import numeric_fact_match
+
+    call = ToolCall("code_params", {}, repr({"ok": True, "n": 9, "k": 1}))
+    assert numeric_fact_match([call], expected={"n": 9, "k": 1}) == {"n": True, "k": True}

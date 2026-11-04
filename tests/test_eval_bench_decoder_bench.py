@@ -95,3 +95,23 @@ def test_wilson_interval_contains_rate_and_is_exact_at_zero():
     lo, hi = wilson(10, 1000)
     assert lo < 0.01 < hi
     assert wilson(0, 100)[0] == 0.0
+
+
+def test_scorer_reads_python_repr_tool_output(bench):
+    """chatQEC records tool output as a Python repr (single quotes), not JSON: the live
+    smoke run scored 0 on numbers because the scorer only tried json.loads."""
+    item = _item(bench, "surface", 7, 0.005, "fast")
+    n = 20_000
+    out = {
+        "ok": True, "best": "pymatching", "circuit_source": "decoder_bench",
+        "results": [
+            {"decoder": d, "ok": True, "num_errors": round(item.gold[d] * n), "shots": n}
+            for d in ("pymatching", "belief_find")
+        ],
+    }  # fmt: skip
+    ans = Answer(
+        text="PyMatching is best.",
+        tool_calls=[ToolCall("decoder_compare", dict(item.expected_args), repr(out))],
+    )
+    s = bench.score(item, ans)
+    assert s["numeric_in_ci"] == 1.0 and s["faithful_best"] and s["passed"]

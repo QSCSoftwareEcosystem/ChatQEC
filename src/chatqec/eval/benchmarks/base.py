@@ -8,12 +8,12 @@ score if a tool produced it.
 
 from __future__ import annotations
 
-import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
 from chatqec.api_types import Answer, ToolCall
+from chatqec.eval.metrics import parse_tool_output
 
 
 @dataclass(frozen=True)
@@ -41,12 +41,8 @@ class Benchmark(ABC):
 
 
 def tool_output(call: ToolCall) -> dict[str, Any]:
-    """The tool's JSON output as a dict, or {} when it is not JSON."""
-    try:
-        parsed = json.loads(call.output)
-    except (TypeError, ValueError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    """The tool's output as a dict (JSON or the Python repr chatQEC records), else {}."""
+    return parse_tool_output(call.output)
 
 
 def last_call(answer: Answer, tool: str, **where: Any) -> ToolCall | None:

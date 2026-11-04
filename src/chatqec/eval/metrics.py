@@ -3,6 +3,7 @@ tool-routing accuracy, and judge-independent numeric-fact checks."""
 
 from __future__ import annotations
 
+import ast
 import json
 from typing import Any
 
@@ -103,6 +104,23 @@ def unsafe_tool_invoked(
     return any(tc.name in banned for tc in tool_calls)
 
 
+def parse_tool_output(text: str) -> dict[str, Any]:
+    """A tool call's recorded output as a dict, or {} when it is not one.
+
+    api.py records ``str(result_dict)``, a Python repr (single quotes, True/None), which
+    json.loads rejects; the Chat page reads it with ast.literal_eval. Accept both, so JSON
+    outputs (tests, other callers) keep working. literal_eval never executes code.
+    """
+    for parse in (json.loads, ast.literal_eval):
+        try:
+            parsed = parse(text)
+        except (TypeError, ValueError, SyntaxError, MemoryError, RecursionError):
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
+
+
 def numeric_fact_match(
     tool_calls: list[ToolCall],
     *,
@@ -127,10 +145,5 @@ def numeric_fact_match(
         return {}
     observed: dict[str, Any] = {}
     for tc in tool_calls:
-        try:
-            parsed = json.loads(tc.output)
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if isinstance(parsed, dict):
-            observed.update(parsed)
+        observed.update(parse_tool_output(tc.output))
     return {key: (key in observed and observed[key] == want) for key, want in expected.items()}
