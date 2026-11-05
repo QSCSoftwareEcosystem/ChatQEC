@@ -16,6 +16,7 @@ class Citation:
     chunk_id: str
     title: str
     url: str
+    marker: int = 0  # the [^n] footnote number in the answer text (0 = unknown)
 
 
 @dataclass(frozen=True)

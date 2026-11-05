@@ -59,6 +59,7 @@ def extract_citations(
                 chunk_id=c.chunk_id,
                 title=c.title,
                 url=_resolve_url(c.payload, c.source_id),
+                marker=n,
             )
         )
     return out

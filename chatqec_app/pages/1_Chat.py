@@ -89,8 +89,7 @@ def _render_figures(paths: list[str]) -> None:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["text"])
-        for c in msg.get("citations", []):
-            citation_card.render(c)
+        citation_card.render_all(msg.get("citations", []))
         for t in msg.get("tool_calls", []):
             tool_output.render(t)
         _render_figures(msg.get("figures", []))
@@ -194,8 +193,7 @@ if (submission or queued_question) and (question or uploaded):
         # (not after it closes) so a blocked-on-bot.ask() rerun never leaves a
         # prior turn's citation/tool widgets as an orphaned, stale-faded
         # leftover sitting below the next turn's spinner.
-        for c in answer.citations:
-            citation_card.render(c)
+        citation_card.render_all(answer.citations)
         for t in answer.tool_calls:
             tool_output.render(t)
         _render_figures(answer.figure_paths)

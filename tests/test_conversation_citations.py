@@ -107,3 +107,9 @@ def test_strip_trailing_sources_noop_without_block():
 
     text = "A plain answer with a marker [^1] and no trailing list."
     assert strip_trailing_sources(text) == text
+
+
+def test_each_citation_keeps_its_footnote_marker():
+    answer = "A[^2]. B[^1]. C[^2]."
+    citations = extract_citations(answer, [_chunk(0), _chunk(1)])
+    assert [c.marker for c in citations] == [2, 1]
