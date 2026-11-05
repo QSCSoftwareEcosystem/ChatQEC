@@ -165,6 +165,40 @@ def _fixed() -> list[dict]:
     }]  # fmt: skip
 
 
+# Systems the paper compares against. Gold is only what each paper states in its text; the
+# Lean-QEC values are also the ones its Lean files certify (LeanQEC/Stabilizer/Examples/BB at
+# github.com/VerifiedQC/Lean-QEC@8d115519: rank lemmas give k, lt_dist_sat gives d - 1).
+EXTERNAL_LIT = [
+    (
+        "lit-leanqec-2605.16523",
+        "Which bivariate bicycle codes does arXiv:2605.16523 (Lean-QEC) certify with distance "
+        "proofs checked inside the Lean kernel, and what are their [[n,k,d]] parameters?",
+        [(70, 6, 9), (90, 8, 10)],
+        "arxiv:2605.16523; Lean-QEC@8d115519b471b71a21fbdddf5341d8203b841cc9 BB70.lean, BB90.lean",
+    ),
+    (
+        "lit-omniqec-2607.25865",
+        "Which bivariate bicycle codes does OmniQEC (arXiv:2607.25865) use as baselines for its "
+        "discovered codes, and what are their [[n,k,d]] parameters?",
+        [(72, 12, 6), (144, 12, 12)],
+        "arxiv:2607.25865",
+    ),
+]
+
+
+def _external(repo: Path) -> list[dict]:
+    return [
+        {
+            "id": item_id,
+            "category": "literature",
+            "prompt": prompt,
+            "gold": {"codes": codes, "mentioned": _mentioned(repo, source.split(";")[0])},
+            "source": source,
+        }
+        for item_id, prompt, codes, source in EXTERNAL_LIT
+    ]
+
+
 def _definitions(repo: Path) -> list[dict]:
     out = []
     for line in (repo / "eval/qa_set.jsonl").read_text().splitlines():
@@ -181,7 +215,9 @@ def _definitions(repo: Path) -> list[dict]:
 
 
 def main(repo: Path) -> None:
-    items = _literature(repo) + _db(repo) + _ft(repo) + _fixed() + _definitions(repo)
+    items = (
+        _literature(repo) + _external(repo) + _db(repo) + _ft(repo) + _fixed() + _definitions(repo)
+    )
     items += [
         {
             "id": i,
