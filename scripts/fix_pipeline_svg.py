@@ -85,7 +85,14 @@ DISC_INSET = 4
 DISC_PAD = 9  # preferred margin between an icon and its disc edge
 TEXT_FIXES = {
     "QAppsWiki(": "QAppsWiki (via MCP)",
-    "Gemini or local modal supported": "Gemini or a local model also supported",
+    "Gemini or local modal supported": "Claude, GPT, Gemini, or a local model",
+    "LLM: Claude by default": "Large Language Model (LLM)",
+}
+# Re-centred lines (text -> centre x of the text area right of the tile's icon).
+TEXT_CENTER = {
+    "Large Language Model (LLM)": 502,
+    "Claude, GPT, Gemini, or a local model": 502,
+    "Writes from top passages · citation or computation?": 502,
 }
 DROP_TEXT = {"i (via MCP)"}
 TOOL_AREA = (306, 812, 908, 962)  # x0, y0, x1, y1: tool-server text region below the icons
@@ -146,6 +153,20 @@ def _in_tool_area(box: tuple[float, float, float, float] | None) -> bool:
     return box is not None and box[1] > y0 and box[3] < y1 and box[0] > x0 and box[2] < x1
 
 
+def _fix_text(el: ET.Element, parents: dict[ET.Element, ET.Element]) -> None:
+    """Drop the outlined tool text's leftovers and garbled lines, fix typos, re-centre."""
+    content = html.unescape(el.text or "")
+    in_tools = TOOL_AREA[1] < float(el.get("y", 0)) < TOOL_AREA[3]
+    if content in DROP_TEXT or (in_tools and float(el.get("x", 0)) > TOOL_AREA[0]):
+        parents[el].remove(el)
+        return
+    if content in TEXT_FIXES:
+        el.text = TEXT_FIXES[content]
+    if el.text in TEXT_CENTER:
+        el.set("x", str(TEXT_CENTER[el.text]))
+        el.set("text-anchor", "middle")
+
+
 def _clean(root: ET.Element, parents: dict[ET.Element, ET.Element]) -> tuple[ET.Element, int]:
     """Whiten tiles and icon interiors, drop outlined tool text, fix typos.
 
@@ -157,12 +178,7 @@ def _clean(root: ET.Element, parents: dict[ET.Element, ET.Element]) -> tuple[ET.
     for el in list(root.iter()):
         tag = _tag(el)
         if tag == "text":
-            content = html.unescape(el.text or "")
-            in_tools = TOOL_AREA[1] < float(el.get("y", 0)) < TOOL_AREA[3]
-            if content in DROP_TEXT or (in_tools and float(el.get("x", 0)) > TOOL_AREA[0]):
-                parents[el].remove(el)
-            elif content in TEXT_FIXES:
-                el.text = TEXT_FIXES[content]
+            _fix_text(el, parents)
             continue
         if tag not in ("path", "rect", "circle", "ellipse"):
             continue
