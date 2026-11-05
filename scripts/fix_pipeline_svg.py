@@ -27,7 +27,7 @@ NS = "http://www.w3.org/2000/svg"
 ET.register_namespace("", NS)
 ET.register_namespace("xlink", "http://www.w3.org/1999/xlink")
 FIG = Path(__file__).resolve().parent.parent / "6ac52ba22379cb285b6dc6d7/figures"
-SRC = FIG / "ChatQEC Research Pipeline-image-7.svg"
+SRC = Path(__file__).resolve().parent.parent / "docs/images/chatqec_pipeline_figurelabs_source.svg"
 
 TEAL = "#c5e5e1"
 TILE_ORDER = range(90, 102)  # draw-order indices of the 12 tile backgrounds
@@ -36,28 +36,35 @@ TILE_ORDER = range(90, 102)  # draw-order indices of the 12 tile backgrounds
 # the corpus and the wiki. They are removed (draw-order indices of their filled bodies, with
 # their edge strokes) and redrawn by ROUTED_ARROWS so that each source tile has one arrow in
 # and one arrow out, with no crossings.
-DOUBLE_ARROWS = {63, 64, 71, 72, 73, 74}
+# Every generator arrow is a filled outline shape (9 px shaft, 17.5 px head), too heavy at
+# print size and impossible to thin in place. All of them are removed (draw-order indices of
+# their filled bodies; 244 is a same-coloured icon detail and stays), together with every
+# unfilled edge stroke in the arrows' edge colours, and redrawn as thin strokes (ROUTED_ARROWS).
+ARROW_BODIES = {59, 61, 63, 64, 66, 71, 72, 73, 74, 78, 80, 81, 85, 86, 88}
+ARROW_EDGE_STROKES = {"#15393c", "#868a89", "#8eaeb2"}  # used only by arrow edges
 ARROW = "#1d5d65"
-SHAFT, HEAD_W, HEAD_L = 9.0, 17.5, 9.0  # measured from the generator's arrows
-# polylines; the last segment's direction gives the arrowhead
-# The lower tiles are shifted outward by STAGGER (QAppsWiki left, web search right), which
-# opens a lane beside each upper tile, so every source gets one straight arrow in and out.
+SHAFT, HEAD_W, HEAD_L, BEND = 4.5, 11.0, 8.0, 10.0  # px; BEND = corner radius
 STAGGER = 40
 SHIFTED_TILES = {  # region of the tile and its contents -> horizontal shift
     "qapps": ((104, 308, 458, 390), -STAGGER),
     "web": ((470, 308, 824, 390), +STAGGER),
 }
-ROUTED_ARROWS = [  # polylines; the last segment's direction gives the arrowhead
-    [(299, 134), (87, 134), (87, 311)],  # Screen & rewrite -> QAppsWiki, past the corpus' left edge
-    [
-        (629, 134),
-        (841, 134),
-        (841, 311),
-    ],  # Screen & rewrite -> Web search, past the wiki's right edge
+ROUTED_ARROWS = [  # polylines between tile edges; the last segment gives the arrowhead
+    [(464, 82), (464, 103)],  # QEC question -> Screen & rewrite
+    [(444, 166), (444, 186), (284, 186), (284, 207)],  # -> Curated corpus
+    [(484, 166), (484, 186), (645, 186), (645, 207)],  # -> Canonical wiki
+    [(299, 134), (87, 134), (87, 311)],  # -> QAppsWiki, past the corpus' left edge
+    [(629, 134), (841, 134), (841, 311)],  # -> Web search, past the wiki's right edge
     [(435, 300), (435, 428)],  # Curated corpus -> Pool, past QAppsWiki's right edge
     [(493, 300), (493, 428)],  # Canonical wiki -> Pool, past web search's left edge
     [(241, 387), (241, 428)],  # QAppsWiki -> Pool
     [(687, 387), (687, 428)],  # Web search -> Pool
+    [(464, 490), (464, 517)],  # Pool -> LLM
+    [(452, 593), (452, 613), (194, 613), (194, 634)],  # LLM -> Answer from evidence
+    [(476, 593), (476, 613), (650, 613), (650, 634)],  # LLM -> Calls tools via MCP
+    [(650, 695), (650, 722)],  # Calls tools -> Tool server
+    [(194, 695), (194, 985), (452, 985), (452, 1006)],  # Answer from evidence -> Cited answer
+    [(650, 962), (650, 985), (476, 985), (476, 1006)],  # Tool server -> Cited answer
 ]
 BLUE, GREEN, YELLOW, LAVENDER, PEACH, PINK, GREY = (
     "#cfe2f3", "#d4ead7", "#fbeec1", "#e2dcf2", "#fde0c5", "#f6d3dc", "#e6e6e6",
@@ -187,7 +194,7 @@ def _clean(root: ET.Element, parents: dict[ET.Element, ET.Element]) -> tuple[ET.
             order += 1
         if order in TILE_ORDER and tag != "ellipse":
             last_tile = el
-        if tag != "ellipse" and order in DOUBLE_ARROWS:
+        if tag != "ellipse" and order in ARROW_BODIES:
             box = _bbox(el)
             if box is not None:
                 arrow_boxes.append(box)
@@ -208,21 +215,13 @@ def _clean(root: ET.Element, parents: dict[ET.Element, ET.Element]) -> tuple[ET.
 def _drop_arrow_edges(
     root: ET.Element,
     parents: dict[ET.Element, ET.Element],
-    boxes: list[tuple[float, float, float, float]],
+    boxes: list[tuple[float, float, float, float]],  # kept for the call signature
 ) -> None:
-    """Remove the unfilled edge strokes that lie inside a removed arrow body."""
+    """Remove the generator's unfilled arrow edge strokes (their colours mark them)."""
     for el in list(root.iter()):
-        if _tag(el) != "path" or el.get("fill") not in (None, "none") or el not in parents:
-            continue
-        b = _bbox(el)
-        if b is None:
-            continue
-        for x0, y0, x1, y1 in boxes:
-            # the generator's edge strokes overhang an arrow body by up to ~12 px where it
-            # meets a tile, so the tolerance is generous (these paths are unfilled edges only)
-            if b[0] >= x0 - 12 and b[2] <= x1 + 12 and b[1] >= y0 - 2 and b[3] <= y1 + 2:
-                parents[el].remove(el)
-                break
+        unfilled = el.get("fill") in (None, "none")
+        if _tag(el) == "path" and unfilled and el.get("stroke") in ARROW_EDGE_STROKES:
+            parents[el].remove(el)
 
 
 def _shift_tiles(root: ET.Element) -> int:
@@ -263,17 +262,31 @@ def _add_discs(last_tile: ET.Element, parents: dict[ET.Element, ET.Element]) -> 
         holder.insert(at + i, ET.Element(f"{{{NS}}}circle", attrs))
 
 
+def _rounded(pts: list[tuple[float, float]]) -> str:
+    """SVG path through axis-aligned points with BEND-radius rounded corners."""
+    d = [f"M {pts[0][0]:.1f} {pts[0][1]:.1f}"]
+    for k in range(1, len(pts) - 1):
+        (ax, ay), (bx, by), (cx, cy) = pts[k - 1], pts[k], pts[k + 1]
+        r_in = min(BEND, abs(bx - ax) + abs(by - ay)) / max(1.0, abs(bx - ax) + abs(by - ay))
+        r_out = min(BEND, abs(cx - bx) + abs(cy - by)) / max(1.0, abs(cx - bx) + abs(cy - by))
+        p_in = (bx - (bx - ax) * r_in, by - (by - ay) * r_in)
+        p_out = (bx + (cx - bx) * r_out, by + (cy - by) * r_out)
+        d.append(f"L {p_in[0]:.1f} {p_in[1]:.1f} Q {bx:.1f} {by:.1f} {p_out[0]:.1f} {p_out[1]:.1f}")
+    d.append(f"L {pts[-1][0]:.1f} {pts[-1][1]:.1f}")
+    return " ".join(d)
+
+
 def _add_routed_arrows(root: ET.Element) -> None:
-    """Draw ROUTED_ARROWS in the generator's arrow style (9 px shaft, 17.5 x 9 px head)."""
+    """Draw ROUTED_ARROWS as thin strokes with rounded bends and a filled head."""
     for pts in ROUTED_ARROWS:
         (x0, y0), (x1, y1) = pts[-2], pts[-1]
         ux, uy = (x1 > x0) - (x1 < x0), (y1 > y0) - (y1 < y0)  # unit direction, axis-aligned
         end = (x1 - ux * HEAD_L, y1 - uy * HEAD_L)
-        d = "M " + " L ".join(f"{x:.1f} {y:.1f}" for x, y in [*pts[:-1], end])
-        root.append(ET.Element(f"{{{NS}}}path", {
-            "d": d, "fill": "none", "stroke": ARROW, "stroke-width": str(SHAFT),
-            "stroke-linejoin": "round", "stroke-linecap": "butt",
-        }))  # fmt: skip
+        shaft = {
+            "d": _rounded([*pts[:-1], end]), "fill": "none", "stroke": ARROW,
+            "stroke-width": str(SHAFT), "stroke-linejoin": "round", "stroke-linecap": "butt",
+        }  # fmt: skip
+        root.append(ET.Element(f"{{{NS}}}path", shaft))
         bx, by = end
         px, py = -uy * HEAD_W / 2, ux * HEAD_W / 2  # perpendicular half-width
         head = f"M {x1} {y1} L {bx + px:.1f} {by + py:.1f} L {bx - px:.1f} {by - py:.1f} Z"
