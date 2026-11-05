@@ -36,21 +36,28 @@ TILE_ORDER = range(90, 102)  # draw-order indices of the 12 tile backgrounds
 # the corpus and the wiki. They are removed (draw-order indices of their filled bodies, with
 # their edge strokes) and redrawn by ROUTED_ARROWS so that each source tile has one arrow in
 # and one arrow out, with no crossings.
-DOUBLE_ARROWS = {63, 64, 71, 73}
+DOUBLE_ARROWS = {63, 64, 71, 72, 73, 74}
 ARROW = "#1d5d65"
 SHAFT, HEAD_W, HEAD_L = 9.0, 17.5, 9.0  # measured from the generator's arrows
 # polylines; the last segment's direction gives the arrowhead
-ROUTED_ARROWS = [
-    [(299, 134), (62, 134), (62, 349), (107, 349)],  # Screen & rewrite -> QAppsWiki (left margin)
+# The lower tiles are shifted outward by STAGGER (QAppsWiki left, web search right), which
+# opens a lane beside each upper tile, so every source gets one straight arrow in and out.
+STAGGER = 40
+SHIFTED_TILES = {  # region of the tile and its contents -> horizontal shift
+    "qapps": ((104, 308, 458, 390), -STAGGER),
+    "web": ((470, 308, 824, 390), +STAGGER),
+}
+ROUTED_ARROWS = [  # polylines; the last segment's direction gives the arrowhead
+    [(299, 134), (87, 134), (87, 311)],  # Screen & rewrite -> QAppsWiki, past the corpus' left edge
     [
         (629, 134),
-        (866, 134),
-        (866, 349),
-        (821, 349),
-    ],  # Screen & rewrite -> Web search (right margin)
-    [(440, 300), (440, 305.5), (464, 305.5)],  # Curated corpus -> trunk (gap between rows)
-    [(488, 300), (488, 305.5), (464, 305.5)],  # Canonical wiki -> trunk
-    [(464, 305.5), (464, 428)],  # trunk down the central gutter -> Pool
+        (841, 134),
+        (841, 311),
+    ],  # Screen & rewrite -> Web search, past the wiki's right edge
+    [(435, 300), (435, 428)],  # Curated corpus -> Pool, past QAppsWiki's right edge
+    [(493, 300), (493, 428)],  # Canonical wiki -> Pool, past web search's left edge
+    [(241, 387), (241, 428)],  # QAppsWiki -> Pool
+    [(687, 387), (687, 428)],  # Web search -> Pool
 ]
 BLUE, GREEN, YELLOW, LAVENDER, PEACH, PINK, GREY = (
     "#cfe2f3", "#d4ead7", "#fbeec1", "#e2dcf2", "#fde0c5", "#f6d3dc", "#e6e6e6",
@@ -185,16 +192,41 @@ def _drop_arrow_edges(
         if b is None:
             continue
         for x0, y0, x1, y1 in boxes:
-            if b[0] >= x0 - 1 and b[2] <= x1 + 1 and b[1] >= y0 - 1 and b[3] <= y1 + 1:
+            # the generator's edge strokes overhang an arrow body by up to ~12 px where it
+            # meets a tile, so the tolerance is generous (these paths are unfilled edges only)
+            if b[0] >= x0 - 12 and b[2] <= x1 + 12 and b[1] >= y0 - 2 and b[3] <= y1 + 2:
                 parents[el].remove(el)
                 break
+
+
+def _shift_tiles(root: ET.Element) -> int:
+    """Move each SHIFTED_TILES tile, with its icon and text, sideways; return elements moved."""
+    moved = 0
+    for el in root.iter():
+        tag = _tag(el)
+        for (x0, y0, x1, y1), dx in SHIFTED_TILES.values():
+            if tag == "text":
+                x, y = float(el.get("x", 0)), float(el.get("y", 0))
+                if x0 <= x <= x1 and y0 <= y <= y1:
+                    el.set("x", f"{x + dx:.2f}")
+                    moved += 1
+                    break
+            elif tag in ("path", "rect", "circle", "ellipse"):
+                b = _bbox(el)
+                if b is not None and b[0] >= x0 and b[2] <= x1 and b[1] >= y0 and b[3] <= y1:
+                    el.set("transform", f"translate({dx},0) {el.get('transform', '')}".strip())
+                    moved += 1
+                    break
+    return moved
 
 
 def _add_discs(last_tile: ET.Element, parents: dict[ET.Element, ET.Element]) -> None:
     """Pastel discs right after the last tile: above the white tiles, below the icons."""
     holder = parents[last_tile]
     at = list(holder).index(last_tile) + 1
-    for i, (cx, cy, half, colour) in enumerate(ICONS.values()):
+    shift = {name: dx for name, (_, dx) in SHIFTED_TILES.items()}
+    for i, (name, (x, cy, half, colour)) in enumerate(ICONS.items()):
+        cx = x + shift.get(name, 0)
         attrs = {"cx": str(cx), "cy": str(cy), "r": str(half + 9), "fill": colour}
         holder.insert(at + i, ET.Element(f"{{{NS}}}circle", attrs))
 
@@ -204,15 +236,12 @@ def _add_routed_arrows(root: ET.Element) -> None:
     for pts in ROUTED_ARROWS:
         (x0, y0), (x1, y1) = pts[-2], pts[-1]
         ux, uy = (x1 > x0) - (x1 < x0), (y1 > y0) - (y1 < y0)  # unit direction, axis-aligned
-        merge = pts[-1] == ROUTED_ARROWS[-1][0]  # a feeder into the trunk gets no head
-        end = pts[-1] if merge else (x1 - ux * HEAD_L, y1 - uy * HEAD_L)
+        end = (x1 - ux * HEAD_L, y1 - uy * HEAD_L)
         d = "M " + " L ".join(f"{x:.1f} {y:.1f}" for x, y in [*pts[:-1], end])
         root.append(ET.Element(f"{{{NS}}}path", {
             "d": d, "fill": "none", "stroke": ARROW, "stroke-width": str(SHAFT),
             "stroke-linejoin": "round", "stroke-linecap": "butt",
         }))  # fmt: skip
-        if merge:
-            continue
         bx, by = end
         px, py = -uy * HEAD_W / 2, ux * HEAD_W / 2  # perpendicular half-width
         head = f"M {x1} {y1} L {bx + px:.1f} {by + py:.1f} L {bx - px:.1f} {by - py:.1f} Z"
@@ -237,6 +266,7 @@ def main() -> None:
     root = tree.getroot()
     parents = {c: p for p in root.iter() for c in p}
     last_tile, removed = _clean(root, parents)
+    moved = _shift_tiles(root)
     _add_discs(last_tile, parents)
     _add_routed_arrows(root)
     _add_tool_text(root)
@@ -244,7 +274,9 @@ def main() -> None:
     tree.write(out, encoding="UTF-8", xml_declaration=True)
     cairosvg.svg2pdf(url=str(out), write_to=str(out.with_suffix(".pdf")))
     cairosvg.svg2png(url=str(out), write_to=str(out.with_suffix(".png")), output_width=1856)
-    logger.info("wrote %s (+ .pdf, .png); removed %d outlined-text shapes", out, removed)
+    logger.info(
+        "wrote %s (+ .pdf, .png); removed %d outlined-text shapes; moved %d", out, removed, moved
+    )
 
 
 if __name__ == "__main__":
