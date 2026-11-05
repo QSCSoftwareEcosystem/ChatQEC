@@ -15,6 +15,8 @@ LOG_DIR="$(dirname "$0")/../logs"
 # Fraction of each GPU vLLM may take. 0.90 leaves ~5 GB, too little when the
 # reranker and CUDA-Q decoders share the GPU; use 0.80 for UI/eval runs.
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.90}"
+# MUSE_GPU / GEMMA_GPU pick the GPU per model (defaults 0 / 1). On a shared box run
+# one model at a time on one GPU, e.g. GEMMA_GPU=0 GPU_MEM_UTIL=0.87 ... gemma
 mkdir -p "$LOG_DIR"
 
 serve() {  # gpu port served_name model_dir tool_parser reasoning_parser
@@ -27,11 +29,11 @@ serve() {  # gpu port served_name model_dir tool_parser reasoning_parser
 }
 
 case "${1:-all}" in
-  muse) serve 0 8001 muse-glimmer Muse-Glimmer-30B muse_glimmer muse_glimmer ;;
-  gemma) serve 1 8002 gemma-4 gemma-4-31B-it gemma4 gemma4 ;;
+  muse) serve "${MUSE_GPU:-0}" 8001 muse-glimmer Muse-Glimmer-30B muse_glimmer muse_glimmer ;;
+  gemma) serve "${GEMMA_GPU:-1}" 8002 gemma-4 gemma-4-31B-it gemma4 gemma4 ;;
   all)
-    serve 0 8001 muse-glimmer Muse-Glimmer-30B muse_glimmer muse_glimmer
-    serve 1 8002 gemma-4 gemma-4-31B-it gemma4 gemma4
+    serve "${MUSE_GPU:-0}" 8001 muse-glimmer Muse-Glimmer-30B muse_glimmer muse_glimmer
+    serve "${GEMMA_GPU:-1}" 8002 gemma-4 gemma-4-31B-it gemma4 gemma4
     ;;
   *) echo "usage: $0 [muse|gemma|all]" >&2; exit 2 ;;
 esac
