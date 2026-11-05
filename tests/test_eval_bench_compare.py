@@ -143,3 +143,14 @@ def test_codes_the_paper_itself_mentions_are_not_invented(tmp_path):
     made_up = Answer(text="[[30,4,5]], [[48,4,7]] and the flagship [[144,12,12]].")
     s = b.score(item, made_up)
     assert s["invented"] == 1 and not s["passed"]
+
+
+def test_code_triples_reads_latex_double_bracket_forms():
+    """OmniQEC (arXiv:2607.25865) writes $[\\![72,12,6]\\!]$; papers also use \\llbracket.
+    Missing these left a paper's 'mentioned' set empty, so a correct answer quoting the
+    paper's codes was scored as inventing them."""
+    assert code_triples(r"BB $[\![72,12,6]\!]$ and $[\![144,12,12]\!]$") == {
+        (72, 12, 6),
+        (144, 12, 12),
+    }
+    assert code_triples(r"$\llbracket 90, 8, 10 \rrbracket$") == {(90, 8, 10)}

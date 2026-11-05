@@ -32,7 +32,9 @@ from chatqec.eval.benchmarks.ft_primitive_bench import _numbers
 # [[n,k,d]], the LaTeX macro \code{n,k,d} some papers use, and the white square brackets
 # U+27E6/U+27E7 that models also write.
 _TRIPLE = re.compile(
-    r"(?:\[\[|\\code\{|\u27e6)\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:\]\]|\}|\u27e7)"
+    # [[n,k,d]], LaTeX [\![n,k,d]\!] and \llbracket n,k,d \rrbracket, \code{n,k,d}, and \u27e6n,k,d\u27e7
+    r"(?:\[\[|\[\\!\[|\\llbracket|\\code\{|\u27e6)\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*"
+    r"(?:\]\]|\]\\!\]|\\rrbracket|\}|\u27e7)"
 )
 _ARXIV = re.compile(r"(?<![\d.])(\d{4}\.\d{4,5})(?:v\d+)?(?![\d])")
 _JUDGE_SYSTEM = "You grade answers. Reply with exactly one word: yes or no."
