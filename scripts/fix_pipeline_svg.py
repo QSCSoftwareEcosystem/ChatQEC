@@ -73,6 +73,16 @@ ICONS = {
     "compile": (702, 787, 25, LAVENDER), "hardware": (838, 786, 23, PINK),
     "cited": (297, 1056, 30, PEACH),
 }  # fmt: skip
+# Tile bounds (x0, y0, x1, y1) before any shift; a disc must stay DISC_INSET inside its tile.
+TILE_BOUNDS = {
+    "question": (338, 10, 590, 82), "screen": (299, 103, 629, 166),
+    "corpus": (107, 207, 455, 300), "wiki": (473, 207, 821, 300),
+    "qapps": (107, 311, 455, 387), "web": (473, 311, 821, 387),
+    "pool": (191, 428, 738, 490), "llm": (255, 517, 674, 593),
+    "evidence": (21, 634, 364, 695), "cited": (246, 1006, 682, 1105),
+}  # fmt: skip
+DISC_INSET = 4
+DISC_PAD = 9  # preferred margin between an icon and its disc edge
 TEXT_FIXES = {
     "QAppsWiki(": "QAppsWiki (via MCP)",
     "Gemini or local modal supported": "Gemini or a local model also supported",
@@ -226,8 +236,14 @@ def _add_discs(last_tile: ET.Element, parents: dict[ET.Element, ET.Element]) -> 
     at = list(holder).index(last_tile) + 1
     shift = {name: dx for name, (_, dx) in SHIFTED_TILES.items()}
     for i, (name, (x, cy, half, colour)) in enumerate(ICONS.items()):
-        cx = x + shift.get(name, 0)
-        attrs = {"cx": str(cx), "cy": str(cy), "r": str(half + 9), "fill": colour}
+        dx = shift.get(name, 0)
+        cx = x + dx
+        r = half + DISC_PAD
+        if name in TILE_BOUNDS:  # never cross the tile's border
+            x0, y0, x1, y1 = TILE_BOUNDS[name]
+            room = min(cx - (x0 + dx), (x1 + dx) - cx, cy - y0, y1 - cy) - DISC_INSET
+            r = min(r, room)
+        attrs = {"cx": str(cx), "cy": str(cy), "r": f"{r:.1f}", "fill": colour}
         holder.insert(at + i, ET.Element(f"{{{NS}}}circle", attrs))
 
 
