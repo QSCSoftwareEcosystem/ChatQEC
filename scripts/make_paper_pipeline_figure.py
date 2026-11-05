@@ -96,7 +96,7 @@ def main() -> None:
         ax, 0.175, 0.55, 0.215, 0.41, "Evidence",
         f"curated corpus:\n{n_src} sources, {n_chunks:,} chunks\n"
         f"({by_type['canonical_wiki']} reviewed pages)\n"
-        "hybrid ranking with\ncanonical-page injection",
+        "QAppsWiki (via MCP),\nweb fallback; hybrid ranking\nwith canonical-page injection",
         "ret",
     )  # fmt: skip
     box(
@@ -106,8 +106,10 @@ def main() -> None:
     )  # fmt: skip
     box(
         ax, 0.64, 0.04, 0.345, 0.92, f"MCP tool server ({n_tools} tools)",
-        "Simulation: Stim, LightStim, Tsim\n\n"
-        "Decoding: PyMatching, Tesseract,\nBP+OSD/LSD, MWPF, MLE, CUDA-Q\n\n"
+        "Simulation: Stim, LightStim, QuEra Tsim\n"
+        "Visualization: Stim diagrams,\nQuEra GLCB circuit viewer\n\n"
+        "Decoding: PyMatching, Tesseract,\nQuEra bloqade (MWPF, MLE, table),\n"
+        "BP+OSD/LSD, Relay-BP, CUDA-Q\n\n"
         "FT primitives and compilation:\nFTPrimitiveBench, Qiskit Clifford+T\nand PBC, Pauli checks\n\n"
         "Hardware and SDKs: IBM Quantum,\nDeltakit, Guppy/Selene",
         "tool",
