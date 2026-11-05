@@ -33,6 +33,21 @@ from chatqec.conversation.mcp_adapter import MCPToolDef
 from chatqec.trace import trace
 
 
+def _child_pids() -> set[int]:
+    """PIDs of this process's direct children (Linux /proc; empty elsewhere)."""
+    me = str(os.getpid())
+    pids = set()
+    with contextlib.suppress(OSError):
+        for entry in os.scandir("/proc"):
+            if not entry.name.isdigit():
+                continue
+            with contextlib.suppress(OSError), open(f"/proc/{entry.name}/stat") as f:
+                # comm (field 2) may contain spaces; ppid is the 2nd field after ")".
+                if f.read().rsplit(")", 1)[1].split()[1] == me:
+                    pids.add(int(entry.name))
+    return pids
+
+
 def _errlog() -> TextIO:
     """Where the server subprocess's stderr goes; it must have a real file descriptor.
 
@@ -79,17 +94,49 @@ class StdioMCPClient:
         self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
         self._thread.start()
 
-        self._ready = threading.Event()
+        self._argv = argv
+        self._ready_timeout = ready_timeout
         self._stop: asyncio.Event | None = None
         self._session: ClientSession | None = None
-        self._error: BaseException | None = None
+        self.server_pid: int | None = None
+        self._spawn()
+        self._tools: list[MCPToolDef] = self._load_tools()
 
-        self._worker_fut = asyncio.run_coroutine_threadsafe(self._worker(argv), self._loop)
-        if not self._ready.wait(timeout=ready_timeout):
-            raise RuntimeError(f"MCP server {argv!r} did not become ready in {ready_timeout}s")
+    def _spawn(self) -> None:
+        """Start the server subprocess and wait until its session is initialized."""
+        self._ready = threading.Event()
+        self._error: BaseException | None = None
+        before = _child_pids()
+        self._worker_fut = asyncio.run_coroutine_threadsafe(self._worker(self._argv), self._loop)
+        if not self._ready.wait(timeout=self._ready_timeout):
+            raise RuntimeError(
+                f"MCP server {self._argv!r} did not become ready in {self._ready_timeout}s"
+            )
         if self._error is not None:
             raise self._error
-        self._tools: list[MCPToolDef] = self._load_tools()
+        new = sorted(_child_pids() - before)
+        self.server_pid = new[0] if new else None
+
+    def _shutdown(self) -> None:
+        """End the session; leaving stdio_client terminates the server subprocess."""
+        if self._stop is not None:
+            self._loop.call_soon_threadsafe(self._stop.set)
+        with contextlib.suppress(Exception):  # best-effort shutdown
+            self._worker_fut.result(timeout=10)
+        self._session = None
+
+    def _restart(self) -> None:
+        """Replace the server after a timed-out call.
+
+        The client gave up, but the server's call_tool handler runs a tool without
+        yielding, so it keeps computing the abandoned call and every later call in the
+        session would queue behind it and time out as well. Replacing the process stops
+        the abandoned work; the tool list does not change.
+        """
+        old = self.server_pid
+        self._shutdown()
+        self._spawn()
+        trace("mcp.restarted_after_timeout", old_pid=old, new_pid=self.server_pid)
 
     async def _worker(self, argv: list[str]) -> None:
         self._stop = asyncio.Event()
@@ -145,7 +192,11 @@ class StdioMCPClient:
         assert self._session is not None
         trace("mcp.call_tool", name=name, args=args)
         timeout = self._tool_timeouts.get(name, self.call_timeout)
-        result = self._submit(self._session.call_tool(name, args), timeout=timeout)
+        try:
+            result = self._submit(self._session.call_tool(name, args), timeout=timeout)
+        except TimeoutError:
+            self._restart()
+            raise
         for block in result.content:
             text = getattr(block, "text", None)
             if text is not None:
@@ -156,10 +207,7 @@ class StdioMCPClient:
         return {}
 
     def close(self) -> None:
-        if self._stop is not None:
-            self._loop.call_soon_threadsafe(self._stop.set)
-        with contextlib.suppress(Exception):  # best-effort shutdown
-            self._worker_fut.result(timeout=10)
+        self._shutdown()
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join(timeout=5)
         if not self._loop.is_running():

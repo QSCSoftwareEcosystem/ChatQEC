@@ -42,6 +42,7 @@ def client():
     c._tool_timeouts = {}
     c._session = _SleepySession()
     c._tools = []
+    c._restart = lambda: None  # no subprocess here; restart is tested in test_mcp_stdio_restart.py
     yield c
     c._loop.call_soon_threadsafe(c._loop.stop)
     c._thread.join(timeout=5)
