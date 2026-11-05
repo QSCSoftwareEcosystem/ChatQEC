@@ -48,7 +48,44 @@ STAGGER = 40
 SHIFTED_TILES = {  # region of the tile and its contents -> horizontal shift
     "qapps": ((104, 308, 458, 390), -STAGGER),
     "web": ((470, 308, 824, 390), +STAGGER),
+    "evidence": ((17, 629, 368, 700), +45),  # pulled inward so the canvas can be cropped
 }
+# Final crop of the canvas to the drawn content (x range), so the figure prints larger.
+CROP_X = (56, 919)
+# Every subtitle and list line is set at BODY_SIZE (the tool lists' size) and centred in the
+# text area right of its tile's icon (final coordinates): text -> (new text or None, centre x, y
+# or None). Five lines are reworded or re-wrapped to fit at that size. The cited-answer bullets
+# stay left-aligned (CITED_BULLET_X).
+BODY_LINES = {
+    "On-topic check · 2-3 search variants": (None, 495, None),
+    "135 sources · 3,266 chunks": (None, 317, None),
+    "arXiv full text · textbook chapters · vendor": ("arXiv full text · textbook chapters", 317, None),
+    "and lab pages · pinned GitHub docs": ("vendor and lab pages · GitHub docs", 317, None),
+    "60 hand-reviewed pages": (None, 685, None),
+    "Definitions": (None, 685, None),
+    "780 concept pages · 703 linked to the": (None, 279, 362),
+    "Error Correction Zoo": (None, 279, 380),
+    "Fallback only when retrieval is weak": (None, 726, None),
+    "Dense + keyword + source authority + recency → cross-encoder rerank": (
+        "Dense + keyword + authority + recency → cross-encoder rerank", 496, None),
+    "Claude, Gemini, or a local model": (None, 502, 564),
+    "Writes from top passages · citation or computation?": (
+        "Writes from top passages: cite or compute?", 502, 583),
+    "Inline clickable citations": (None, 268, None),
+    "Reported numbers come from the tool": (None, 650, None),
+    "Python library · CLI · web app": (None, 464, None),
+}  # fmt: skip
+CITED_BULLETS = {
+    "· Tool-backed numbers: exact tool input and output": "· Tool-backed numbers, exact tool input/output",
+    "· Refuses if no coverage": None,
+    "· Trace of every step": None,
+}
+CITED_BULLET_X = 345
+TITLE_CENTERS = {  # tile titles centred over the same text area as their lines
+    "Screen & rewrite": 495, "Curated corpus": 317, "Canonical QEC wiki": 685,
+    "QAppsWiki (via MCP)": 279, "Web search": 726, "Pool: scored & reranked": 496,
+    "Answer from evidence": 268, "Calls tools via MCP": 650,
+}  # fmt: skip
 # The tool server box is redrawn wider (left edge 305 -> 200) and as tall as its text needs,
 # so the tool lists can be set larger; everything below it moves down by the extra height.
 TOOL_BOX_SHAPES = {87, 100}  # generator border ring and fill (draw order)
@@ -309,10 +346,34 @@ def _move_tool_icons_and_below(root: ET.Element) -> None:
                     break
 
 
+def _set_body_text(root: ET.Element) -> None:
+    """All subtitle/list lines at BODY_SIZE, centred; titles centred over the same area."""
+    for el in root.iter():
+        if _tag(el) != "text":
+            continue
+        content = html.unescape(el.text or "")
+        if content in BODY_LINES:
+            new, cx, y = BODY_LINES[content]
+            el.text = new or content
+            el.set("x", f"{cx}")
+            el.set("text-anchor", "middle")
+            el.set("font-size", f"{BODY_SIZE}px")
+            if y is not None:
+                el.set("y", f"{y}")
+        elif content in CITED_BULLETS:
+            el.text = CITED_BULLETS[content] or content
+            el.set("x", f"{CITED_BULLET_X}")
+            el.set("font-size", f"{BODY_SIZE}px")
+        elif content in TITLE_CENTERS:
+            el.set("x", f"{TITLE_CENTERS[content]}")
+            el.set("text-anchor", "middle")
+
+
 def _grow_canvas(root: ET.Element) -> None:
     """Make the canvas (viewBox and white background) GROW taller."""
     vb = [float(v) for v in root.get("viewBox", "0 0 928 1152").split()]
-    root.set("viewBox", f"{vb[0]:.2f} {vb[1]:.2f} {vb[2]:.2f} {vb[3] + GROW:.2f}")
+    x0, x1 = CROP_X
+    root.set("viewBox", f"{x0:.2f} {vb[1]:.2f} {x1 - x0:.2f} {vb[3] + GROW:.2f}")
     first = next(el for el in root.iter() if _tag(el) == "path")  # full-canvas white background
     first.set("d", first.get("d", "").replace("1152.00", f"{1152 + GROW:.2f}"))
 
@@ -399,6 +460,7 @@ def main() -> None:
     last_tile, removed = _clean(root, parents)
     moved = _shift_tiles(root)
     _move_tool_icons_and_below(root)
+    _set_body_text(root)
     _grow_canvas(root)
     _add_discs(last_tile, parents)
     _add_routed_arrows(root)
