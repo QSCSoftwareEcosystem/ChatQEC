@@ -31,9 +31,27 @@ SRC = FIG / "ChatQEC Research Pipeline-image-7.svg"
 
 TEAL = "#c5e5e1"
 TILE_ORDER = range(90, 102)  # draw-order indices of the 12 tile backgrounds
-# The fan-out and merge each had two arrows per tile; these are the inner duplicates
-# (draw-order indices of their filled bodies). Their thin edge strokes go with them.
+# The generator's inner fan-out arrows were meant for QAppsWiki and web search but ended on
+# the top tiles, and its inner merge arrows came from the bottom tiles again instead of from
+# the corpus and the wiki. They are removed (draw-order indices of their filled bodies, with
+# their edge strokes) and redrawn by ROUTED_ARROWS so that each source tile has one arrow in
+# and one arrow out, with no crossings.
 DOUBLE_ARROWS = {63, 64, 71, 73}
+ARROW = "#1d5d65"
+SHAFT, HEAD_W, HEAD_L = 9.0, 17.5, 9.0  # measured from the generator's arrows
+# polylines; the last segment's direction gives the arrowhead
+ROUTED_ARROWS = [
+    [(299, 134), (62, 134), (62, 349), (107, 349)],  # Screen & rewrite -> QAppsWiki (left margin)
+    [
+        (629, 134),
+        (866, 134),
+        (866, 349),
+        (821, 349),
+    ],  # Screen & rewrite -> Web search (right margin)
+    [(440, 300), (440, 305.5), (464, 305.5)],  # Curated corpus -> trunk (gap between rows)
+    [(488, 300), (488, 305.5), (464, 305.5)],  # Canonical wiki -> trunk
+    [(464, 305.5), (464, 428)],  # trunk down the central gutter -> Pool
+]
 BLUE, GREEN, YELLOW, LAVENDER, PEACH, PINK, GREY = (
     "#cfe2f3", "#d4ead7", "#fbeec1", "#e2dcf2", "#fde0c5", "#f6d3dc", "#e6e6e6",
 )  # fmt: skip
@@ -181,6 +199,26 @@ def _add_discs(last_tile: ET.Element, parents: dict[ET.Element, ET.Element]) -> 
         holder.insert(at + i, ET.Element(f"{{{NS}}}circle", attrs))
 
 
+def _add_routed_arrows(root: ET.Element) -> None:
+    """Draw ROUTED_ARROWS in the generator's arrow style (9 px shaft, 17.5 x 9 px head)."""
+    for pts in ROUTED_ARROWS:
+        (x0, y0), (x1, y1) = pts[-2], pts[-1]
+        ux, uy = (x1 > x0) - (x1 < x0), (y1 > y0) - (y1 < y0)  # unit direction, axis-aligned
+        merge = pts[-1] == ROUTED_ARROWS[-1][0]  # a feeder into the trunk gets no head
+        end = pts[-1] if merge else (x1 - ux * HEAD_L, y1 - uy * HEAD_L)
+        d = "M " + " L ".join(f"{x:.1f} {y:.1f}" for x, y in [*pts[:-1], end])
+        root.append(ET.Element(f"{{{NS}}}path", {
+            "d": d, "fill": "none", "stroke": ARROW, "stroke-width": str(SHAFT),
+            "stroke-linejoin": "round", "stroke-linecap": "butt",
+        }))  # fmt: skip
+        if merge:
+            continue
+        bx, by = end
+        px, py = -uy * HEAD_W / 2, ux * HEAD_W / 2  # perpendicular half-width
+        head = f"M {x1} {y1} L {bx + px:.1f} {by + py:.1f} L {bx - px:.1f} {by - py:.1f} Z"
+        root.append(ET.Element(f"{{{NS}}}path", {"d": head, "fill": ARROW}))
+
+
 def _add_tool_text(root: ET.Element) -> None:
     for cx, titles, body in TOOL_COLUMNS:
         y = 832.0
@@ -200,6 +238,7 @@ def main() -> None:
     parents = {c: p for p in root.iter() for c in p}
     last_tile, removed = _clean(root, parents)
     _add_discs(last_tile, parents)
+    _add_routed_arrows(root)
     _add_tool_text(root)
     out = FIG / "chatqec_pipeline_v2.svg"
     tree.write(out, encoding="UTF-8", xml_declaration=True)
