@@ -49,6 +49,39 @@ SHIFTED_TILES = {  # region of the tile and its contents -> horizontal shift
     "qapps": ((104, 308, 458, 390), -STAGGER),
     "web": ((470, 308, 824, 390), +STAGGER),
 }
+# The tool server box is redrawn wider (left edge 305 -> 200) and as tall as its text needs,
+# so the tool lists can be set larger; everything below it moves down by the extra height.
+TOOL_BOX_SHAPES = {87, 100}  # generator border ring and fill (draw order)
+TOOL_BOX_X = (200, 909)
+TOOL_BOX_TOP, OLD_TOOL_BOX_BOTTOM = 722, 962
+TITLE_SIZE, BODY_SIZE, TITLE_STEP, BODY_STEP = 20, 15.5, 22, 19
+TOOL_ICON_Y = (758, 814)  # vertical band of the five tool icons
+TOOL_COLUMNS = [  # old icon centre x, title lines, body lines (each line <= ~17 chars)
+    (356, ["Simulate"], ["Stim", "LightStim", "QuEra Tsim"]),
+    (462, ["Visualize"], ["Stim diagrams", "QuEra GLCB", "circuit viewer"]),
+    (576, ["Decode"], ["PyMatching", "Tesseract", "QuEra bloqade:", "MWPF, MLE, table", "BP+OSD/LSD", "Relay-BP", "CUDA-Q"]),
+    (702, ["Compile &", "FT primitives"], ["Qiskit Clifford+T", "and Pauli-based", "spacetime", "Pauli checks", "FTPrimitiveBench"]),
+    (838, ["Hardware", "& SDKs"], ["IBM Quantum:", "calibration,", "layout, job", "preview/submit", "Deltakit", "Guppy/Selene"]),
+]  # fmt: skip
+
+
+def _column_centres() -> list[float]:
+    x0, x1 = TOOL_BOX_X[0] + 12, TOOL_BOX_X[1] - 12
+    w = (x1 - x0) / len(TOOL_COLUMNS)
+    return [x0 + w * (k + 0.5) for k in range(len(TOOL_COLUMNS))]
+
+
+def _tool_box_bottom() -> float:
+    last = 0.0
+    for _, titles, body in TOOL_COLUMNS:
+        y = 834 + TITLE_STEP * (len(titles) - 1) + 4 + BODY_STEP * len(body)
+        last = max(last, y)
+    return last + 18
+
+
+GROW = _tool_box_bottom() - OLD_TOOL_BOX_BOTTOM  # extra height pushed onto everything below
+
+
 ROUTED_ARROWS = [  # polylines between tile edges; the last segment gives the arrowhead
     [(464, 82), (464, 103)],  # QEC question -> Screen & rewrite
     [(444, 166), (444, 186), (284, 186), (284, 207)],  # -> Curated corpus
@@ -63,8 +96,13 @@ ROUTED_ARROWS = [  # polylines between tile edges; the last segment gives the ar
     [(452, 593), (452, 613), (194, 613), (194, 634)],  # LLM -> Answer from evidence
     [(476, 593), (476, 613), (650, 613), (650, 634)],  # LLM -> Calls tools via MCP
     [(650, 695), (650, 722)],  # Calls tools -> Tool server
-    [(194, 695), (194, 985), (452, 985), (452, 1006)],  # Answer from evidence -> Cited answer
-    [(650, 962), (650, 985), (476, 985), (476, 1006)],  # Tool server -> Cited answer
+    [
+        (110, 695),
+        (110, 985 + GROW),
+        (452, 985 + GROW),
+        (452, 1006 + GROW),
+    ],  # evidence -> Cited answer
+    [(650, 962 + GROW), (650, 985 + GROW), (476, 985 + GROW), (476, 1006 + GROW)],  # tools -> Cited
 ]
 BLUE, GREEN, YELLOW, LAVENDER, PEACH, PINK, GREY = (
     "#cfe2f3", "#d4ead7", "#fbeec1", "#e2dcf2", "#fde0c5", "#f6d3dc", "#e6e6e6",
@@ -100,17 +138,11 @@ TEXT_CENTER = {
     "Large Language Model (LLM)": 502,
     "Claude, Gemini, or a local model": 502,
     "Writes from top passages · citation or computation?": 502,
+    "Tool server · 19 tools": (TOOL_BOX_X[0] + TOOL_BOX_X[1]) / 2,
 }
 DROP_TEXT = {"i (via MCP)"}
 TOOL_AREA = (306, 812, 908, 962)  # x0, y0, x1, y1: tool-server text region below the icons
 # tool columns: centre x, title lines, body lines
-TOOL_COLUMNS = [
-    (356, ["Simulate"], ["Stim", "LightStim", "QuEra Tsim"]),
-    (462, ["Visualize"], ["Stim diagrams", "QuEra GLCB", "circuit viewer"]),
-    (576, ["Decode"], ["PyMatching", "Tesseract", "QuEra bloqade:", "MWPF, MLE, table", "BP+OSD/LSD", "Relay-BP · CUDA-Q"]),
-    (702, ["Compile &", "FT primitives"], ["Qiskit Clifford+T", "and Pauli-based", "spacetime Pauli checks", "FTPrimitiveBench"]),
-    (838, ["Hardware", "& SDKs"], ["IBM Quantum:", "calibration, layout,", "job preview/submit", "Deltakit", "Guppy/Selene"]),
-]  # fmt: skip
 
 
 def _tag(el: ET.Element) -> str:
@@ -194,6 +226,9 @@ def _clean(root: ET.Element, parents: dict[ET.Element, ET.Element]) -> tuple[ET.
             order += 1
         if order in TILE_ORDER and tag != "ellipse":
             last_tile = el
+        if tag != "ellipse" and order in TOOL_BOX_SHAPES:
+            parents[el].remove(el)
+            continue
         if tag != "ellipse" and order in ARROW_BODIES:
             box = _bbox(el)
             if box is not None:
@@ -245,18 +280,69 @@ def _shift_tiles(root: ET.Element) -> int:
     return moved
 
 
+def _move_tool_icons_and_below(root: ET.Element) -> None:
+    """Tool icons to their new column centres; everything below the old box down by GROW."""
+    moves = [
+        (old_x, new_x - old_x)
+        for (old_x, *_), new_x in zip(TOOL_COLUMNS, _column_centres(), strict=True)
+    ]
+    y0, y1 = TOOL_ICON_Y
+    for el in root.iter():
+        tag = _tag(el)
+        if tag == "text":
+            y = float(el.get("y", 0))
+            if y > OLD_TOOL_BOX_BOTTOM:
+                el.set("y", f"{y + GROW:.2f}")
+            continue
+        if tag not in ("path", "rect", "circle", "ellipse"):
+            continue
+        b = _bbox(el)
+        if b is None:
+            continue
+        if b[1] > OLD_TOOL_BOX_BOTTOM:
+            el.set("transform", f"translate(0,{GROW:.1f}) {el.get('transform', '')}".strip())
+            continue
+        if b[1] >= y0 and b[3] <= y1:
+            for old_x, dx in moves:
+                if b[0] >= old_x - 34 and b[2] <= old_x + 34:
+                    el.set("transform", f"translate({dx:.1f},0) {el.get('transform', '')}".strip())
+                    break
+
+
+def _grow_canvas(root: ET.Element) -> None:
+    """Make the canvas (viewBox and white background) GROW taller."""
+    vb = [float(v) for v in root.get("viewBox", "0 0 928 1152").split()]
+    root.set("viewBox", f"{vb[0]:.2f} {vb[1]:.2f} {vb[2]:.2f} {vb[3] + GROW:.2f}")
+    first = next(el for el in root.iter() if _tag(el) == "path")  # full-canvas white background
+    first.set("d", first.get("d", "").replace("1152.00", f"{1152 + GROW:.2f}"))
+
+
 def _add_discs(last_tile: ET.Element, parents: dict[ET.Element, ET.Element]) -> None:
     """Pastel discs right after the last tile: above the white tiles, below the icons."""
     holder = parents[last_tile]
     at = list(holder).index(last_tile) + 1
+    x0, x1 = TOOL_BOX_X
+    box = {
+        "x": str(x0), "y": str(TOOL_BOX_TOP), "width": str(x1 - x0),
+        "height": f"{_tool_box_bottom() - TOOL_BOX_TOP:.1f}", "rx": "16",
+        "fill": "#ffffff", "stroke": "#0d1412", "stroke-width": "2.2",
+    }  # fmt: skip
+    holder.insert(at, ET.Element(f"{{{NS}}}rect", box))
+    at += 1
     shift = {name: dx for name, (_, dx) in SHIFTED_TILES.items()}
-    for i, (name, (x, cy, half, colour)) in enumerate(ICONS.items()):
+    tool_names = ("simulate", "visualize", "decode", "compile", "hardware")
+    for name, (old_x, *_), new_x in zip(tool_names, TOOL_COLUMNS, _column_centres(), strict=True):
+        shift[name] = new_x - old_x
+    for i, (name, (x, y, half, colour)) in enumerate(ICONS.items()):
         dx = shift.get(name, 0)
-        cx = x + dx
+        dy = GROW if y > OLD_TOOL_BOX_BOTTOM else 0
+        cx, cy = x + dx, y + dy
         r = half + DISC_PAD
         if name in TILE_BOUNDS:  # never cross the tile's border
-            x0, y0, x1, y1 = TILE_BOUNDS[name]
-            room = min(cx - (x0 + dx), (x1 + dx) - cx, cy - y0, y1 - cy) - DISC_INSET
+            bx0, by0, bx1, by1 = TILE_BOUNDS[name]
+            room = (
+                min(cx - (bx0 + dx), (bx1 + dx) - cx, cy - (by0 + dy), (by1 + dy) - cy) - DISC_INSET
+            )
             r = min(r, room)
         attrs = {"cx": str(cx), "cy": str(cy), "r": f"{r:.1f}", "fill": colour}
         holder.insert(at + i, ET.Element(f"{{{NS}}}circle", attrs))
@@ -294,15 +380,15 @@ def _add_routed_arrows(root: ET.Element) -> None:
 
 
 def _add_tool_text(root: ET.Element) -> None:
-    for cx, titles, body in TOOL_COLUMNS:
-        y = 832.0
+    for (_, titles, body), cx in zip(TOOL_COLUMNS, _column_centres(), strict=True):
+        y = 834.0
         for t in titles:
-            root.append(_text(cx, y, t, 16))
-            y += 18
-        y += 2
+            root.append(_text(cx, y, t, TITLE_SIZE))
+            y += TITLE_STEP
+        y += 4 - TITLE_STEP + BODY_STEP
         for line in body:
-            root.append(_text(cx, y, line, 11.5))
-            y += 15
+            root.append(_text(cx, y, line, BODY_SIZE))
+            y += BODY_STEP
 
 
 def main() -> None:
@@ -312,6 +398,8 @@ def main() -> None:
     parents = {c: p for p in root.iter() for c in p}
     last_tile, removed = _clean(root, parents)
     moved = _shift_tiles(root)
+    _move_tool_icons_and_below(root)
+    _grow_canvas(root)
     _add_discs(last_tile, parents)
     _add_routed_arrows(root)
     _add_tool_text(root)
