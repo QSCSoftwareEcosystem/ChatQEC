@@ -78,7 +78,18 @@ uv run chatqec eval bench run ft-primitive-bench --model muse-glimmer --out eval
 # swap to Gemma (section 1), then the same two commands with --model gemma-4
 ```
 
-A long run that stops can continue in the same file with `--resume` (it skips finished items).
+Every finished item is appended and flushed at once, so a crash never loses finished items. To
+continue every unfinished run with the settings recorded in its own header, detached from the
+terminal:
+
+```bash
+scripts/resume_bench.sh --dry-run        # state of each run: OK / BUSY / WAIT (model not served) / DRIFT
+scripts/resume_bench.sh                  # resume missing items
+scripts/resume_bench.sh --retry-errors   # also re-ask errored items (rows kept in <run>.errors.jsonl)
+```
+
+It refuses to resume when answer-path code or the tool environment changed since the run started
+(`--allow-drift` overrides, and the drift is written to `logs/bench_resume_notes.txt`).
 
 ## 4. decoder-bench gold audit
 
