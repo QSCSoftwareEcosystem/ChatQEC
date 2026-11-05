@@ -85,13 +85,13 @@ DISC_INSET = 4
 DISC_PAD = 9  # preferred margin between an icon and its disc edge
 TEXT_FIXES = {
     "QAppsWiki(": "QAppsWiki (via MCP)",
-    "Gemini or local modal supported": "Claude, GPT, Gemini, or a local model",
+    "Gemini or local modal supported": "Claude, Gemini, or a local model",
     "LLM: Claude by default": "Large Language Model (LLM)",
 }
 # Re-centred lines (text -> centre x of the text area right of the tile's icon).
 TEXT_CENTER = {
     "Large Language Model (LLM)": 502,
-    "Claude, GPT, Gemini, or a local model": 502,
+    "Claude, Gemini, or a local model": 502,
     "Writes from top passages · citation or computation?": 502,
 }
 DROP_TEXT = {"i (via MCP)"}
