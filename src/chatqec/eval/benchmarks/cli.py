@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -245,3 +246,98 @@ def bench_rescore(name: str, path: Path, out_path: Path, judge_model: str | None
     write_rows(out_path, header, rows)
     click.echo(f"{len(rows)} rows rescored -> {out_path}")
     click.echo(summarize(rows))
+
+
+@bench_group.command("resume")
+@click.argument("paths", nargs=-1, type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--retry-errors", is_flag=True, help="Move errored rows aside and ask those items again"
+)
+@click.option("--tool-timeout", type=float, default=None, help="Override the run's tool timeout")
+@click.option("--allow-drift", is_flag=True, help="Resume although code or tool env changed")
+@click.option("--dry-run", is_flag=True, help="Only report what each run still needs")
+def bench_resume(
+    paths: tuple[Path, ...],
+    retry_errors: bool,
+    tool_timeout: float | None,
+    allow_drift: bool,
+    dry_run: bool,
+) -> None:
+    """Continue unfinished runs with the settings in their own headers, one at a time.
+
+    Without PATHS, every eval/results/*.jsonl run is checked. A run is skipped when it is
+    complete, when another process is writing it, when its model is not being served, or
+    (unless --allow-drift) when the answer-path code or the tool environment changed since
+    it started. Each resume is noted in logs/bench_resume_notes.txt.
+    """
+    import subprocess
+    import sys
+    from datetime import UTC
+
+    from chatqec.eval.benchmarks.provenance import served_model, tool_env_versions
+    from chatqec.eval.benchmarks.resume import (
+        ask_path_diff,
+        drift_reasons,
+        is_being_written,
+        live_cmdlines,
+        plan_run,
+        resume_argv,
+        split_errors,
+    )
+
+    runs = list(paths) or sorted(
+        p
+        for p in (REPO / "eval/results").glob("*.jsonl")
+        if not p.name.endswith((".rescored.jsonl", ".errors.jsonl"))
+    )
+    env_now = tool_env_versions()
+    notes = REPO / "logs/bench_resume_notes.txt"
+    for path in runs:
+        try:
+            header_settings = json.loads(path.read_text().splitlines()[0])["_header"]["settings"]
+            bench, _ = _bench(header_settings["benchmark"], header_settings.get("judge_model"))
+            plan = plan_run(path, item_ids=[i.id for i in bench.items()])
+        except (KeyError, ValueError, IndexError) as exc:
+            click.echo(f"SKIP {path.name}: not a benchmark run ({exc})")
+            continue
+        status = f"{len(plan.done)} done, {len(plan.errored)} errored, {len(plan.missing)} missing"
+        if plan.complete or (not plan.missing and not retry_errors):
+            click.echo(f"OK   {path.name}: {status}")
+            continue
+        if is_being_written(path, live_cmdlines()):
+            click.echo(f"BUSY {path.name}: {status}; another process is writing it")
+            continue
+        url = _model_url(plan.model) if plan.settings.get("provider", "local") == "local" else None
+        if url is not None and not any(
+            m.get("id") == plan.model for m in served_model(url) if isinstance(m, dict)
+        ):
+            click.echo(f"WAIT {path.name}: {status}; model {plan.model} is not served at {url}")
+            continue
+        reasons = drift_reasons(
+            plan.header,
+            tool_env=env_now,
+            ask_path_diff=ask_path_diff(REPO, plan.header["chatqec"]["commit"]),
+        )
+        if reasons and not allow_drift:
+            click.echo(f"DRIFT {path.name}: {status}; not resuming:\n  " + "\n  ".join(reasons))
+            continue
+        argv = resume_argv(plan, tool_timeout=tool_timeout)
+        click.echo(f"RUN  {path.name}: {status}\n  {' '.join(argv)}")
+        if dry_run:
+            continue
+        moved = split_errors(path) if retry_errors else 0
+        notes.parent.mkdir(exist_ok=True)
+        with notes.open("a") as f:
+            f.write(
+                f"=== RESUMED {datetime.now(UTC).isoformat(timespec='seconds')} {path.name} at "
+                f"chatQEC {provenance_commit(REPO)}; {status}; errored rows moved aside: {moved}; "
+                f"drift: {'; '.join(reasons) or 'none'}; argv: {' '.join(argv)}\n"
+            )
+        subprocess.run([sys.executable, "-m", "chatqec.cli", *argv[1:]], check=False)
+
+
+def provenance_commit(repo: Path) -> str:
+    from chatqec.eval.benchmarks.provenance import git_state
+
+    state = git_state(repo)
+    return f"{str(state.get('commit', '?'))[:7]}{' (dirty)' if state.get('dirty') else ''}"
