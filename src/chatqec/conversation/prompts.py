@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from chatqec.retrieval.hybrid import RetrievedChunk
 
 SYNTHESIZER_SYSTEM_PROMPT = """You are ChatQEC, a research assistant for Quantum Error Correction.
@@ -99,6 +101,17 @@ QEC focus only — refuse off-topic queries politely.
 """
 
 
+# Obsidian wiki links in the canonical pages: [[slug]] or [[slug|label]]. A slug starts with a
+# letter and has only lowercase letters, digits and hyphens, so QEC code parameters such as
+# [[72,12,6]] or [[n,k,d]] (digits or commas) never match.
+_WIKI_LINK = re.compile(r"\[\[([a-z][a-z0-9-]*)(?:\|([^\[\]|]+))?\]\]")
+
+
+def _flatten_wiki_links(text: str) -> str:
+    """Replace wiki links with their label (or the slug's words), so answers do not copy them."""
+    return _WIKI_LINK.sub(lambda m: m.group(2) or m.group(1).replace("-", " "), text)
+
+
 def assemble_context_block(
     retrieved: list[RetrievedChunk],
     *,
@@ -110,9 +123,13 @@ def assemble_context_block(
     lines = ["Retrieved context:"]
     n = 1
     for c in canonical_chunks:
-        lines.append(f"[^{n}] [CANONICAL · {c.title} · {c.source_id}] {c.text}")
+        lines.append(
+            f"[^{n}] [CANONICAL · {c.title} · {c.source_id}] {_flatten_wiki_links(c.text)}"
+        )
         n += 1
     for c in retrieved:
-        lines.append(f"[^{n}] [{c.authority_tier} · {c.title} · {c.source_id}] {c.text}")
+        lines.append(
+            f"[^{n}] [{c.authority_tier} · {c.title} · {c.source_id}] {_flatten_wiki_links(c.text)}"
+        )
         n += 1
     return "\n\n".join(lines)
