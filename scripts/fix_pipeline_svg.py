@@ -31,6 +31,9 @@ SRC = FIG / "ChatQEC Research Pipeline-image-7.svg"
 
 TEAL = "#c5e5e1"
 TILE_ORDER = range(90, 102)  # draw-order indices of the 12 tile backgrounds
+# The fan-out and merge each had two arrows per tile; these are the inner duplicates
+# (draw-order indices of their filled bodies). Their thin edge strokes go with them.
+DOUBLE_ARROWS = {63, 64, 71, 73}
 BLUE, GREEN, YELLOW, LAVENDER, PEACH, PINK, GREY = (
     "#cfe2f3", "#d4ead7", "#fbeec1", "#e2dcf2", "#fde0c5", "#f6d3dc", "#e6e6e6",
 )  # fmt: skip
@@ -115,6 +118,7 @@ def _clean(root: ET.Element, parents: dict[ET.Element, ET.Element]) -> tuple[ET.
     outlined-text shapes removed.
     """
     order, last_tile, removed = 0, None, 0
+    arrow_boxes: list[tuple[float, float, float, float]] = []
     for el in list(root.iter()):
         tag = _tag(el)
         if tag == "text":
@@ -132,6 +136,12 @@ def _clean(root: ET.Element, parents: dict[ET.Element, ET.Element]) -> tuple[ET.
             order += 1
         if order in TILE_ORDER and tag != "ellipse":
             last_tile = el
+        if tag != "ellipse" and order in DOUBLE_ARROWS:
+            box = _bbox(el)
+            if box is not None:
+                arrow_boxes.append(box)
+            parents[el].remove(el)
+            continue
         past_tiles = tag == "ellipse" or order >= TILE_ORDER.stop
         if past_tiles and _in_tool_area(_bbox(el)):
             parents[el].remove(el)  # text that the generator outlined into shapes
@@ -140,7 +150,26 @@ def _clean(root: ET.Element, parents: dict[ET.Element, ET.Element]) -> tuple[ET.
             el.set("fill", "#ffffff")  # tiles, and icon interiors on the pastel discs
     if last_tile is None:
         raise RuntimeError("tile backgrounds not found; the source SVG changed")
+    _drop_arrow_edges(root, parents, arrow_boxes)
     return last_tile, removed
+
+
+def _drop_arrow_edges(
+    root: ET.Element,
+    parents: dict[ET.Element, ET.Element],
+    boxes: list[tuple[float, float, float, float]],
+) -> None:
+    """Remove the unfilled edge strokes that lie inside a removed arrow body."""
+    for el in list(root.iter()):
+        if _tag(el) != "path" or el.get("fill") not in (None, "none") or el not in parents:
+            continue
+        b = _bbox(el)
+        if b is None:
+            continue
+        for x0, y0, x1, y1 in boxes:
+            if b[0] >= x0 - 1 and b[2] <= x1 + 1 and b[1] >= y0 - 1 and b[3] <= y1 + 1:
+                parents[el].remove(el)
+                break
 
 
 def _add_discs(last_tile: ET.Element, parents: dict[ET.Element, ET.Element]) -> None:
