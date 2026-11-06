@@ -268,3 +268,8 @@ data/benchmarks/
 
 # Benchmark smoke runs (paper runs in eval/results/ are committed)
 eval/results/smoke/
+
+# Benchmark run files are written while a run is in progress. A commit's pre-commit hook
+# stashes unstaged changes to tracked files, which silently drops rows a running job appends
+# (lost 26 rows on 2026-11-05). Keep them untracked; commit a finished run with `git add -f`.
+eval/results/**/*.jsonl
