@@ -18,6 +18,9 @@ ITEMS = [
      "gold": {"exact": {"t_count": 65}}, "source": "s"},
     {"id": "def-1", "category": "definition", "prompt": "What is the surface code?",
      "gold": {"summary": "A topological CSS code on a 2D lattice."}, "source": "s"},
+    {"id": "abstain-fake", "category": "abstain",
+     "prompt": "What are the parameters of the code in arXiv:2607.99999?",
+     "gold": {"premise": "not a real paper"}, "source": "s"},
     {"id": "abstain-1", "category": "abstain", "prompt": "Willow d=15 LER?",
      "gold": {"premise": "No d=15 result exists."}, "source": "s"},
 ]  # fmt: skip
@@ -154,3 +157,36 @@ def test_code_triples_reads_latex_double_bracket_forms():
         (144, 12, 12),
     }
     assert code_triples(r"$\llbracket 90, 8, 10 \rrbracket$") == {(90, 8, 10)}
+
+
+def test_an_id_quoted_from_the_question_is_not_fabricated(bench_factory):
+    """A false-premise question names a non-existent paper; repeating its ID while refusing
+    is not a fabricated citation (both ChatQEC runs were charged one for exactly this)."""
+    b = bench_factory()
+    s = b.score(_item(b, "abstain-fake"), Answer(text="arXiv:2607.99999 is not in my sources."))
+    assert s["fabricated"] == 0 and s["echoed"] == 1
+    s = b.score(_item(b, "abstain-fake"), Answer(text="See arXiv:2607.99999 and arXiv:2499.99999."))
+    assert s["fabricated"] == 1
+
+
+def test_replay_judge_returns_the_stored_verdicts(bench_factory):
+    """Rescoring must not re-ask an LLM judge (its verdicts can differ run to run), so a run's
+    stored verdicts are replayed; an answer never judged before is an error, not a guess."""
+    from chatqec.eval.benchmarks.compare import ReplayJudge, judge_prompt
+
+    b = bench_factory(reply="yes")
+    item = _item(b, "def-1")
+    answer = Answer(text="A topological stabilizer code.")
+    row = {"id": item.id, "answer_text": answer.text, "score": b.score(item, answer)}
+    replay = ReplayJudge.from_rows([row], b)
+    reply = replay.messages.create(
+        model="x",
+        max_tokens=5,
+        system="",
+        messages=[{"role": "user", "content": judge_prompt(item, answer)}],
+    )
+    assert "".join(c.text for c in reply.content) == "yes"
+    with pytest.raises(KeyError):
+        replay.messages.create(
+            model="x", max_tokens=5, system="", messages=[{"role": "user", "content": "unseen"}]
+        )

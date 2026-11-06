@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,44 @@ def arxiv_ids(text: str) -> list[str]:
     return list(dict.fromkeys(_ARXIV.findall(text)))
 
 
+def judge_prompt(item: BenchItem, answer: Answer) -> str:
+    """The judge's user message for a definition or false-premise item."""
+    gold = item.gold.get("summary") or item.gold.get("premise")
+    return _JUDGE[item.meta["category"]].format(gold=gold, prompt=item.prompt, answer=answer.text)
+
+
+@dataclass(frozen=True)
+class _Text:
+    text: str
+
+
+@dataclass(frozen=True)
+class _Reply:
+    content: list[_Text]
+
+
+class ReplayJudge:
+    """Judge that returns the verdicts a stored run already recorded, so rescoring a run with a
+    corrected scorer never re-asks an LLM (whose verdicts can differ between runs)."""
+
+    def __init__(self, verdicts: dict[str, str]) -> None:
+        self._verdicts = verdicts
+        self.messages = self
+
+    @classmethod
+    def from_rows(cls, rows: list[dict[str, Any]], bench: CompareBench) -> ReplayJudge:
+        items = {i.id: i for i in bench.items()}
+        verdicts = {}
+        for row in rows:
+            item, verdict = items.get(row["id"]), (row.get("score") or {}).get("judge")
+            if item is not None and verdict in ("yes", "no"):
+                verdicts[judge_prompt(item, Answer(text=row["answer_text"]))] = verdict
+        return cls(verdicts)
+
+    def create(self, *, messages: list[dict[str, Any]], **_: Any) -> _Reply:
+        return _Reply(content=[_Text(self._verdicts[messages[0]["content"]])])
+
+
 @register_benchmark("compare")
 class CompareBench(Benchmark):
     def __init__(
@@ -95,7 +134,7 @@ class CompareBench(Benchmark):
             "computation": self._computation,
         }.get(category, self._judged)
         out = scorer(item, answer)
-        return {"category": category, **out, **self._citations(answer.text)}
+        return {"category": category, **out, **self._citations(answer.text, item.prompt)}
 
     def _literature(self, item: BenchItem, answer: Answer) -> dict[str, Any]:
         gold = {tuple(c) for c in item.gold["codes"]}
@@ -126,9 +165,7 @@ class CompareBench(Benchmark):
         return {"rates_matched": sum(hits) / len(hits), "passed": all(hits)}
 
     def _judged(self, item: BenchItem, answer: Answer) -> dict[str, Any]:
-        category = item.meta["category"]
-        gold = item.gold.get("summary") or item.gold.get("premise")
-        prompt = _JUDGE[category].format(gold=gold, prompt=item.prompt, answer=answer.text)
+        prompt = judge_prompt(item, answer)
         reply = self._judge.messages.create(
             model=self._judge_model,
             max_tokens=5,
@@ -139,8 +176,17 @@ class CompareBench(Benchmark):
         verdict = "yes" if text.startswith("yes") else "no"
         return {"judge": verdict, "passed": verdict == "yes"}
 
-    def _citations(self, text: str) -> dict[str, int]:
+    def _citations(self, text: str, prompt: str) -> dict[str, int]:
+        """Classify the arXiv ids in an answer. Ids the question itself names (a false-premise
+        item asks about a paper that does not exist) are 'echoed', never 'fabricated'."""
         ids = arxiv_ids(text)
+        asked = set(arxiv_ids(prompt))
         in_corpus = [i for i in ids if i in self._known]
-        fabricated = [i for i in ids if i not in self._known and not self._exists(i)]
-        return {"cited": len(ids), "cited_in_corpus": len(in_corpus), "fabricated": len(fabricated)}
+        unknown = [i for i in ids if i not in self._known and i not in asked]
+        fabricated = [i for i in unknown if not self._exists(i)]
+        return {
+            "cited": len(ids),
+            "cited_in_corpus": len(in_corpus),
+            "fabricated": len(fabricated),
+            "echoed": sum(1 for i in ids if i in asked and i not in self._known),
+        }
