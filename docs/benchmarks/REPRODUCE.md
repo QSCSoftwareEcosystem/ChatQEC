@@ -146,6 +146,23 @@ uv run --with playwright python scripts/ui_acceptance.py --port 8501 --label mus
 CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_app.py`).
 `scripts/run_ui_acceptance.sh` runs both models side by side and needs two GPUs.
 
+## 9. Before tagging the submission (`naacl27-demo-v1`)
+
+The paper's corpus sentence (System section) states 135 sources and 3,266 chunks
+(60 canonical wiki, 41 arXiv, 26 blog/vendor, 6 PDF book chapters, 2 GitHub), checked 2026-11-06.
+Re-run this at the commit being tagged and update the sentence if anything changed:
+
+```bash
+python3 -c "
+import json, collections
+rows = [json.loads(l) for l in open('sources/registry.jsonl') if l.strip()]
+print(len(rows), 'sources,', sum(int(r.get('chunk_count') or 0) for r in rows), 'chunks')
+print(collections.Counter(r['source_type'] for r in rows))"
+curl -s localhost:6333/collections/chatqec_chunks | python3 -c "import json,sys; print(json.load(sys.stdin)['result']['points_count'], 'points in Qdrant')"
+```
+
+Then regenerate the tables (section 7), rebuild the paper, and tag both repos.
+
 ## Known caveats
 
 - Even at temperature 0, vLLM batching can change outputs; model behaviour (for example whether a
