@@ -40,6 +40,9 @@ st.html(
     [data-testid="stChatMessageContent"] h4,
     [data-testid="stChatMessageContent"] h5,
     [data-testid="stChatMessageContent"] h6 { font-size: 1rem; }
+    /* The monospace theme font is wider than the default ol padding, so the digits of
+       numbered-list markers were clipped and only the "." showed. */
+    [data-testid="stChatMessageContent"] ol { padding-left: 2.2em; }
     </style>
     """
 )

@@ -1,6 +1,7 @@
 """Renders a ToolCall's output: Stim diagrams as SVG, sample arrays as tables."""
 
 import ast
+import json
 import re
 
 import streamlit as st
@@ -220,7 +221,11 @@ def _render_dict_output(name: str, data: dict) -> bool:
 
 def render(call: ToolCall) -> None:
     st.markdown(f"**Tool:** `{call.name}`")
-    st.code(str(call.input), language="json")
+    try:  # pretty JSON, wrapped, so long inputs (decoder lists) are not cut off
+        shown = json.dumps(call.input, indent=1, default=str)
+    except (TypeError, ValueError):
+        shown = str(call.input)
+    st.code(shown, language="json", wrap_lines=True)
     out = call.output
 
     if call.name == "stim_diagram" and "<svg" in out:
