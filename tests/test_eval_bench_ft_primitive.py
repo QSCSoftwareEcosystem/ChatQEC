@@ -97,3 +97,26 @@ def test_bench_list_handles_a_single_resolvable_flag(monkeypatch):
     res = CliRunner().invoke(bench_group, ["list", "ft-primitive-bench"])
     assert res.exit_code == 0, res.output
     assert "resolvable=1/1" in res.output and "resolvable=0/1" in res.output
+
+
+def test_numbers_ignores_digits_inside_hex_hashes():
+    """Answers quote circuit_sha256 values. '…9e41273519…' inside a hash was read as
+    9 x 10^41273519..., which either raised OverflowError (3 items) or made Python build a
+    huge integer for hours (a run hung at 98% CPU for 5.5 h)."""
+    import time
+
+    from chatqec.eval.benchmarks.ft_primitive_bench import _numbers
+
+    sha = (
+        "circuit_sha256 b3a9e412735190883736471901930771a1e93746291e8475610293847561029384756 done"
+    )
+    t0 = time.perf_counter()
+    assert _numbers(sha) == []
+    assert time.perf_counter() - t0 < 1.0
+
+
+def test_numbers_still_reads_scientific_notation():
+    from chatqec.eval.benchmarks.ft_primitive_bench import _numbers
+
+    expected = [0.0032, 0.00015, 0.021, 0.005]
+    assert _numbers("LER 3.2e-3 and 1.5 x 10^-4, or 2.1×10⁻², 0.5%") == pytest.approx(expected)  # noqa: RUF001 (models write the multiplication sign)

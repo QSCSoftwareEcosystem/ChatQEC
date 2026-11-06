@@ -26,8 +26,13 @@ from chatqec.eval.benchmarks.decoder_bench import MIN_EXPECTED_FAILURES, wilson
 SHOTS = 20_000
 SEED = 42
 _REL_TOL = 0.02  # a reported number counts if within 2% of the tool's rate (rounding)
+# A number is a token on its own: not inside a word or a hex string (answers quote
+# circuit_sha256 values, and '...9e41273519...' inside one was read as 9 x 10^41273519..., which
+# hung a run for hours or raised OverflowError). Exponents are at most 3 digits.
 _NUM = re.compile(
-    r"(?P<m>\d+(?:\.\d+)?)\s*(?:e(?P<e>[-+]?\d+)|[x\u00d7]\s*10\s*\^?\s*\{?(?P<p>[-\u2212\u207b]?\s*\d+)\}?)?\s*(?P<pct>%)?",
+    r"(?<![\w.])(?P<m>\d+(?:\.\d+)?)"
+    r"(?:\s*(?:e(?P<e>[-+]?\d{1,3})|[x\u00d7]\s*10\s*\^?\s*\{?(?P<p>[-\u2212\u207b]?\s*\d{1,3})\}?))?"
+    r"(?!\w)\s*(?P<pct>%)?",
     re.IGNORECASE,
 )
 # superscript digits and minus signs (U+207B, U+2212) that models write in "10⁻²"
