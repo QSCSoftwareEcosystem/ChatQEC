@@ -115,3 +115,52 @@ def test_scorer_reads_python_repr_tool_output(bench):
     )
     s = bench.score(item, ans)
     assert s["numeric_in_ci"] == 1.0 and s["faithful_best"] and s["passed"]
+
+
+def _audit(tmp_path, rows):
+    path = tmp_path / "gold_audit.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return path
+
+
+def test_audited_gold_replaces_a_shipped_value_decoder_bench_cannot_reproduce(tmp_path):
+    """decoder-bench's own pinned pipeline gives 6/100k... for qLDPC d=6 p=0.003 Relay-BP
+    where the shipped CSV says 0.117; the audited native count becomes the gold, and the
+    numeric check compares two counts (two-proportion z) instead of gold-in-interval."""
+    audit = _audit(tmp_path, [{
+        "code": "qldpc", "d": 6, "p": 0.003, "decoder": "relay_bp", "gold_csv": 0.116575,
+        "native_errors": 1849, "native_shots": 20000, "csv_gold_consistent_with_native": False,
+    }])  # fmt: skip
+    b = DecoderBench(gold_csv=GOLD, audit_jsonl=audit)
+    item = _item(b, "qldpc", 6, 0.003, "slow")
+    assert item.gold["relay_bp"] == pytest.approx(1849 / 20000)
+    assert item.meta["audited"]["relay_bp"] == {"errors": 1849, "shots": 20000, "csv": 0.116575}
+
+    args = dict(item.expected_args)
+    agrees = _answer(
+        args,
+        [(d, 373 if d == "relay_bp" else 1200, 4000) for d in args["decoders"]],
+        "",
+        "relay_bp",
+    )
+    assert (
+        DecoderBench(gold_csv=GOLD).score(item, agrees)["numeric_in_ci"] < 1
+    )  # shipped gold: fails
+    assert b.score(item, agrees)["numeric_detail"]["relay_bp"] == {"method": "audited", "ok": True}
+    off = _answer(
+        args,
+        [(d, 600 if d == "relay_bp" else 1200, 4000) for d in args["decoders"]],
+        "",
+        "relay_bp",
+    )
+    assert b.score(item, off)["numeric_detail"]["relay_bp"] == {"method": "audited", "ok": False}
+
+
+def test_consistent_audit_rows_leave_the_shipped_gold_alone(tmp_path):
+    audit = _audit(tmp_path, [{
+        "code": "qldpc", "d": 6, "p": 0.003, "decoder": "relay_bp", "gold_csv": 0.116575,
+        "native_errors": 2330, "native_shots": 20000, "csv_gold_consistent_with_native": True,
+    }])  # fmt: skip
+    item = _item(DecoderBench(gold_csv=GOLD, audit_jsonl=audit), "qldpc", 6, 0.003, "slow")
+    assert item.gold["relay_bp"] == pytest.approx(0.116575)
+    assert "relay_bp" not in item.meta.get("audited", {})

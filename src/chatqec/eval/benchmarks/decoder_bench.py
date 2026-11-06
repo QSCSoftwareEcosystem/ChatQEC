@@ -14,6 +14,7 @@ A decoder is scored numerically only when the gold rate times the item's shots g
 from __future__ import annotations
 
 import csv
+import json
 import math
 import re
 from pathlib import Path
@@ -24,6 +25,7 @@ from chatqec.eval.benchmarks import register_benchmark
 from chatqec.eval.benchmarks.base import BenchItem, Benchmark, last_call, tool_output
 
 MIN_EXPECTED_FAILURES = 20
+Z95 = 1.96  # two-sided 95% for the audited-gold two-proportion test
 SEPARABLE_RATIO = 1.5  # rank only decoder pairs whose gold rates differ at least this much
 SEED = 42
 _Z95 = 1.959963984540054
@@ -83,8 +85,9 @@ def _prompt(code: str, d: int, p: float, names: list[str], shots: int) -> str:
 
 @register_benchmark("decoder-bench")
 class DecoderBench(Benchmark):
-    def __init__(self, gold_csv: Path | str) -> None:
+    def __init__(self, gold_csv: Path | str, audit_jsonl: Path | str | None = None) -> None:
         self._gold = _load_gold(Path(gold_csv))
+        self._audit = _load_audit(Path(audit_jsonl)) if audit_jsonl else {}
 
     def items(self) -> list[BenchItem]:
         out = []
@@ -95,6 +98,13 @@ class DecoderBench(Benchmark):
                     continue
                 ours = [_DECODERS[m][0] for m in present]
                 gold = {_DECODERS[m][0]: rates[m] for m in present}
+                audited = {
+                    name: self._audit[(code, d, p, name)] | {"csv": gold[name]}
+                    for name in gold
+                    if (code, d, p, name) in self._audit
+                }
+                for name, a in audited.items():
+                    gold[name] = a["errors"] / a["shots"]
                 out.append(
                     BenchItem(
                         id=f"decoder-bench/{code}-d{d}-p{p}-{group}",
@@ -118,6 +128,7 @@ class DecoderBench(Benchmark):
                             "resolvable": {
                                 k: v * shots >= MIN_EXPECTED_FAILURES for k, v in gold.items()
                             },
+                            **({"audited": audited} if audited else {}),
                         },
                     )
                 )
@@ -139,10 +150,9 @@ class DecoderBench(Benchmark):
             if r.get("ok") and r.get("shots")
         }
         resolvable = [k for k, ok in item.meta["resolvable"].items() if ok]
-        in_ci = [
-            k in measured and wilson(*measured[k])[0] <= item.gold[k] <= wilson(*measured[k])[1]
-            for k in resolvable
-        ]
+        audited = item.meta.get("audited", {})
+        detail = {k: _numeric_check(k, measured, item.gold, audited) for k in resolvable}
+        in_ci = [d["ok"] for d in detail.values()]
         numeric = sum(in_ci) / len(in_ci) if in_ci else None
         ranking = _ranking_agreement(item.gold, measured, resolvable)
         best = str(out.get("best", ""))
@@ -155,10 +165,50 @@ class DecoderBench(Benchmark):
             "arg_match": arg_match,
             "args_exact": args_exact,
             "numeric_in_ci": numeric,
+            "numeric_detail": detail,
             "ranking_agreement": ranking,
             "faithful_best": faithful,
             "passed": tool_ok and args_exact and numeric in (1.0, None) and ranking in (1.0, None),
         }
+
+
+def _load_audit(path: Path) -> dict[tuple[str, int, float, str], dict[str, int]]:
+    """Native counts for pairs whose shipped gold decoder-bench's own pipeline did not reproduce
+    (rows written by scripts/benchmarks/decoder_bench_gold_audit.py)."""
+    out = {}
+    for line in path.read_text().splitlines():
+        r = json.loads(line)
+        if not r["csv_gold_consistent_with_native"]:
+            key = (r["code"], int(r["d"]), float(r["p"]), r["decoder"])
+            out[key] = {"errors": int(r["native_errors"]), "shots": int(r["native_shots"])}
+    return out
+
+
+def _numeric_check(
+    name: str,
+    measured: dict[str, tuple[int, int]],
+    gold: dict[str, float],
+    audited: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Shipped gold (0.5M-10M shots): gold inside the 95% Wilson interval of chatQEC's count.
+    Audited gold (a native count with its own sampling error): two-proportion |z| < 1.96."""
+    if name not in measured:
+        return {"method": "audited" if name in audited else "shipped", "ok": False}
+    k, n = measured[name]
+    if name in audited:
+        a = audited[name]
+        return {
+            "method": "audited",
+            "ok": abs(two_proportion_z(k, n, a["errors"], a["shots"])) < Z95,
+        }
+    lo, hi = wilson(k, n)
+    return {"method": "shipped", "ok": lo <= gold[name] <= hi}
+
+
+def two_proportion_z(k1: int, n1: int, k2: int, n2: int) -> float:
+    pooled = (k1 + k2) / (n1 + n2)
+    se = math.sqrt(pooled * (1 - pooled) * (1 / n1 + 1 / n2))
+    return 0.0 if se == 0 else (k1 / n1 - k2 / n2) / se
 
 
 def _same(key: str, got: Any, want: Any) -> bool:

@@ -22,6 +22,8 @@ _DATA: dict[str, dict[str, Path]] = {
     "ft-primitive-bench": {"gold_jsonl": REPO / "eval/benchmarks/ft_primitive_bench/gold.jsonl"},
 }
 COMPARE_PROMPTS = REPO / "eval/compare/prompts.jsonl"
+# Native counts for pairs decoder-bench's own pipeline does not reproduce (rescore --audited-gold).
+AUDIT = REPO / "eval/benchmarks/decoder_bench/gold_audit.jsonl"
 ARXIV_CACHE = REPO / "eval/compare/arxiv_exists.json"
 # The bare baseline: the same model, no retrieval, no tools, a neutral expert prompt.
 BARE_SYSTEM = (
@@ -232,17 +234,43 @@ def bench_report(paths: tuple[Path, ...]) -> None:
 @click.argument("name")
 @click.argument("path", type=click.Path(exists=True, path_type=Path))
 @click.option("--out", "out_path", type=click.Path(path_type=Path), required=True)
-@click.option("--judge-model", default=None, help="compare only: local judge model")
-def bench_rescore(name: str, path: Path, out_path: Path, judge_model: str | None) -> None:
+@click.option(
+    "--judge-model",
+    default=None,
+    help="compare only: re-judge with this local model (default: replay the stored verdicts)",
+)
+@click.option(
+    "--audited-gold",
+    is_flag=True,
+    help="decoder-bench only: score the pairs decoder-bench's own pipeline does not reproduce "
+    "against the audited native counts (eval/benchmarks/decoder_bench/gold_audit.jsonl)",
+)
+def bench_rescore(
+    name: str, path: Path, out_path: Path, judge_model: str | None, audited_gold: bool
+) -> None:
     """Rescore a stored run with the current scorer and gold (no answering-model calls)."""
+    from chatqec.eval.benchmarks.decoder_bench import DecoderBench
     from chatqec.eval.benchmarks.provenance import sha256_file
-    from chatqec.eval.benchmarks.run import rescore_rows, summarize, write_rows
+    from chatqec.eval.benchmarks.run import load_rows, rescore_rows, summarize, write_rows
 
-    if name == "compare" and not judge_model:
-        raise click.UsageError("compare needs --judge-model to re-grade definition/abstain rows")
+    if audited_gold and name != "decoder-bench":
+        raise click.UsageError("--audited-gold applies to decoder-bench only")
     bench, gold = _bench(name, judge_model)
+    if audited_gold:
+        bench = DecoderBench(gold_csv=gold, audit_jsonl=AUDIT)
+    replayed = name == "compare" and not judge_model
+    if replayed:  # reuse the run's own judge verdicts instead of asking an LLM again
+        from chatqec.eval.benchmarks.compare import CompareBench, ReplayJudge
+
+        assert isinstance(bench, CompareBench)
+        bench._judge = ReplayJudge.from_rows(load_rows(path)[1], bench)
+        bench._judge_model = "replay"
     header, rows = rescore_rows(bench, path)
+    if replayed:
+        header["rescore_judge"] = "replay of the run's stored verdicts"
     header["rescore_gold"] = {"path": str(gold), "sha256": sha256_file(gold)}
+    if audited_gold:
+        header["rescore_audit"] = {"path": str(AUDIT), "sha256": sha256_file(AUDIT)}
     write_rows(out_path, header, rows)
     click.echo(f"{len(rows)} rows rescored -> {out_path}")
     click.echo(summarize(rows))
