@@ -18,6 +18,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(name="busy", description="blocks for 30 s", inputSchema=schema),
         Tool(name="ping", description="returns at once", inputSchema=schema),
+        Tool(name="boom", description="raises", inputSchema=schema),
     ]
 
 
@@ -25,6 +26,8 @@ async def list_tools() -> list[Tool]:
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name == "busy":
         time.sleep(30)  # deliberately blocking: the server cannot serve anything else
+    if name == "boom":
+        raise ValueError("x_distance needs z_distance")  # the server reports it as error text
     return [TextContent(type="text", text=json.dumps({"tool": name}))]
 
 

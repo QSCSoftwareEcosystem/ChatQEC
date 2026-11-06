@@ -43,3 +43,13 @@ def test_the_abandoned_server_process_is_gone_after_a_timeout(client):
         not Path(f"/proc/{old}").exists()
         or "zombie" in Path(f"/proc/{old}/status").read_text().lower()
     )
+
+
+def test_a_tool_error_comes_back_to_the_model_instead_of_crashing(client):
+    """A tool that raises is reported by the MCP server as plain error text. The client used to
+    json.loads it and raise JSONDecodeError, which ended the benchmark item without recording
+    the call and without letting the model correct its arguments."""
+    out = client.call_tool("boom", {})
+    assert out["ok"] is False
+    assert "x_distance needs z_distance" in out["error_message"]
+    assert client.call_tool("ping", {}) == {"tool": "ping"}

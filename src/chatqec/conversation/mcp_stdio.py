@@ -197,12 +197,25 @@ class StdioMCPClient:
         except TimeoutError:
             self._restart()
             raise
-        for block in result.content:
-            text = getattr(block, "text", None)
-            if text is not None:
+        texts = [t for t in (getattr(b, "text", None) for b in result.content) if t is not None]
+        if getattr(result, "isError", False):
+            # A tool that raises is reported as plain error text. Hand it to the model as a
+            # failed result so it can correct its arguments, rather than crashing the turn.
+            failed = {"ok": False, "error_message": " ".join(texts) or "tool reported an error"}
+            trace("mcp.call_error", name=name, output=failed)
+            return failed
+        for text in texts:
+            try:
                 parsed: dict[str, Any] = json.loads(text)
-                trace("mcp.call_result", name=name, output=parsed)
-                return parsed
+            except json.JSONDecodeError:
+                failed = {
+                    "ok": False,
+                    "error_message": f"tool returned non-JSON output: {text[:500]}",
+                }
+                trace("mcp.call_error", name=name, output=failed)
+                return failed
+            trace("mcp.call_result", name=name, output=parsed)
+            return parsed
         trace("mcp.call_result", name=name, output={})
         return {}
 
