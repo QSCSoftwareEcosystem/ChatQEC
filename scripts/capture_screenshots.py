@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Scenario prompts come from committed eval files so the paper shows tested questions.
 SCENARIOS = {
     "definition": ("eval/ui_acceptance_prompts.json", "surface_code_definition"),
-    "computation": ("eval/ui_acceptance_prompts.json", "decoder_compare_color"),
+    "computation": ("eval/ui_acceptance_prompts.json", "decoder_compare_color_seeded"),
     "refusal": ("eval/compare/prompts.jsonl", "abstain-willow-d15"),
 }
 
