@@ -74,8 +74,8 @@ def bench_table() -> str:
     specs = [
         ("Routed", "routed", db, ft),
         ("Args exact", "args_exact", db, ft),
-        ("Numeric, shipped gold", "numeric_in_ci", db, ft),
-        ("Numeric, audited gold", "numeric_in_ci", dba, None),
+        ("Numeric (shipped)", "numeric_in_ci", db, ft),
+        ("Numeric (audited)", "numeric_in_ci", dba, None),
         ("Ranking", "ranking_agreement", db, None),
         ("Passed", "passed", dba, ft),
     ]
@@ -107,11 +107,11 @@ def compare_table() -> str:
             "n": len(rows),
         }
     cols = [("chatqec", m) for m in MODELS] + [("bare", m) for m in MODELS]
-    head = " & ".join(f"{'ChatQEC' if s == 'chatqec' else 'Bare'} {MODELS[m]}" for s, m in cols)
-    lines = [
+    lines = [  # two-level header so the table fits one column
         r"\begin{tabular}{l" + "c" * len(cols) + "}",
         r"\toprule",
-        f" & {head} \\\\",
+        r" & \multicolumn{2}{c}{ChatQEC} & \multicolumn{2}{c}{Bare model} \\",
+        " & " + " & ".join(MODELS[m] for _, m in cols) + r" \\",
         r"\midrule",
     ]
     for cat, label in CATEGORIES:
@@ -123,7 +123,7 @@ def compare_table() -> str:
     )
     lines.append("Invented codes & " + " & ".join(str(extra[k]["invented"]) for k in cols) + r" \\")
     lines.append(
-        "Fabricated arXiv ids & " + " & ".join(str(extra[k]["fabricated"]) for k in cols) + r" \\"
+        "Fabricated ids & " + " & ".join(str(extra[k]["fabricated"]) for k in cols) + r" \\"
     )
     lines += [r"\bottomrule", r"\end{tabular}"]
     return "\n".join(lines) + "\n"
