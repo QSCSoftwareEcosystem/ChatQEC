@@ -202,7 +202,10 @@ def _render_dict_output(name: str, data: dict) -> bool:
             _render_svg(svg)
         return True
     if name in _ROW_BUILDERS:
-        st.dataframe(_ROW_BUILDERS[name](data))
+        st.dataframe(  # wide note column, so notes such as 'capped at 500 shots' are not cut off
+            _ROW_BUILDERS[name](data),
+            column_config={"note": st.column_config.TextColumn(width="large")},
+        )
         if data.get("notes"):
             st.caption(data["notes"])
         if data.get("circuit_qasm"):

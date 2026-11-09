@@ -54,6 +54,6 @@
     "expected_tools": [
       "decoder_compare"
     ],
-    "prompt": "Compare PyMatching, Tesseract, MLE and CUDA-Q RelayBP on a distance-5 color code at p=0.002 with 2000 shots and seed 42, and rank them."
+    "prompt": "Compare PyMatching, Tesseract and CUDA-Q RelayBP on a distance-5 color code at p=0.002 with 2000 shots and seed 42, and rank them."
   }
 ]
