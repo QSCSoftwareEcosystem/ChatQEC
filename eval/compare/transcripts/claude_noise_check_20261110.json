@@ -1,0 +1,8 @@
+{
+  "script": "scripts/check_frontier_noise.py",
+  "setup": "color_code:memory_xyz d=5 rounds=5 p=0.002; seeds 42,43 x 5000 shots; values are [errors, shots]",
+  "note": "cudaq_relay_bp is not bit-reproducible on GPU (an earlier identical run gave 33 and 49)",
+  "chatqec_noise": {"tesseract": [28, 10000], "cudaq_relay_bp": [35, 10000], "pymatching": [366, 10000], "pymatching_drop": [608, 10000]},
+  "plus_data_depol": {"tesseract": [41, 10000], "cudaq_relay_bp": [52, 10000], "pymatching": [421, 10000], "pymatching_drop": [694, 10000]},
+  "claude_reported": {"tesseract": [8, 2000], "relay_bp_cpu": [16, 2000], "pymatching_drop": [140, 2000]}
+}
