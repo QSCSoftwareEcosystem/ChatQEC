@@ -7,7 +7,7 @@ Input:  6ac52ba22379cb285b6dc6d7/figures/screens_final/computation_answer.png, w
         eval/ui_acceptance_prompts.json; Muse-Glimmer, 2000 shots, seed 42).
 Output: 6ac52ba22379cb285b6dc6d7/figures/chat_computation.png
 
-Two columns: left, the answer excerpt (1) and the citation cards (2); right, the tool input (3)
+One column, in page order: the answer excerpt (1), the citation cards (2), the tool input (3),
 and the tool's result table (4). The crop rows are fixed to this capture: re-check them by eye
 after a new capture, since the answer text (and so its layout) can change between runs.
 """
@@ -76,20 +76,14 @@ def main() -> None:
     cards = _crop(im, CARDS)
     tool_in, table = _crop(im, TOOL_INPUT), _crop(im, TOOL_TABLE)
 
-    left_h = answer.height + GAP + cards.height
-    right_h = tool_in.height + GAP + table.height
-    w = PAD + BADGE + im.width + GAP + BADGE + im.width + PAD
-    canvas = Image.new("RGB", (w, max(left_h, right_h) + 2 * PAD), WHITE)
-    lx, rx = PAD + BADGE, PAD + BADGE + im.width + GAP + BADGE
-    placed = [
-        (1, answer, lx, PAD),
-        (2, cards, lx, PAD + answer.height + GAP),
-        (3, tool_in, rx, PAD),
-        (4, table, rx, PAD + tool_in.height + GAP),
-    ]
-    for n, img, x, y in placed:
+    parts = [(1, answer), (2, cards), (3, tool_in), (4, table)]
+    h = sum(img.height for _, img in parts) + GAP * (len(parts) - 1) + 2 * PAD
+    canvas = Image.new("RGB", (PAD + BADGE + im.width + PAD, h), WHITE)
+    x, y = PAD + BADGE, PAD
+    for n, img in parts:  # one column, in the order the Chat page shows them
         canvas.paste(img, (x, y))
         _badge(canvas, n, (x - BADGE - 6, y + 12), font)
+        y += img.height + GAP
     canvas.save(OUT, dpi=(300, 300))
     logger.info("wrote %s (%dx%d)", OUT.relative_to(REPO), *canvas.size)
 
