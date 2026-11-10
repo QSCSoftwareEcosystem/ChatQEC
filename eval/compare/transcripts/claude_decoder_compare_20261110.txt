@@ -1,0 +1,72 @@
+11/10/26, 2:32 PM                                                 Decoder comparison for color code - Claude
+
+
+           Decoder comparison for color code                  
+
+                                              Compare PyMatching, Tesseract and CUDA-Q RelayBP on a distance-5
+                                              color code at p=0.002 with 2000 shots and seed 42, and rank them.
+
+
+      Edited a file, created a file, and 20 more steps
+
+
+
+
+                                                                     
+      I ran PyMatching and Tesseract directly. CUDA-Q Relay-BP wouldn’t run here because this
+      workspace has no NVIDIA GPU ( ERROR: No GPU is available ). In its place I ran IBM’s
+      open-source CPU version of Relay-BP (the relay-bp package), which uses the same
+      algorithm and the same relay settings.
+      Setup: Stim color_code:memory_xyz , d=5, 5 rounds, uniform circuit-level noise at p=0.002
+      (45 detectors, 1104 error mechanisms). All decoders got the same 2000 shots, sampled with
+      seed 42. 1284 of those shots had at least one detection event.
+
+      Rank          Decoder                                                                   Failures         Logical      Time per
+                                                                                                               error rate   shot
+
+      1             Tesseract (beam 20, beam climbing, 20 detector                            8                0.40% ±      ~5.5 ms
+                    orders)                                                                                    0.14%
+
+      2             Relay-BP, CPU stand-in (γ₀=0.125, γ range [-0.24,                         16               0.80% ±      ~0.5 ms
+                    0.66], 80 pre-iterations, 60 sets × 60 iterations)                                         0.20%
+
+      3             PyMatching                                                                140              7.0% ±       ~1 µs
+                                                                                                               0.57%
+
+      What the results show:
+             Tesseract has the lowest error rate. The gap to Relay-BP is not statistically significant at
+             2000 shots, though (Fisher exact test p ≈ 0.15). You’d need roughly 20k or more shots to
+             separate them with confidence.
+             Relay-BP was about 10x faster than Tesseract on CPU at about twice the error rate. On a
+             GPU with batching, the CUDA-Q version should be faster still. Its accuracy should be
+             similar to the CPU version, but I couldn’t measure it here.
+             PyMatching is fast but a poor fit for color codes. Most error mechanisms trigger 3 to 8
+             detectors, and Stim can’t break those down into the 2-detector pieces matching
+             requires. I had to tell Stim to skip the ones it couldn’t break down, which accounts for
+             most of PyMatching’s 7% error rate. It’s a fair baseline for showing that gap, not a
+             competitive decoder here.
+
+      The CUDA-Q branch in bench.py builds the check matrix, observable matrix and error
+      priors from the error model. It calls nv-qldpc-decoder with bp_method=3 and
+https://claude.ai/chat/6fe0e1dc-76ee-4bdd-b52f-4e8ea745a3fa                                                                            1/2
+11/10/26, 2:32 PM                                             Decoder comparison for color code - Claude
+
+       composition=1 , using the same relay settings as the CPU run. On any CUDA GPU node (an
+      ORNL cluster would work) you can run it as-is to get the true CUDA-Q number alongside
+      the other two. I’d also raise the shot count there.
+
+
+           Bench   PY
+
+
+
+        Results    Code · JSON
+
+
+       Download all
+      
+
+
+
+
+https://claude.ai/chat/6fe0e1dc-76ee-4bdd-b52f-4e8ea745a3fa                                                2/2
