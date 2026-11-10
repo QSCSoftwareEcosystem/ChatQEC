@@ -1,0 +1,920 @@
+11/10/26, 2:06 PM                                                     Compare Decoder Performance
+
+
+
+
+     You said:
+                                                      Compare PyMatching, Tesseract and CUDA-Q RelayBP on a
+                                                      distance-5 color code at p=0.002 with 2000 shots and seed 42,
+                                                      and rank them.
+     Worked for 12s
+     ChatGPT said:
+     Decoder comparison: distance-5 color code
+     Benchmark configuration
+     Parameter                                                                                                         Value
+     Code                                                                                                      2D color code
+     Code distance                                                                                                    d=5
+
+     Physical error probability                                                                                   p = 0.002
+
+     Shots                                                                                                             2,000
+     Random seed                                                                                                          42
+     Decoders                                                                          PyMatching, Tesseract, CUDA-Q RelayBP
+     An important distinction is that these three decoders use different decoding strategies:
+         PyMatching: Minimum-weight perfect matching (MWPM). Very fast, but its standard
+         formulation expects graphlike error mechanisms.
+         Tesseract: Search-based most-likely-error decoding. Supports non-graphlike error
+         mechanisms and explicitly supports color codes.
+         CUDA-Q RelayBP: Belief-propagation-based decoding intended for accelerated, scalable
+         decoding workflows.
+     The code structure matters: a color-code benchmark should not automatically assume that a
+     conventional surface-code matching decoder can represent all its correlated error mechanisms.
+          NVIDIA CU… +2
+
+
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                                                     1/20
+11/10/26, 2:06 PM                                                 Compare Decoder Performance
+
+
+
+     1. Compatibility and expected performance
+     Criterion       PyMatching                              Tesseract                          CUDA-Q RelayBP
+     Color-code      Conditional                             Yes                                Requires validation
+     support
+     Decoding method MWPM                                    A*/search                          Relay belief propagation
+     Non-graphlike Requires                                  Native search over error           Sparse parity-check
+     errors          decomposition                           mechanisms                         formulation
+     CPU/GPU         CPU                                     CPU, multithreaded                 GPU accelerated
+     Correlation     Limited in standard                     More general error models          Iterative message passing
+     handling        MWPM
+     Main advantage Speed                                    Decoding accuracy                  GPU scalability
+          quantumlib.… +3
+
+     One important caveat: NVIDIA documents RelayBP primarily as a qLDPC decoder, with its GPU
+     acceleration and real-time capabilities demonstrated on bivariate-bicycle codes. That does not
+     establish superior performance on a distance-5 color code. GitHub +1
+     2. Expected ranking
+     For decoding suitability and expected accuracy on a color code, my provisional ranking is:
+              Tesseract
+        1 Best-supported choice
+              Explicit color-code support and general error-model search.
+
+        2 CUDA-Q    RelayBP
+          Promising GPU-based approach, but color-code performance needs experimental validation.
+
+        3 PyMatching
+          Excellent speed, but standard MWPM requires graphlike error mechanisms.
+     This is a ranking of expected suitability, not a measured ranking of your 2,000 shots.
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                                                  2/20
+11/10/26, 2:06 PM                                                    Compare Decoder Performance
+
+
+
+     For decoding speed alone, the ranking could be quite different: PyMatching is a strong
+     candidate for first place on CPU, while RelayBP is attractive for GPU throughput. Tesseract's
+     search complexity can make it slower.
+     3. What the experiment should measure
+     For a meaningful comparison, use identical sampled syndromes and ground-truth logical
+     observables for all three decoders.
+     Metric                                           Purpose
+     Logical errors                                   Number of incorrectly decoded shots
+     Logical error rate (LER)                         Logical errors / 2,000
+     Decoding time                                    Total time for 2,000 shots
+     Average latency                                  Average time per shot
+     BP convergence                                   RelayBP convergence percentage
+     Failed decodes                                   Number of unsuccessful or nonconvergent decodes
+     At 2,000 shots, each logical failure changes the measured LER by 0.0005. Zero observed
+     failures would not establish a zero logical error rate.
+     4. Important experimental controls
+     To make the results reproducible:
+          Use the same distance-5 color-code geometry and stabilizer ordering.
+          Use the same physical noise probability p = 0.002.
+          Generate exactly 2,000 shots with seed 42.
+          Reuse the same syndromes and actual logical outcomes across all decoders.
+          Configure RelayBP with bp_seed=42 and repeatable=True where supported.
+          Report decoder versions, hardware, and CPU/GPU timing separately.
+     For RelayBP, the documented sequential relay configuration includes bp_method=3 ,
+      composition=1 , and a configurable srelay_config .      NVIDIA Tec… +1
+
+     I have not executed these three implementations, so I would not present invented logical error
+     counts or decoding times as experimental results.
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                              3/20
+11/10/26, 2:06 PM                                                        Compare Decoder Performance
+
+
+
+
+     5. One clarification before producing the actual benchmark
+     Which noise model should we use?
+        Noise model
+            Code-capacity noise (independent data-qubit errors)
+            Circuit-level depolarizing noise (gate, preparation, and measurement errors)
+
+        Color-code geometry
+            Triangular 2D color code
+            Hexagonal color-code layout
+                                                             Use these benchmark settings
+
+     With this choice, we can build a fair, reproducible benchmark rather than comparing
+     incompatible decoder inputs.
+     You said:
+                                                      Use code noise and triangular geometry for the distance-5 color-
+                                                      code benchmark. Compare PyMatching, Tesseract, and CUDA-Q
+                                                      RelayBP using 2000 shots and seed 42. Provide reproducible
+                                                      Python benchmark code and measured-result reporting.
+     Worked for 39s
+     ChatGPT said:
+     Reproducible benchmark: distance-5 triangular color code
+     We will use the following fixed experiment:
+        Benchmark configuration
+        CODE                                                               DISTANCE
+        Triangular 2D color code                                           5
+        NOISE MODEL                                                        ERROR PROBABILITY
+        Code-capacity                                                      0.002
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                                               4/20
+11/10/26, 2:06 PM                                                              Compare Decoder Performance
+
+
+        MONTE CARLO SHOTS                                                            RANDOM SEED
+        2,000                                                                        42
+        DECODERS
+        PyMatching · Tesseract · CUDA-Q RelayBP
+
+     1. Experimental design
+     For a fair comparison, use the same sampled error patterns, syndromes, and actual logical
+     outcomes for all three decoders.
+     The code-capacity noise model applies independent Pauli errors to data qubits, without
+     measurement errors or repeated syndrome rounds.
+     For a CSS color code, we decode the X- and Z-error components separately:
+                                                             sX = HX eTX
+                                                               ​           ​         ​   (mod 2)
+
+
+                                                             sZ = HZ eTZ
+                                                                   ​   ​         ​       (mod 2)
+
+     The logical observables are calculated from the actual error patterns and compared with each
+     decoder's predicted logical flips.
+     Important compatibility issue: Standard PyMatching requires graphlike error mechanisms,
+     whereas a triangular color code can have hypergraph error mechanisms. Tesseract supports
+     color codes directly. RelayBP accepts a parity-check matrix, but must be tested with the color-
+     code matrices and logical-observable mapping. NVIDIA CU… +2
+     I recommend reporting PyMatching as a graph-decomposed baseline rather than silently
+     treating its decomposition as equivalent to exact color-code decoding.
+     2. Code and dependencies
+     There is one implementation detail worth addressing before running the experiment: CUDA-Q
+     QEC's documented built-in code catalog does not provide a general distance-5 triangular color-
+     code constructor. Its built-in Steane code is distance 3, not the requested code. NVIDIA CU… +1
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                                   5/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+     Therefore, the benchmark should load the actual stabilizer matrices for the chosen triangular
+     layout instead of substituting a distance-5 surface code.
+     Use the following input convention:
+
+     color_code_d5.npz
+             Hx       # X stabilizer check matrix
+             Hz       # Z stabilizer check matrix
+             Lx       # Logical X observable
+             Lz       # Logical Z observable
+
+
+     All matrices are binary NumPy arrays. The convention is:
+          Hz detects X errors.
+          Hx detects Z errors.
+          Lz measures logical flips caused by X errors.
+          Lx measures logical flips caused by Z errors.
+
+     Install the dependencies:
+
+     python -m pip install numpy scipy stim pymatching tesseract-decoder
+
+
+     # CUDA-Q QEC: install a version compatible with your
+     # CUDA-Q, CUDA toolkit, and GPU environment.
+     python -m pip install cudaq-qec
+
+
+     For Tesseract, the Python wrapper exposes TesseractConfig , compile_decoder() , and
+     decode() .     GitHub +2
+
+     3. Reproducible benchmark implementation
+     The following implementation uses:
+         Identical sampled errors for all decoders.
+         Independent X and Z code-capacity bit-flip channels, each with probability 0.002.
+         One logical qubit.
+         Separate CSS decoding followed by combined logical failure evaluation.
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                           6/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+         Per-decoder timing, logical errors, logical error rate, and convergence reporting.
+     This explicitly defines the noise model. It is not the same as a depolarizing channel with total
+     Pauli error probability 0.002.
+
+     #!/usr/bin/env python3
+     """
+     Distance-5 triangular color-code benchmark.
+
+
+     Decoders:
+         1. PyMatching
+         2. Tesseract
+         3. CUDA-Q RelayBP
+
+
+     Noise:
+         Independent X and Z data-qubit flips, each with probability p.
+
+
+     Input:
+         color_code_d5.npz containing Hx, Hz, Lx, Lz.
+
+
+     Run:
+         python benchmark_color_d5.py
+     """
+
+
+     import time
+     import json
+     import numpy as np
+     import stim
+     import pymatching
+
+
+     from tesseract_decoder import tesseract
+
+
+     # ---------------------------------------------------------
+     # Configuration
+     # ---------------------------------------------------------
+
+
+     DISTANCE = 5
+     P = 0.002
+     SHOTS = 2000
+     SEED = 42
+
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                              7/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+
+     INPUT_FILE = "color_code_d5.npz"
+
+
+     # RelayBP configuration
+     BP_MAX_ITER = 100
+     BP_SEED = 42
+     RELAY_GAMMA0 = 0.5
+     RELAY_GAMMA_DIST = [0.1, 1.0]
+     RELAY_NUM_SETS = 4
+     RELAY_PRE_ITER = 10
+
+
+     # ---------------------------------------------------------
+     # Load color-code matrices
+     # ---------------------------------------------------------
+
+
+     data = np.load(INPUT_FILE)
+
+
+     Hx = np.asarray(data["Hx"], dtype=np.uint8)
+     Hz = np.asarray(data["Hz"], dtype=np.uint8)
+     Lx = np.asarray(data["Lx"], dtype=np.uint8)
+     Lz = np.asarray(data["Lz"], dtype=np.uint8)
+
+
+     if Lx.ndim == 1:
+             Lx = Lx[None, :]
+     if Lz.ndim == 1:
+             Lz = Lz[None, :]
+
+
+     n = Hx.shape[1]
+
+
+     assert Hz.shape[1] == n
+     assert Lx.shape[1] == n
+     assert Lz.shape[1] == n
+     assert np.all((Hx <= 1) & (Hz <= 1))
+     assert np.all((Lx <= 1) & (Lz <= 1))
+
+
+     # CSS stabilizer commutation
+     assert np.all((Hx @ Hz.T) % 2 == 0), \
+             "X and Z stabilizers do not commute."
+
+
+     # Logical commutation with stabilizers
+     assert np.all((Lx @ Hz.T) % 2 == 0)
+     assert np.all((Lz @ Hx.T) % 2 == 0)
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                 8/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+
+     # Logical X and Z must anticommute for one encoded qubit.
+     assert Lx.shape[0] == 1 and Lz.shape[0] == 1
+     assert int((Lx @ Lz.T)[0, 0]) % 2 == 1
+
+
+     print("Physical qubits:", n)
+     print("X checks:", Hx.shape[0])
+     print("Z checks:", Hz.shape[0])
+
+
+     # ---------------------------------------------------------
+     # Generate common random samples
+     # ---------------------------------------------------------
+
+
+     rng = np.random.default_rng(SEED)
+
+
+     # Independent X and Z code-capacity noise.
+     errors_x = (rng.random((SHOTS, n)) < P).astype(np.uint8)
+     errors_z = (rng.random((SHOTS, n)) < P).astype(np.uint8)
+
+
+     # Syndromes
+     syndrome_x = (errors_x @ Hz.T) % 2
+     syndrome_z = (errors_z @ Hx.T) % 2
+
+
+     # Actual logical flips
+     actual_x = (errors_x @ Lz.T) % 2
+     actual_z = (errors_z @ Lx.T) % 2
+
+
+     actual_logical = np.concatenate(
+             [actual_x, actual_z], axis=1
+     )
+
+
+     # ---------------------------------------------------------
+     # Construct a Stim DEM for one CSS sector
+     # ---------------------------------------------------------
+
+
+     def make_dem(H, L, p):
+             """
+             Create a code-capacity DEM.
+
+
+             Each column corresponds to one physical data-qubit
+             error mechanism.
+             """
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                 9/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+
+             lines = []
+
+
+             for q in range(H.shape[1]):
+                     targets = [
+                            f"D{j}"
+                            for j in np.flatnonzero(H[:, q])
+                     ]
+
+
+                     if L[0, q]:
+                            targets.append("L0")
+
+
+                     if targets:
+                            lines.append(
+                                    f"error({p:.12g}) " + " ".join(targets)
+                            )
+
+
+             return stim.DetectorErrorModel("\n".join(lines))
+
+
+
+     dem_x = make_dem(Hz, Lz, P)
+     dem_z = make_dem(Hx, Lx, P)
+
+
+     # ---------------------------------------------------------
+     # Helper: evaluate logical errors
+     # ---------------------------------------------------------
+
+
+     def evaluate(pred_x, pred_z, actual):
+             pred = np.concatenate(
+                     [pred_x, pred_z], axis=1
+             )
+
+
+             failed = np.any(pred != actual, axis=1)
+
+
+             return int(np.sum(failed)), float(np.mean(failed))
+
+
+
+     # ---------------------------------------------------------
+     # PyMatching
+     # ---------------------------------------------------------
+
+
+     def run_pymatching():
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                 10/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+             results = {}
+
+
+             for name, dem, syndrome in [
+                     ("X", dem_x, syndrome_x),
+                     ("Z", dem_z, syndrome_z),
+             ]:
+                     # Color-code error mechanisms may be hyperedges.
+                     # PyMatching requires graphlike mechanisms.
+                     # Stim decomposition is attempted explicitly.
+                     graph_dem = dem.decompose_errors()
+
+
+                     decoder = pymatching.Matching.from_detector_error_model(
+                            graph_dem
+                     )
+
+
+                     results[name] = decoder.decode_batch(
+                            syndrome.astype(np.uint8)
+                     )
+
+
+             return results["X"], results["Z"]
+
+
+
+     # ---------------------------------------------------------
+     # Tesseract
+     # ---------------------------------------------------------
+
+
+     def run_tesseract():
+             results = {}
+
+
+             for name, dem, syndrome in [
+                     ("X", dem_x, syndrome_x),
+                     ("Z", dem_z, syndrome_z),
+             ]:
+                     config = tesseract.TesseractConfig(
+                            dem=dem,
+                            det_beam=50,
+                            beam_climbing=True,
+                            no_revisit_dets=True,
+                            pqlimit=1_000_000,
+                     )
+
+
+                     decoder = config.compile_decoder()
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                 11/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+
+                     predicted = []
+
+
+                     for s in syndrome:
+                            obs = decoder.decode(
+                                    s.astype(bool)
+                            )
+                            predicted.append(
+                                    np.asarray(obs, dtype=np.uint8)
+                            )
+
+
+                     results[name] = np.asarray(predicted)
+
+
+             return results["X"], results["Z"]
+
+
+
+     # ---------------------------------------------------------
+     # CUDA-Q RelayBP
+     # ---------------------------------------------------------
+
+
+     def run_relaybp():
+             import cudaq_qec as qec
+
+
+             results = {}
+             convergence = {}
+
+
+             for name, H, L, syndrome in [
+                     ("X", Hz, Lz, syndrome_x),
+                     ("Z", Hx, Lx, syndrome_z),
+             ]:
+                     decoder = qec.get_decoder(
+                            "nv-qldpc-decoder",
+                            H,
+                            O=L,
+                            error_rate_vec=np.full(n, P),
+                            use_sparsity=True,
+                            max_iterations=BP_MAX_ITER,
+                            bp_method=3,
+                            composition=1,
+                            gamma0=RELAY_GAMMA0,
+                            gamma_dist=RELAY_GAMMA_DIST,
+                            bp_seed=BP_SEED,
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                 12/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+                            clip_value=10.0,
+                            repeatable=True,
+                            srelay_config={
+                                    "pre_iter": RELAY_PRE_ITER,
+                                    "num_sets": RELAY_NUM_SETS,
+                                    "stopping_criterion": "FirstConv",
+                            },
+                     )
+
+
+                     predicted = []
+                     converged = []
+
+
+                     for s in syndrome:
+                            result = decoder.decode(
+                                    s.astype(np.float64)
+                            )
+
+
+                            predicted.append(
+                                    np.asarray(result.result).reshape(-1)
+                            )
+                            converged.append(bool(result.converged))
+
+
+                     results[name] = np.asarray(predicted)
+                     convergence[name] = np.asarray(converged)
+
+
+             return (
+                     results["X"],
+                     results["Z"],
+                     convergence["X"],
+                     convergence["Z"],
+             )
+
+
+
+     # ---------------------------------------------------------
+     # Benchmark execution
+     # ---------------------------------------------------------
+
+
+     records = {}
+
+
+     def benchmark(name, function):
+             print("\nRunning:", name)
+
+
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                 13/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+             start = time.perf_counter()
+             output = function()
+             elapsed = time.perf_counter() - start
+
+
+             records[name] = {
+                     "time_seconds": elapsed,
+                     "latency_ms_per_shot": elapsed * 1000 / SHOTS,
+             }
+
+
+             return output
+
+
+
+     # PyMatching: unsupported hyperedge decomposition is
+     # recorded as an error rather than silently approximated.
+     try:
+             px, pz = benchmark(
+                     "PyMatching",
+                     run_pymatching
+             )
+
+
+             errors, ler = evaluate(
+                     px, pz, actual_logical
+             )
+
+
+             records["PyMatching"].update({
+                     "logical_errors": errors,
+                     "logical_error_rate": ler,
+                     "status": "completed",
+             })
+
+
+     except Exception as exc:
+             records["PyMatching"] = {
+                     "status": "incompatible_or_failed",
+                     "reason": str(exc),
+             }
+
+
+     # Tesseract
+     try:
+             tx, tz = benchmark(
+                     "Tesseract",
+                     run_tesseract
+             )
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                 14/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+
+             errors, ler = evaluate(
+                     tx, tz, actual_logical
+             )
+
+
+             records["Tesseract"].update({
+                     "logical_errors": errors,
+                     "logical_error_rate": ler,
+                     "status": "completed",
+             })
+
+
+     except Exception as exc:
+             records["Tesseract"] = {
+                     "status": "failed",
+                     "reason": str(exc),
+             }
+
+
+     # CUDA-Q RelayBP
+     try:
+             rx, rz, cx, cz = benchmark(
+                     "CUDA-Q RelayBP",
+                     run_relaybp
+             )
+
+
+             # Count nonconvergent shots separately.
+             convergence = cx & cz
+
+
+             rx_bits = (rx > 0.5).astype(np.uint8)
+             rz_bits = (rz > 0.5).astype(np.uint8)
+
+
+             errors, ler = evaluate(
+                     rx_bits, rz_bits, actual_logical
+             )
+
+
+             records["CUDA-Q RelayBP"].update({
+                     "logical_errors": errors,
+                     "logical_error_rate": ler,
+                     "converged_shots_both_sectors": int(
+                            np.sum(convergence)
+                     ),
+                     "nonconverged_shots": int(
+                            np.sum(~convergence)
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                 15/20
+11/10/26, 2:06 PM                                                    Compare Decoder Performance
+
+
+
+                     ),
+                     "status": "completed",
+             })
+
+
+     except Exception as exc:
+             records["CUDA-Q RelayBP"] = {
+                     "status": "failed",
+                     "reason": str(exc),
+             }
+
+
+     # ---------------------------------------------------------
+     # Print and save results
+     # ---------------------------------------------------------
+
+
+     print("\n========== BENCHMARK RESULTS ==========")
+
+
+     for name, result in records.items():
+             print("\n", name)
+             print(json.dumps(result, indent=2))
+
+
+     with open("color_code_d5_results.json", "w") as f:
+             json.dump({
+                     "distance": DISTANCE,
+                     "geometry": "triangular",
+                     "noise_model": "independent_X_Z_code_capacity",
+                     "physical_error_probability": P,
+                     "shots": SHOTS,
+                     "seed": SEED,
+                     "results": records,
+             }, f, indent=2)
+
+
+     print("\nSaved: color_code_d5_results.json")
+
+
+
+     4. Result reporting
+     The script produces color_code_d5_results.json .
+     Use this table in the experimental report:
+     Decoder                                        Logical errors          LER           Time (s)   Latency (ms/shot)
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                                               16/20
+11/10/26, 2:06 PM                                                          Compare Decoder Performance
+
+
+
+
+     PyMatching                                               Pending           Pending             Pending        Pending
+     Tesseract                                                Pending           Pending             Pending        Pending
+     CUDA-Q RelayBP                                           Pending           Pending             Pending        Pending
+     These are intentionally pending values, not simulated measurements.
+     The logical error rate is
+                                                                          Nlogical failures
+                                                              LER =                         .
+                                                                                            ​
+
+
+
+
+                                                                              2000
+                                                                                                ​
+
+
+
+
+     For example, the statistical resolution is:
+                                                             Logical failures                                 Measured LER
+                                                                            0                                            0
+                                                                            1                                       0.0005
+                                                                            2                                       0.0010
+                                                                            5                                       0.0025
+                                                                           10                                       0.0050
+                                                                           20                                       0.0100
+     For RelayBP, report both its conditional LER among converged shots and its nonconvergence
+     rate. A nonconvergent shot must not be treated as a successful decode.
+     I would also report a 95% binomial confidence interval for each LER, because 2,000 shots can
+     produce substantial statistical uncertainty.
+     5. Ranking methodology
+     I recommend two separate rankings rather than combining accuracy and speed into one
+     arbitrary score.
+     Ranking criterion                                        Primary metric
+     Accuracy                                                 Logical error rate
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                                                   17/20
+11/10/26, 2:06 PM                                                        Compare Decoder Performance
+
+
+
+
+     Reliability                                             Nonconvergence and failure rate
+     Performance                                             Average decoding latency
+     Scalability                                             Throughput and GPU utilization
+     The expected qualitative comparison is:
+     Decoder                      Expected strength                                       Main limitation
+     PyMatching                   Very fast matching                                      Graphlike decomposition
+     Tesseract                    General color-code error-model support                  Search complexity
+     CUDA-Q RelayBP               GPU acceleration and iterative decoding                 Convergence and parameter sensitivity
+     A particularly important distinction: RelayBP is not automatically a maximum-likelihood decoder.
+     Its performance must be measured against the same logical outcomes as Tesseract.
+     6. Two recommended corrections for publication-quality results
+     A. Separate RelayBP convergence from logical failure
+     Replace the RelayBP evaluation section with:
+     predicted = np.concatenate(
+             [rx_bits, rz_bits], axis=1
+     )
+
+
+     mismatch = np.any(
+             predicted != actual_logical, axis=1
+     )
+
+
+     valid = convergence
+
+
+     n_converged = int(valid.sum())
+     n_nonconverged = SHOTS - n_converged
+
+
+     conditional_ler = (
+             float(mismatch[valid].mean())
+             if n_converged else None
+     )
+
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                                                        18/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+
+     operational_failure_rate = (
+             int(np.sum(mismatch & valid)) + n_nonconverged
+     ) / SHOTS
+
+
+     records["CUDA-Q RelayBP"].update({
+             "conditional_ler": conditional_ler,
+             "operational_failure_rate": operational_failure_rate,
+             "converged_shots": n_converged,
+             "nonconverged_shots": n_nonconverged,
+     })
+
+
+     B. Separate initialization and decoding time
+     For a fair speed comparison, measure:
+      1. Decoder construction time.
+      2. First-shot decoding time.
+      3. Steady-state batch decoding time.
+      4. Total decoding throughput in shots/second.
+     The current script measures construction plus decoding, which is useful for end-to-end
+     performance but should not be labeled pure decoding latency.
+     7. Suggested experimental conclusion
+     A suitable paper-ready conclusion, to be completed after running the benchmark:
+       We evaluated PyMatching, Tesseract, and CUDA-Q RelayBP on a distance-5 triangular color
+       code under independent code-capacity X/Z noise with physical error probability 0.002. All
+       decoders were evaluated using identical error realizations over 2,000 Monte Carlo shots with
+       random seed 42. We compared logical error rates, decoding latency, computational
+       throughput, and convergence behavior. The results characterize the trade-off between
+       graph-based matching, search-based decoding, and GPU-accelerated belief propagation.
+     My recommendation: Use Tesseract as the primary accuracy reference, PyMatching as the fast
+     graph-decomposition baseline, and CUDA-Q RelayBP as the GPU-acceleration candidate. Do
+     not declare an overall winner until the three implementations have produced valid
+     measurements.
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                            19/20
+11/10/26, 2:06 PM                                            Compare Decoder Performance
+
+
+
+
+     8. What I need to produce actual measured results
+       Next step
+     Please upload your color_code_d5.npz containing Hx , Hz , Lx , and Lz .
+     With that file, I can help verify the triangular geometry, stabilizer commutation, logical operators,
+     code distance, and decoder compatibility before interpreting the benchmark.
+     One important point: the code distance should be independently verified as 5, rather than
+     inferred from the filename or matrix dimensions.
+
+
+
+
+https://chatgpt.com/c/6af36ab2-7254-83ea-b084-1d5be5a221c5                                                   20/20
