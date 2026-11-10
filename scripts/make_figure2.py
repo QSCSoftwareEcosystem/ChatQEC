@@ -7,7 +7,7 @@ Input:  6ac52ba22379cb285b6dc6d7/figures/screens_final/computation_answer.png, w
         eval/ui_acceptance_prompts.json; Muse-Glimmer, 2000 shots, seed 42).
 Output: 6ac52ba22379cb285b6dc6d7/figures/chat_computation.png
 
-One column, in page order: the answer excerpt (1), the citation cards (2), the tool input (3),
+One column, in page order: the user's prompt, the answer excerpt (1), the citation cards (2), the tool input (3),
 and the tool's result table (4). The crop rows are fixed to this capture: re-check them by eye
 after a new capture, since the answer text (and so its layout) can change between runs.
 """
@@ -23,8 +23,11 @@ logger = logging.getLogger(__name__)
 REPO = Path(__file__).resolve().parent.parent
 FIG = REPO / "6ac52ba22379cb285b6dc6d7/figures"
 SRC = FIG / "screens_final/computation_answer.png"
+PAGE = FIG / "screens_final/computation_page.png"  # full page, for the user prompt bubble
 OUT = FIG / "chat_computation.png"
 
+# (left, top, right, bottom) of the user prompt bubble in the full-page capture
+PROMPT_BOX = (1196, 750, 2604, 935)
 # (top, bottom) pixel rows of each excerpt in the 1408 px wide capture
 ANSWER_HEAD = (0, 660)  # setup line and the three decoder results
 ANSWER_TIE = (1890, 2220)  # the overlapping-interval (statistical tie) statement
@@ -76,13 +79,15 @@ def main() -> None:
     cards = _crop(im, CARDS)
     tool_in, table = _crop(im, TOOL_INPUT), _crop(im, TOOL_TABLE)
 
-    parts = [(1, answer), (2, cards), (3, tool_in), (4, table)]
+    prompt = Image.open(PAGE).convert("RGB").crop(PROMPT_BOX)
+    parts = [(0, prompt), (1, answer), (2, cards), (3, tool_in), (4, table)]
     h = sum(img.height for _, img in parts) + GAP * (len(parts) - 1) + 2 * PAD
     canvas = Image.new("RGB", (PAD + BADGE + im.width + PAD, h), WHITE)
     x, y = PAD + BADGE, PAD
     for n, img in parts:  # one column, in the order the Chat page shows them
         canvas.paste(img, (x, y))
-        _badge(canvas, n, (x - BADGE - 6, y + 12), font)
+        if n:  # the prompt (0) carries no callout
+            _badge(canvas, n, (x - BADGE - 6, y + 12), font)
         y += img.height + GAP
     canvas.save(OUT, dpi=(300, 300))
     logger.info("wrote %s (%dx%d)", OUT.relative_to(REPO), *canvas.size)
