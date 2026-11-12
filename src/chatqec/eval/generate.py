@@ -19,7 +19,7 @@ from chatqec.api import ChatQEC
 from chatqec.eval.judge import judge_and_trim
 from chatqec.eval.metrics import numeric_fact_match, tool_call_accuracy, unsafe_tool_invoked
 
-_BANNED_EXPECTED_TOOL = "ibm_submit_execution"
+_BANNED_EXPECTED_TOOLS = ("ibm_submit_execution", "iqm_submit_execution")
 
 
 class SeedError(Exception):
@@ -62,10 +62,11 @@ def load_seed_cases(path: Path) -> list[SeedCase]:
             expected_source_id_prefixes=data.get("expected_source_id_prefixes", []),
             expected_numeric_facts=data.get("expected_numeric_facts", {}),
         )
-        if _BANNED_EXPECTED_TOOL in seed.expected_tools:
+        banned = [t for t in _BANNED_EXPECTED_TOOLS if t in seed.expected_tools]
+        if banned:
             raise SeedError(
-                f"seed {seed.id!r} names {_BANNED_EXPECTED_TOOL!r} in expected_tools — "
-                "this tool spends real IBM quota and must never be authored as the "
+                f"seed {seed.id!r} names {banned[0]!r} in expected_tools — "
+                "this tool spends real hardware quota and must never be authored as the "
                 "expected/correct routing outcome for an automated eval case."
             )
         out.append(seed)
