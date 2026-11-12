@@ -273,3 +273,6 @@ eval/results/smoke/
 # stashes unstaged changes to tracked files, which silently drops rows a running job appends
 # (lost 26 rows on 2026-11-05). Keep them untracked; commit a finished run with `git add -f`.
 eval/results/**/*.jsonl
+
+# Raw frontier-LLM chat exports (curated copies live in eval/compare/transcripts/)
+Frontier_LLM_output/
