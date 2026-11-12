@@ -61,6 +61,13 @@ _EXPECTED_TOOLS = {
     "ibm_ft_compile",
     "deltakit_memory",
     "guppy_run",
+    # the IQM tools (their SDK lives in a separate env, called via a subprocess)
+    "iqm_list_backends",
+    "iqm_backend_calibration",
+    "iqm_map_circuit",
+    "iqm_preview_execution",
+    "iqm_submit_execution",
+    "iqm_job_result",
 }
 
 # Runs in a fresh interpreter with no `ibm` extra visible. A meta_path finder

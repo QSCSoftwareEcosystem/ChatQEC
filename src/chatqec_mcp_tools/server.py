@@ -62,6 +62,24 @@ from chatqec_mcp_tools.tools.ibm_hardware.submit_execution import (
     IbmSubmitExecutionInput,
     ibm_submit_execution,
 )
+from chatqec_mcp_tools.tools.iqm_hardware.calibration import (
+    IqmBackendCalibrationInput,
+    iqm_backend_calibration,
+)
+from chatqec_mcp_tools.tools.iqm_hardware.job_result import IqmJobResultInput, iqm_job_result
+from chatqec_mcp_tools.tools.iqm_hardware.list_backends import (
+    IqmListBackendsInput,
+    iqm_list_backends,
+)
+from chatqec_mcp_tools.tools.iqm_hardware.map_circuit import IqmMapCircuitInput, iqm_map_circuit
+from chatqec_mcp_tools.tools.iqm_hardware.preview_execution import (
+    IqmPreviewExecutionInput,
+    iqm_preview_execution,
+)
+from chatqec_mcp_tools.tools.iqm_hardware.submit_execution import (
+    IqmSubmitExecutionInput,
+    iqm_submit_execution,
+)
 from chatqec_mcp_tools.tools.pymatching_decode import (
     PymatchingDecodeInput,
     pymatching_decode,
@@ -158,6 +176,30 @@ def _ibm_add_pauli_checks_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _ibm_ft_compile_handler(args: dict[str, Any]) -> dict[str, Any]:
     return ibm_ft_compile(IbmFtCompileInput.model_validate(args)).model_dump()
+
+
+def _iqm_list_backends_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return iqm_list_backends(IqmListBackendsInput.model_validate(args)).model_dump()
+
+
+def _iqm_backend_calibration_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return iqm_backend_calibration(IqmBackendCalibrationInput.model_validate(args)).model_dump()
+
+
+def _iqm_map_circuit_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return iqm_map_circuit(IqmMapCircuitInput.model_validate(args)).model_dump()
+
+
+def _iqm_preview_execution_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return iqm_preview_execution(IqmPreviewExecutionInput.model_validate(args)).model_dump()
+
+
+def _iqm_submit_execution_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return iqm_submit_execution(IqmSubmitExecutionInput.model_validate(args)).model_dump()
+
+
+def _iqm_job_result_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return iqm_job_result(IqmJobResultInput.model_validate(args)).model_dump()
 
 
 def _deltakit_memory_handler(args: dict[str, Any]) -> dict[str, Any]:
@@ -412,6 +454,67 @@ _TOOLS = [
         ),
         input_schema=IbmSubmitExecutionInput.model_json_schema(),
         handler=_ibm_submit_execution_handler,
+    ),
+    ToolSpec(
+        name="iqm_list_backends",
+        description=(
+            "List the IQM quantum computer behind the configured IQM server (ORNL): name, "
+            "chip label, qubit and coupler count, health, native gates, calibration set. "
+            "Free, cached; every answer built from this must state the data's age and "
+            "flag it if stale=true. IQM does not report queue depth."
+        ),
+        input_schema=IqmListBackendsInput.model_json_schema(),
+        handler=_iqm_list_backends_handler,
+    ),
+    ToolSpec(
+        name="iqm_backend_calibration",
+        description=(
+            "Fetch the IQM device's current quality metrics: per-qubit T1, T2 echo, T2*, "
+            "readout fidelity and errors, single-qubit (prx) RB fidelity; per-coupler CZ "
+            "fidelity (interleaved RB), two-qubit Clifford fidelity and CZ duration. "
+            "Qubits are named QB1, QB2, ... Cached; state the data's age in the answer."
+        ),
+        input_schema=IqmBackendCalibrationInput.model_json_schema(),
+        handler=_iqm_backend_calibration_handler,
+    ),
+    ToolSpec(
+        name="iqm_map_circuit",
+        description=(
+            "Map a circuit (QASM or a bell/ghz/qft/qaoa preset) onto the IQM device: "
+            "physical qubits (QB names), strategy used, estimated fidelity, and a "
+            "coupling-map diagram. Free, local compute plus one cached calibration fetch."
+        ),
+        input_schema=IqmMapCircuitInput.model_json_schema(),
+        handler=_iqm_map_circuit_handler,
+    ),
+    ToolSpec(
+        name="iqm_preview_execution",
+        description=(
+            "Preview a real IQM hardware run (mapped qubits, estimated fidelity, device "
+            "health, shots) without submitting anything. Call this before "
+            "iqm_submit_execution."
+        ),
+        input_schema=IqmPreviewExecutionInput.model_json_schema(),
+        handler=_iqm_preview_execution_handler,
+    ),
+    ToolSpec(
+        name="iqm_submit_execution",
+        description=(
+            "SUBMIT a real job to the IQM quantum computer; uses the account's hardware "
+            "allocation. Only after the user has seen iqm_preview_execution and asked to "
+            "run: set confirm_submit=true. Caps at 10 qubits / 4000 shots. Returns a job "
+            "id; fetch counts later with iqm_job_result."
+        ),
+        input_schema=IqmSubmitExecutionInput.model_json_schema(),
+        handler=_iqm_submit_execution_handler,
+    ),
+    ToolSpec(
+        name="iqm_job_result",
+        description=(
+            "Status of an IQM job by job id and, once it is DONE, its measurement counts. Free."
+        ),
+        input_schema=IqmJobResultInput.model_json_schema(),
+        handler=_iqm_job_result_handler,
     ),
 ]
 

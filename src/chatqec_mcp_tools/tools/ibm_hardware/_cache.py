@@ -35,7 +35,13 @@ def _cache_path(key: str) -> Path:
     return _cache_root() / f"{safe}.json"
 
 
-def get_or_fetch(key: str, ttl_seconds: float, fetch_fn: Callable[[], Any]) -> CacheResult:
+def get_or_fetch(
+    key: str,
+    ttl_seconds: float,
+    fetch_fn: Callable[[], Any],
+    *,
+    reraise: tuple[type[BaseException], ...] = (),
+) -> CacheResult:
     """Return cached payload if fresh; otherwise call fetch_fn and persist the
     result. If fetch_fn raises and a (possibly expired) cached payload exists,
     serve it with stale=True instead of failing -- for transient failures (a
@@ -46,7 +52,9 @@ def get_or_fetch(key: str, ttl_seconds: float, fetch_fn: Callable[[], Any]) -> C
     missing/invalid credentials aren't transient, and every caller already
     turns this into an honest ok=False + error_message. Falling back to a
     days-old snapshot instead would silently present it as current, hiding a
-    broken configuration behind what looks like live data indefinitely."""
+    broken configuration behind what looks like live data indefinitely. Other
+    providers pass their own credential error types via ``reraise`` (the IQM
+    tools pass IQMCredentialsError)."""
     path = _cache_path(key)
     now = time.time()
     cached_raw: dict[str, Any] | None = None
@@ -63,9 +71,10 @@ def get_or_fetch(key: str, ttl_seconds: float, fetch_fn: Callable[[], Any]) -> C
         except (json.JSONDecodeError, KeyError, ValueError, OSError):
             cached_raw = None
 
+    non_transient: tuple[type[BaseException], ...] = (IBMCredentialsError, *reraise)
     try:
         payload = fetch_fn()
-    except IBMCredentialsError:
+    except non_transient:
         raise
     except Exception:
         if cached_raw is not None:
