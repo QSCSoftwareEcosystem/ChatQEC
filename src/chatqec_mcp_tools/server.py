@@ -88,6 +88,14 @@ from chatqec_mcp_tools.tools.qec_circuit_build import (
     QecCircuitBuildInput,
     qec_circuit_build,
 )
+from chatqec_mcp_tools.tools.qec_studio import (
+    QecStudioCompileInput,
+    QecStudioExamplesInput,
+    QecStudioLinkInput,
+    qec_studio_compile,
+    qec_studio_examples,
+    qec_studio_link,
+)
 from chatqec_mcp_tools.tools.stim_diagram import (
     StimDiagramInput,
     stim_diagram,
@@ -148,6 +156,18 @@ def _decoder_compare_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 def _glcb_visualize_url_handler(args: dict[str, Any]) -> dict[str, Any]:
     return glcb_visualize_url(GlcbVisualizeInput.model_validate(args)).model_dump()
+
+
+def _qec_studio_examples_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return qec_studio_examples(QecStudioExamplesInput.model_validate(args)).model_dump()
+
+
+def _qec_studio_compile_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return qec_studio_compile(QecStudioCompileInput.model_validate(args)).model_dump()
+
+
+def _qec_studio_link_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return qec_studio_link(QecStudioLinkInput.model_validate(args)).model_dump()
 
 
 def _ibm_list_backends_handler(args: dict[str, Any]) -> dict[str, Any]:
@@ -377,6 +397,48 @@ _TOOLS = [
         ),
         input_schema=GlcbVisualizeInput.model_json_schema(),
         handler=_glcb_visualize_url_handler,
+    ),
+    ToolSpec(
+        name="qec_studio_examples",
+        description=(
+            "List QuEra Bloqade QEC Studio's built-in examples (memory experiments, "
+            "repetition-code sweep, magic-state teleportation, surface code, lattice surgery, "
+            "Floquet honeycomb, MSD, BB codes). With a query, returns the best matches with a "
+            "link that opens each one in QEC Studio (bloqade.quera.com/studio/qec); "
+            "include_source also returns the .deq program, a good template for new ones."
+        ),
+        input_schema=QecStudioExamplesInput.model_json_schema(),
+        handler=_qec_studio_examples_handler,
+    ),
+    ToolSpec(
+        name="qec_studio_compile",
+        description=(
+            "Validate a QuEra QEC Studio .deq program with QEC Studio's own compiler; returns "
+            "its gadgets (INPUT/OUTPUT ports, READOUT) or the compiler's error message. "
+            "A .deq program is Stim plus blocks: CODE Name [[n,k,d]] { LOGICAL <X-logical> <Z-logical> "
+            "STABILIZER <generators> }; GADGET Name { INPUT Name <qubits> ... Stim ops and noise "
+            "... OUTPUT Name <qubits> } (a preparation has no INPUT; a measurement ends with M ... "
+            "and READOUT rec[-i] ...); COMPOSE Name { INPUT Name 0  REPEAT r { Gadget 0 }  OUTPUT "
+            "Name 0 }. Qubit indices are local to each gadget. "
+        ),
+        input_schema=QecStudioCompileInput.model_json_schema(),
+        handler=_qec_studio_compile_handler,
+    ),
+    ToolSpec(
+        name="qec_studio_link",
+        description=(
+            "Compile a .deq program and return a shareable QuEra QEC Studio link that lays "
+            "out a chain of its gadgets (e.g. PrepareZ, Idle, Idle, MeasureZ) with a Mean of "
+            "the final READOUT; opening it and pressing Simulate runs the memory experiment "
+            "with decoding in the browser. Single-code-block chains only. "
+            "A .deq program is Stim plus blocks: CODE Name [[n,k,d]] { LOGICAL <X-logical> <Z-logical> "
+            "STABILIZER <generators> }; GADGET Name { INPUT Name <qubits> ... Stim ops and noise "
+            "... OUTPUT Name <qubits> } (a preparation has no INPUT; a measurement ends with M ... "
+            "and READOUT rec[-i] ...); COMPOSE Name { INPUT Name 0  REPEAT r { Gadget 0 }  OUTPUT "
+            "Name 0 }. Qubit indices are local to each gadget. "
+        ),
+        input_schema=QecStudioLinkInput.model_json_schema(),
+        handler=_qec_studio_link_handler,
     ),
     ToolSpec(
         name="ibm_add_pauli_checks",

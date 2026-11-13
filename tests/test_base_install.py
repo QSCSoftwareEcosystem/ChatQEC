@@ -68,6 +68,10 @@ _EXPECTED_TOOLS = {
     "iqm_preview_execution",
     "iqm_submit_execution",
     "iqm_job_result",
+    # QuEra QEC Studio (stdlib urllib only)
+    "qec_studio_examples",
+    "qec_studio_compile",
+    "qec_studio_link",
 }
 
 # Runs in a fresh interpreter with no `ibm` extra visible. A meta_path finder

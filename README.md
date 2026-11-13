@@ -16,6 +16,11 @@ Tools:
 - `glcb_visualize_url` — build a shareable QuEra Gemini Studio
   (bloqade.quera.com/studio/gemini, successor of the retired GLCB app) link for a small circuit;
   pure string encoding, no network call, no external dependency
+- `qec_studio_examples`, `qec_studio_compile`, `qec_studio_link` — QuEra Bloqade QEC Studio
+  (bloqade.quera.com/studio/qec): find its built-in examples (with links that open them),
+  validate a `.deq` program with QEC Studio's own compile service, and build a shareable
+  link that lays out a gadget chain (prepare, rounds, measure, Mean) ready to Simulate;
+  stdlib HTTP only, needs network access
 - `ibm_list_backends` — list available IBM Quantum backends and their operational status,
   via the optional `ibm` extra (read-only; free)
 - `ibm_backend_calibration` — fetch current calibration data (T1, T2, readout error, gate
