@@ -24,7 +24,22 @@ class ToolInvocation:
 
 
 def _serialize_tool_result(output: dict[str, Any]) -> str:
-    return json.dumps(output)
+    """The tool result as the model sees it.
+
+    Inline SVG fields (``coupling_map_svg``, ``plot_svg``, ...) are replaced by a short
+    note: the UI renders them from the full recorded output, and the model cannot use the
+    markup. A 20-qubit coupling map is ~23 KB (~8k tokens), so two mapping calls
+    overflowed the local models' 32k context.
+    """
+    slim = {
+        k: (
+            f"[SVG diagram, {len(v)} chars, shown to the user by the UI]"
+            if k.endswith("_svg") and isinstance(v, str) and "<svg" in v
+            else v
+        )
+        for k, v in output.items()
+    }
+    return json.dumps(slim)
 
 
 def run_tool_loop(

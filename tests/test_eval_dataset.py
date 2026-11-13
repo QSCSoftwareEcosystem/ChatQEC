@@ -103,6 +103,6 @@ def test_eval_case_accepts_routing_fields():
 def test_existing_qa_set_still_loads():
     repo_root = Path(__file__).parent.parent
     cases = load_eval_set(repo_root / "eval" / "qa_set.jsonl")
-    assert len(cases) == 66
+    assert len(cases) == 67
     assert all(c.complexity == "simple" for c in cases)
     assert all(c.expected_tools == [] for c in cases)

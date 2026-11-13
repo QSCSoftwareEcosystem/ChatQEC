@@ -135,3 +135,20 @@ def test_loop_handles_unknown_tool_gracefully():
     assert "done" in final
     assert len(calls) == 1
     assert calls[0].output.get("error") is not None
+
+
+def test_serialized_tool_result_drops_inline_svg_but_keeps_data():
+    import json
+
+    from chatqec.conversation.tool_loop import _serialize_tool_result
+
+    svg = "<svg>" + "x" * 30_000 + "</svg>"
+    out = json.loads(
+        _serialize_tool_result(
+            {"ok": True, "physical_qubits": ["QB5", "QB6"], "coupling_map_svg": svg, "note_svg": ""}
+        )
+    )
+    assert out["physical_qubits"] == ["QB5", "QB6"]
+    assert "<svg" not in out["coupling_map_svg"]
+    assert "shown to the user" in out["coupling_map_svg"]
+    assert out["note_svg"] == ""  # empty strings pass through untouched

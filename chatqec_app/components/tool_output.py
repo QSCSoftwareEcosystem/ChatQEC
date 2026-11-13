@@ -222,6 +222,20 @@ def _render_dict_output(name: str, data: dict) -> bool:
     return False
 
 
+_MAPPING_TOOLS = ("ibm_map_circuit", "iqm_map_circuit")
+
+
+def _render_mapping(data: dict) -> None:
+    """Mapping result: fields as JSON, then the coupling-map diagram itself."""
+    if not data.get("ok", True):
+        st.error(data.get("error_message") or "tool returned an error")
+        return
+    st.json({k: v for k, v in data.items() if k != "coupling_map_svg"})
+    svg = data.get("coupling_map_svg") or ""
+    if "<svg" in svg:
+        _render_svg(svg)
+
+
 def render(call: ToolCall) -> None:
     st.markdown(f"**Tool:** `{call.name}`")
     try:  # pretty JSON, wrapped, so long inputs (decoder lists) are not cut off
@@ -238,6 +252,9 @@ def render(call: ToolCall) -> None:
         return
 
     data = _parsed(out)
+    if data is not None and call.name in _MAPPING_TOOLS:
+        _render_mapping(data)
+        return
     if data is not None and _render_dict_output(call.name, data):
         return
 
