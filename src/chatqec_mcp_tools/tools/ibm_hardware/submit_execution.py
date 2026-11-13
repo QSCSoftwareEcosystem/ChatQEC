@@ -13,7 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import compute_mapping
+from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import Mapper, compute_mapping
 
 _MAX_QUBITS = 10
 _MAX_SHOTS = 4000
@@ -41,6 +41,7 @@ class IbmSubmitExecutionInput(BaseModel):
     # Same reasoning as num_qubits above: ge=1 only, no upper bound -- the
     # _MAX_SHOTS cap is enforced at runtime as ok=False.
     shots: int = Field(..., ge=1)
+    mapper: Mapper = "default"
 
 
 class IbmSubmitExecutionOutput(BaseModel):
@@ -91,6 +92,7 @@ def ibm_submit_execution(  # noqa: PLR0911 -- distinct refusal paths, not comple
         backend=inp.backend,
         objective="maximum_fidelity",
         include_svg=False,
+        mapper=inp.mapper,
     )
     if not outcome.ok or outcome.placement is None:
         return IbmSubmitExecutionOutput(ok=False, error_message=outcome.error_message)
@@ -109,11 +111,13 @@ def ibm_submit_execution(  # noqa: PLR0911 -- distinct refusal paths, not comple
             ),
         )
 
-    if len(outcome.placement.assignment) > _MAX_QUBITS:
+    # mapomatic's routed circuit may also use routing (ancilla) qubits, so count those.
+    num_physical = len(outcome.routed_layout or outcome.placement.assignment)
+    if num_physical > _MAX_QUBITS:
         return IbmSubmitExecutionOutput(
             ok=False,
             error_message=(
-                f"Circuit maps to {len(outcome.placement.assignment)} physical qubits, "
+                f"Circuit maps to {num_physical} physical qubits, "
                 f"which exceeds the cap of {_MAX_QUBITS}."
             ),
         )
@@ -125,12 +129,16 @@ def ibm_submit_execution(  # noqa: PLR0911 -- distinct refusal paths, not comple
     # here if missing -- a real hardware run needs measurements to get any
     # data back. transpile() then places qubits per the resolved placement.
     try:
-        circuit = outcome.circuit
-        if not circuit.clbits:
-            circuit = circuit.copy()
-            circuit.measure_all()
-
-        initial_layout = [outcome.placement.assignment[i] for i in range(circuit.num_qubits)]
+        if outcome.routed_circuit is not None and outcome.routed_layout is not None:
+            # mapper="mapomatic": run the routed, measured circuit on the chosen layout.
+            circuit = outcome.routed_circuit
+            initial_layout = list(outcome.routed_layout)
+        else:
+            circuit = outcome.circuit
+            if not circuit.clbits:
+                circuit = circuit.copy()
+                circuit.measure_all()
+            initial_layout = [outcome.placement.assignment[i] for i in range(circuit.num_qubits)]
         isa_circuit = _transpile(circuit, outcome.sdk_backend, initial_layout)
 
         sampler = _make_sampler(outcome.service, outcome.sdk_backend)

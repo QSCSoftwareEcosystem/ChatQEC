@@ -429,7 +429,10 @@ _TOOLS = [
         description=(
             "Map a circuit (QASM or a bell/ghz/qft/qaoa preset) onto an IBM backend: "
             "physical qubit layout, strategy used, estimated fidelity, and a "
-            "coupling-map diagram. Free, local compute plus one calibration fetch."
+            "coupling-map diagram. Free, local compute plus one calibration fetch. "
+            "mapper='mapomatic' instead transpiles first and picks the lowest-error layout "
+            "of the routed circuit (counts SWAP-added gates); default mapper places the "
+            "logical circuit directly."
         ),
         input_schema=IbmMapCircuitInput.model_json_schema(),
         handler=_ibm_map_circuit_handler,
@@ -482,7 +485,9 @@ _TOOLS = [
         description=(
             "Map a circuit (QASM or a bell/ghz/qft/qaoa preset) onto the IQM device: "
             "physical qubits (QB names), strategy used, estimated fidelity, and a "
-            "coupling-map diagram. Free, local compute plus one cached calibration fetch."
+            "coupling-map diagram. Free, local compute plus one cached calibration fetch. "
+            "mapper='mapomatic' instead transpiles first and picks the lowest-error layout "
+            "of the routed circuit (counts SWAP-added gates)."
         ),
         input_schema=IqmMapCircuitInput.model_json_schema(),
         handler=_iqm_map_circuit_handler,

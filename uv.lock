@@ -487,6 +487,7 @@ guppy = [
     { name = "selene-sim", version = "0.3.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 ibm = [
+    { name = "mapomatic" },
     { name = "qiskit" },
     { name = "qiskit-ibm-runtime" },
     { name = "rustworkx" },
@@ -517,6 +518,7 @@ requires-dist = [
     { name = "gurobipy", marker = "extra == 'mle'", specifier = ">=12" },
     { name = "ldpc", marker = "extra == 'decoderbench'", specifier = ">=2.3" },
     { name = "lightstim", marker = "extra == 'lightstim'", git = "https://github.com/QuTone/LightStim?rev=47dd74976780192ae901d91958863cced1165354" },
+    { name = "mapomatic", marker = "extra == 'ibm'", specifier = ">=0.14,<0.15" },
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "mcp", specifier = ">=0.9,<2" },
     { name = "mwpf", marker = "extra == 'decoderbench'", specifier = ">=0.2" },
@@ -2802,6 +2804,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/68/1b/7553ab136894374ffae8851ec06f98f511cd8e66246e41b6be059d0a7289/lxml-6.1.1-pp311-pypy311_pp73-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f8844cd288697c6425c9beba919302241e3278871dc6519515e72b04e987abcf", size = 4401664, upload-time = "2026-05-18T19:20:50.489Z" },
     { url = "https://files.pythonhosted.org/packages/db/a4/441aee36c6f6b249823d20fd91f9be9ab89d7c5a8ae542a4a4ca6d342d56/lxml-6.1.1-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:ed21202aec73cda4d55d1ce57b389aadb90ffb044e6cd1080b8347efe1b1ec84", size = 3508989, upload-time = "2026-05-18T19:18:38.158Z" },
 ]
+
+[[package]]
+name = "mapomatic"
+version = "0.14.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "qiskit" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/25/11/3e72dda351bb9fda643ee0ba66fc9df86543cb2c191ae6ba8128a0720664/mapomatic-0.14.0.tar.gz", hash = "sha256:682154ba789638426b336127ccdfbb75c24e53bea5f5a061b7c8246fbb62f957", size = 17341, upload-time = "2025-08-07T13:52:27.323Z" }
 
 [[package]]
 name = "markdown-it-py"

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import Mapper
 from chatqec_mcp_tools.tools.iqm_hardware._client import IQMCredentialsError, call_worker
 from chatqec_mcp_tools.tools.iqm_hardware.map_circuit import compute_iqm_mapping
 
@@ -28,6 +29,7 @@ class IqmSubmitExecutionInput(BaseModel):
     qaoa_layers: int | None = Field(default=None, ge=1, le=_MAX_QAOA_LAYERS)
     shots: int = Field(..., ge=1)
     use_timeslot: bool = False
+    mapper: Mapper = "default"
     confirm_submit: bool = Field(
         default=False,
         description="Must be true: the user has seen iqm_preview_execution and wants to run.",
@@ -75,6 +77,7 @@ def iqm_submit_execution(  # noqa: PLR0911 -- distinct refusal paths
         qaoa_layers=inp.qaoa_layers,
         objective="maximum_fidelity",
         include_svg=False,
+        mapper=inp.mapper,
     )
     if not out.ok or out.placement is None:
         return IqmSubmitExecutionOutput(ok=False, error_message=out.error_message)
@@ -82,11 +85,12 @@ def iqm_submit_execution(  # noqa: PLR0911 -- distinct refusal paths
         return IqmSubmitExecutionOutput(
             ok=False, error_message="The placement is empty; refusing to submit nothing."
         )
-    if len(out.placement.assignment) > _MAX_QUBITS:
+    num_physical = len(out.routed_layout or out.placement.assignment)
+    if num_physical > _MAX_QUBITS:
         return IqmSubmitExecutionOutput(
             ok=False,
             error_message=(
-                f"Circuit maps to {len(out.placement.assignment)} physical qubits, "
+                f"Circuit maps to {num_physical} physical qubits, "
                 f"which exceeds the cap of {_MAX_QUBITS}."
             ),
         )
@@ -98,12 +102,17 @@ def iqm_submit_execution(  # noqa: PLR0911 -- distinct refusal paths
     try:
         from qiskit import qasm2  # noqa: PLC0415
 
-        circuit = out.circuit
-        if not circuit.clbits:  # hardware needs measurements to return any data
-            circuit = circuit.copy()
-            circuit.measure_all()
-        names = out.physical_names()
-        layout = [names[i] for i in range(circuit.num_qubits)]
+        if out.routed_circuit is not None and out.routed_layout is not None:
+            # mapper="mapomatic": run the routed, measured circuit on the chosen layout.
+            circuit = out.routed_circuit
+            layout = [out.names[p] for p in out.routed_layout]
+        else:
+            circuit = out.circuit
+            if not circuit.clbits:  # hardware needs measurements to return any data
+                circuit = circuit.copy()
+                circuit.measure_all()
+            names = out.physical_names()
+            layout = [names[i] for i in range(circuit.num_qubits)]
         reply = call_worker(
             "submit",
             qasm=qasm2.dumps(circuit),

@@ -47,6 +47,8 @@ ibm = [
   # lightstim/tsim extras above. rustworkx stays extra-only: it is a heavier
   # compiled extension used solely by _placement.place_vf2, which lazy-imports it.
   "rustworkx>=0.15",
+  # optional mapper="mapomatic" for the IBM and IQM mapping tools (_mapomatic.py)
+  "mapomatic>=0.14,<0.15",
 ]
 decoders = [
     "bloqade-decoders>=0.6,<0.7",

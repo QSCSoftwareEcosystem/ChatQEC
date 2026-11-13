@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,10 +23,15 @@ from chatqec_mcp_tools.tools.ibm_hardware._client import (
 )
 from chatqec_mcp_tools.tools.ibm_hardware._coupling_diagram import render_coupling_diagram
 from chatqec_mcp_tools.tools.ibm_hardware._hardware_graph import build_hardware_graph
+from chatqec_mcp_tools.tools.ibm_hardware._mapomatic import mapomatic_place
 from chatqec_mcp_tools.tools.ibm_hardware._placement import PlacementResult, place
 from chatqec_mcp_tools.tools.ibm_hardware._quality_model import HardwareQualityModel
 
 _VALID_OBJECTIVES = ("maximum_fidelity", "minimum_execution_time")
+# "default": quality-scored VF2/greedy placement of the logical circuit (_placement.place).
+# "mapomatic": transpile first, then pick the lowest-error placement of the routed circuit
+# (_mapomatic.py); objective is ignored there, it always minimises total error.
+Mapper = Literal["default", "mapomatic"]
 _TWO_QUBIT_GATE_ARITY = 2
 _MAX_NUM_QUBITS = 1024
 # _qaoa's construction is O(n * qaoa_layers), so an unbounded qaoa_layers is
@@ -53,6 +58,7 @@ class IbmMapCircuitInput(BaseModel):
     qaoa_layers: int | None = Field(default=None, ge=1, le=_MAX_QAOA_LAYERS)
     backend: str | None = None
     objective: str = "maximum_fidelity"
+    mapper: Mapper = "default"
 
 
 class IbmMapCircuitOutput(BaseModel):
@@ -65,6 +71,8 @@ class IbmMapCircuitOutput(BaseModel):
     transpiled_two_qubit_gate_count: int = 0
     estimated_fidelity: float = 0.0
     coupling_map_svg: str = ""
+    mapper: str = ""
+    num_candidate_layouts: int = 0
     fetched_at: str = ""
     age_seconds: int = 0
     error_message: str = ""
@@ -87,6 +95,12 @@ class MappingOutcome:
     circuit: Any = None  # the actual parsed/built qiskit circuit (CircuitSpec.circuit),
     # reused by ibm_submit_execution so it can transpile and run the real circuit
     # instead of just knowing about its placement.
+    mapper: str = "default"
+    # mapper="mapomatic" only: the routed (deflated) circuit, measured, and the physical
+    # qubit for each of its qubits; ibm_submit_execution runs exactly this.
+    routed_circuit: Any = None
+    routed_layout: list[int] | None = None
+    num_candidate_layouts: int = 0
 
 
 def _fetch_backend_infos(service: Any) -> list[dict[str, Any]]:
@@ -143,6 +157,7 @@ def compute_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error path
     backend: str | None,
     objective: str,
     include_svg: bool = True,
+    mapper: str = "default",
 ) -> MappingOutcome:
     if objective not in _VALID_OBJECTIVES:
         return MappingOutcome(
@@ -204,6 +219,9 @@ def compute_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error path
             ),
         )
 
+    if mapper == "mapomatic":
+        return _mapomatic_outcome(spec.circuit, hw_graph, sdk_backend, service, include_svg)
+
     try:
         interaction = build_interaction_graph(spec.circuit)
         quality = HardwareQualityModel(hw_graph.graph, objective=objective)
@@ -253,6 +271,42 @@ def compute_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error path
     )
 
 
+def _mapomatic_outcome(
+    circuit: Any, hw_graph: Any, sdk_backend: Any, service: Any, include_svg: bool
+) -> MappingOutcome:
+    measured = circuit
+    if not measured.clbits:  # score (and later run) the measured circuit
+        measured = circuit.copy()
+        measured.measure_all()
+    try:
+        result = mapomatic_place(measured, hw_graph.graph, backend=sdk_backend)
+    except ImportError as exc:
+        return MappingOutcome(
+            ok=False,
+            error_message=f"mapomatic is not installed. {IBM_EXTRA_INSTALL_HINT} ({exc})",
+        )
+    except Exception as exc:
+        return MappingOutcome(ok=False, error_message=f"mapomatic placement failed: {exc}")
+    svg = ""
+    if include_svg:
+        svg = render_coupling_diagram(hw_graph.graph, set(result.layout))
+    return MappingOutcome(
+        ok=True,
+        backend=sdk_backend.name,
+        placement=PlacementResult(assignment=result.assignment, strategy_used="mapomatic"),
+        two_qubit_gate_count=result.two_qubit_gate_count,
+        estimated_fidelity=result.estimated_fidelity,
+        svg=svg,
+        service=service,
+        sdk_backend=sdk_backend,
+        circuit=circuit,
+        mapper="mapomatic",
+        routed_circuit=result.routed_circuit,
+        routed_layout=result.layout,
+        num_candidate_layouts=result.num_candidate_layouts,
+    )
+
+
 def ibm_map_circuit(inp: IbmMapCircuitInput) -> IbmMapCircuitOutput:
     outcome = compute_mapping(
         circuit_qasm=inp.circuit_qasm,
@@ -261,19 +315,23 @@ def ibm_map_circuit(inp: IbmMapCircuitInput) -> IbmMapCircuitOutput:
         qaoa_layers=inp.qaoa_layers,
         backend=inp.backend,
         objective=inp.objective,
+        mapper=inp.mapper,
     )
     if not outcome.ok or outcome.placement is None:
         return IbmMapCircuitOutput(ok=False, error_message=outcome.error_message)
+    used = outcome.routed_layout or list(outcome.placement.assignment.values())
 
     return IbmMapCircuitOutput(
         ok=True,
         backend=outcome.backend,
-        physical_qubits=sorted(outcome.placement.assignment.values()),
+        physical_qubits=sorted(used),
         logical_to_physical={str(k): v for k, v in outcome.placement.assignment.items()},
         strategy_used=outcome.placement.strategy_used,
         transpiled_two_qubit_gate_count=outcome.two_qubit_gate_count,
         estimated_fidelity=outcome.estimated_fidelity,
         coupling_map_svg=outcome.svg,
+        mapper=outcome.mapper,
+        num_candidate_layouts=outcome.num_candidate_layouts,
         fetched_at=dt.datetime.now(tz=dt.UTC).isoformat(),
         age_seconds=0,
     )
@@ -282,6 +340,7 @@ def ibm_map_circuit(inp: IbmMapCircuitInput) -> IbmMapCircuitOutput:
 __all__ = [
     "IbmMapCircuitInput",
     "IbmMapCircuitOutput",
+    "Mapper",
     "MappingOutcome",
     "compute_mapping",
     "ibm_map_circuit",

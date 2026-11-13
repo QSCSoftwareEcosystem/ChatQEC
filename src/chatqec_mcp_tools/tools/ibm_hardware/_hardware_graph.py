@@ -59,6 +59,7 @@ def build_hardware_graph(backend: Any) -> HardwareGraph:
             T2=t2,
             readout_error=readout_error,
             readout_fidelity=_fidelity_from_error(readout_error),
+            one_qubit_error=_one_qubit_error(props, q) if props is not None else None,
             is_operational=_is_operational(t1, t2, readout_error),
         )
 
@@ -80,6 +81,16 @@ def _first(value: Any) -> float | None:
     if isinstance(value, (tuple, list)):
         return cast(float | None, value[0]) if value else None
     return cast(float | None, value)
+
+
+def _one_qubit_error(props: Any, q: int) -> float | None:
+    """Error of the physical single-qubit gate (sx, else x); rz is virtual on IBM."""
+    for gate in ("sx", "x"):
+        try:
+            return cast(float | None, props.gate_error(gate, q))
+        except Exception:
+            continue
+    return None
 
 
 def _pick_native_two_qubit_metrics(props: Any, u: int, v: int) -> dict[str, Any]:

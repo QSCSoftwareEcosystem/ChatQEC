@@ -1,5 +1,6 @@
-"""iqm_map_circuit tool -- place a circuit on the IQM device with the same quality-scored
-placement engine the IBM tools use (ibm_hardware._placement / _quality_model)."""
+"""iqm_map_circuit tool -- place a circuit on the IQM device with the same engines the IBM
+tools use: mapper="default" (quality-scored VF2/greedy, ibm_hardware._placement) or
+mapper="mapomatic" (best layout of the routed circuit, ibm_hardware._mapomatic)."""
 
 from __future__ import annotations
 
@@ -15,8 +16,10 @@ from chatqec_mcp_tools.tools.ibm_hardware._circuits import (
 )
 from chatqec_mcp_tools.tools.ibm_hardware._client import IBM_EXTRA_INSTALL_HINT
 from chatqec_mcp_tools.tools.ibm_hardware._coupling_diagram import render_coupling_diagram
+from chatqec_mcp_tools.tools.ibm_hardware._mapomatic import iqm_target, mapomatic_place
 from chatqec_mcp_tools.tools.ibm_hardware._placement import PlacementResult, place
 from chatqec_mcp_tools.tools.ibm_hardware._quality_model import HardwareQualityModel
+from chatqec_mcp_tools.tools.ibm_hardware.map_circuit import Mapper
 from chatqec_mcp_tools.tools.iqm_hardware._client import IQMCredentialsError
 from chatqec_mcp_tools.tools.iqm_hardware._hardware_graph import (
     build_hardware_graph,
@@ -37,6 +40,7 @@ class IqmMapCircuitInput(BaseModel):
     num_qubits: int | None = Field(default=None, ge=1, le=_MAX_NUM_QUBITS)
     qaoa_layers: int | None = Field(default=None, ge=1, le=_MAX_QAOA_LAYERS)
     objective: str = "maximum_fidelity"
+    mapper: Mapper = "default"
 
 
 class IqmMapCircuitOutput(BaseModel):
@@ -50,6 +54,8 @@ class IqmMapCircuitOutput(BaseModel):
     two_qubit_gate_count: int = 0
     estimated_fidelity: float = 0.0
     coupling_map_svg: str = ""
+    mapper: str = ""
+    num_candidate_layouts: int = 0
     fetched_at: str = ""
     age_seconds: int = 0
     stale: bool = False
@@ -74,10 +80,24 @@ class IqmMappingOutcome:
     fetched_at: float = 0.0
     age_seconds: float = 0.0
     stale: bool = False
+    mapper: str = "default"
+    # mapper="mapomatic" only: routed, measured circuit and the physical qubit per qubit
+    routed_circuit: Any = None
+    routed_layout: list[int] | None = None
+    num_candidate_layouts: int = 0
 
     def physical_names(self) -> dict[int, str]:
-        assert self.placement is not None
+        """Original logical qubit -> QB name."""
+        if self.placement is None:
+            return {}
         return {lq: self.names[pq] for lq, pq in self.placement.assignment.items()}
+
+    def used_physical_names(self) -> list[str]:
+        """Every physical qubit the run touches (mapomatic may add routing qubits)."""
+        used = self.routed_layout or (
+            list(self.placement.assignment.values()) if self.placement else []
+        )
+        return sorted({self.names[p] for p in used}, key=lambda n: int(n[2:]))
 
 
 def compute_iqm_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error paths
@@ -88,6 +108,7 @@ def compute_iqm_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error 
     qaoa_layers: int | None,
     objective: str,
     include_svg: bool = True,
+    mapper: str = "default",
 ) -> IqmMappingOutcome:
     if objective not in _VALID_OBJECTIVES:
         return IqmMappingOutcome(
@@ -127,6 +148,19 @@ def compute_iqm_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error 
             ),
         )
 
+    common = {
+        "backend": snap["quantum_computer"],
+        "dut_label": snap["dut_label"],
+        "healthy": snap.get("healthy"),
+        "names": [hw.graph.nodes[i]["name"] for i in range(n_hw)],
+        "circuit": spec.circuit,
+        "fetched_at": cache.fetched_at,
+        "age_seconds": cache.age_seconds,
+        "stale": cache.stale,
+    }
+    if mapper == "mapomatic":
+        return _mapomatic_outcome(spec.circuit, hw, include_svg, common)
+
     try:
         interaction = build_interaction_graph(spec.circuit)
         placement = place(
@@ -162,18 +196,45 @@ def compute_iqm_mapping(  # noqa: PLR0911, PLR0912 -- distinct validation/error 
 
     return IqmMappingOutcome(
         ok=True,
-        backend=snap["quantum_computer"],
-        dut_label=snap["dut_label"],
-        healthy=snap.get("healthy"),
         placement=placement,
-        names=names,
         two_qubit_gate_count=two_q,
         estimated_fidelity=fidelity,
         svg=svg,
-        circuit=spec.circuit,
-        fetched_at=cache.fetched_at,
-        age_seconds=cache.age_seconds,
-        stale=cache.stale,
+        **common,
+    )
+
+
+def _mapomatic_outcome(
+    circuit: Any, hw: Any, include_svg: bool, common: dict[str, Any]
+) -> IqmMappingOutcome:
+    measured = circuit
+    if not measured.clbits:  # score (and later run) the measured circuit
+        measured = circuit.copy()
+        measured.measure_all()
+    try:
+        result = mapomatic_place(measured, hw.graph, target=iqm_target(hw.graph))
+    except ImportError as exc:
+        return IqmMappingOutcome(
+            ok=False,
+            error_message=f"mapomatic is not installed. {IBM_EXTRA_INSTALL_HINT} ({exc})",
+        )
+    except Exception as exc:
+        return IqmMappingOutcome(ok=False, error_message=f"mapomatic placement failed: {exc}")
+    names = common["names"]
+    svg = ""
+    if include_svg:
+        svg = render_coupling_diagram(named_graph(hw), {names[p] for p in result.layout})
+    return IqmMappingOutcome(
+        ok=True,
+        placement=PlacementResult(assignment=result.assignment, strategy_used="mapomatic"),
+        two_qubit_gate_count=result.two_qubit_gate_count,
+        estimated_fidelity=result.estimated_fidelity,
+        svg=svg,
+        mapper="mapomatic",
+        routed_circuit=result.routed_circuit,
+        routed_layout=result.layout,
+        num_candidate_layouts=result.num_candidate_layouts,
+        **common,
     )
 
 
@@ -184,6 +245,7 @@ def iqm_map_circuit(inp: IqmMapCircuitInput) -> IqmMapCircuitOutput:
         num_qubits=inp.num_qubits,
         qaoa_layers=inp.qaoa_layers,
         objective=inp.objective,
+        mapper=inp.mapper,
     )
     if not out.ok or out.placement is None:
         return IqmMapCircuitOutput(ok=False, error_message=out.error_message)
@@ -192,12 +254,14 @@ def iqm_map_circuit(inp: IqmMapCircuitInput) -> IqmMapCircuitOutput:
         ok=True,
         backend=out.backend,
         dut_label=out.dut_label,
-        physical_qubits=sorted(l2p.values(), key=lambda n: int(n[2:])),
+        physical_qubits=out.used_physical_names(),
         logical_to_physical={str(k): v for k, v in sorted(l2p.items())},
         strategy_used=out.placement.strategy_used,
         two_qubit_gate_count=out.two_qubit_gate_count,
         estimated_fidelity=out.estimated_fidelity,
         coupling_map_svg=out.svg,
+        mapper=out.mapper,
+        num_candidate_layouts=out.num_candidate_layouts,
         fetched_at=dt.datetime.fromtimestamp(out.fetched_at, tz=dt.UTC).isoformat(),
         age_seconds=int(out.age_seconds),
         stale=out.stale,

@@ -47,6 +47,10 @@ def get_snapshot() -> CacheResult:
     )
 
 
+def _one_minus(fidelity: Any) -> float | None:
+    return None if fidelity is None else max(0.0, 1.0 - float(fidelity))
+
+
 def _readout_error(q: dict[str, Any]) -> float | None:
     fid = q.get("readout_fidelity")
     return None if fid is None else max(0.0, 1.0 - float(fid))
@@ -69,6 +73,7 @@ def build_hardware_graph(snapshot: dict[str, Any]) -> HardwareGraph:
             T2_star=q.get("t2_s"),
             readout_error=readout_error,
             readout_fidelity=_fidelity_from_error(readout_error),
+            one_qubit_error=_one_minus(q.get("prx_fidelity")),
             is_operational=_is_operational(t1, t2, readout_error),
         )
     for c in snapshot["couplers"]:
@@ -80,7 +85,7 @@ def build_hardware_graph(snapshot: dict[str, Any]) -> HardwareGraph:
             index[a],
             index[b],
             native_gate="cz",
-            gate_error=None if fid is None else max(0.0, 1.0 - float(fid)),
+            gate_error=_one_minus(fid),
             gate_time=c.get("cz_duration_s"),
             gate_fidelity=fid,
         )
