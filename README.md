@@ -13,8 +13,8 @@ Tools:
 - `tsim_simulate` — run a Tsim circuit (Stim syntax plus non-Clifford gates: T, T_DAG,
   R_X/R_Y/R_Z, U3, TPP/TPP_DAG, R_XX/R_YY/R_ZZ/R_PAULI, CCZ, CCX) and return
   detector/observable samples, via the optional `tsim` extra
-- `glcb_visualize_url` — build a shareable QuEra GLCB
-  (gemini-logical-circuit-builder.vercel.app) visualization link for a small circuit;
+- `glcb_visualize_url` — build a shareable QuEra Gemini Studio
+  (bloqade.quera.com/studio/gemini, successor of the retired GLCB app) link for a small circuit;
   pure string encoding, no network call, no external dependency
 - `ibm_list_backends` — list available IBM Quantum backends and their operational status,
   via the optional `ibm` extra (read-only; free)

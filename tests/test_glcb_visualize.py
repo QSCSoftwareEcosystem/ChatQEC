@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_glcb_registered():
     from chatqec_mcp_tools.server import build_server
 
@@ -22,7 +25,7 @@ def test_bell_pair_matches_known_url_exactly():
     )
     assert out.ok is True
     assert out.url == (
-        "https://gemini-logical-circuit-builder.vercel.app/"
+        "https://bloqade.quera.com/studio/gemini/"
         "#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},"
         "{gate:cx,column:1,targets:[0,1]}],sampler:clifft}"
     )
@@ -140,3 +143,57 @@ def test_oversized_prep_list_rejected_by_pydantic():
             gates=[GlcbGate(gate="h", column=0, targets=[0])],
             prep=[GlcbPrep(qubit=0) for _ in range(_MAX_LIST_LEN + 1)],
         )
+
+
+def test_t_is_rejected_as_a_gate_and_accepted_as_a_gadget():
+    """Gemini Studio silently drops unknown gates, so `t` must fail validation."""
+    from pydantic import ValidationError
+
+    from chatqec_mcp_tools.tools.glcb_visualize import (
+        GlcbGadget,
+        GlcbGate,
+        GlcbVisualizeInput,
+        glcb_visualize_url,
+    )
+
+    with pytest.raises(ValidationError):
+        GlcbGate(gate="t", column=0, targets=[0])
+    out = glcb_visualize_url(
+        GlcbVisualizeInput(
+            qubits=1,
+            gates=[GlcbGate(gate="h", column=0, targets=[0])],
+            gadgets=[GlcbGadget(type="T", dataQubit=0, column=1)],
+        )
+    )
+    assert out.ok
+    assert "gadgets:[{type:T,dataQubit:0,column:1}]" in out.url
+    assert out.url.startswith("https://bloqade.quera.com/studio/gemini/#circuit=")
+
+
+def test_wrong_target_count_is_an_error_not_a_silently_dropped_gate():
+    from chatqec_mcp_tools.tools.glcb_visualize import (
+        GlcbGate,
+        GlcbVisualizeInput,
+        glcb_visualize_url,
+    )
+
+    out = glcb_visualize_url(
+        GlcbVisualizeInput(qubits=2, gates=[GlcbGate(gate="cx", column=0, targets=[0])])
+    )
+    assert not out.ok
+    assert "needs 2 target" in out.error_message
+
+
+def test_star_gadget_angle_is_encoded():
+    from chatqec_mcp_tools.tools.glcb_visualize import (
+        GlcbGadget,
+        GlcbVisualizeInput,
+        glcb_visualize_url,
+    )
+
+    out = glcb_visualize_url(
+        GlcbVisualizeInput(
+            qubits=1, gates=[], gadgets=[GlcbGadget(type="Star", dataQubit=0, column=0, angle=0.25)]
+        )
+    )
+    assert "{type:Star,dataQubit:0,column:0,angle:0.25}" in out.url

@@ -1,6 +1,17 @@
-"""glcb_visualize_url tool - build a shareable QuEra GLCB
-(gemini-logical-circuit-builder.vercel.app) visualization link for a small
-circuit. Pure string encoding, no network call, no external dependency.
+"""glcb_visualize_url tool - build a shareable QuEra Gemini Studio
+(bloqade.quera.com/studio/gemini, the successor of the retired
+gemini-logical-circuit-builder.vercel.app GLCB) link for a small circuit.
+Pure string encoding, no network call, no external dependency.
+
+Gemini Studio reads the same ``#circuit=`` fragment as GLCB did and migrates
+old format versions itself (checked 2026-11-13 against its bundle: it accepts
+versions 1 to 14 and 1.1; for versions below 7 it spreads columns because h,
+cx and cy are now drawn as three-column native macros). This tool keeps
+emitting version 1.1, the format verified against the old app, and a headless
+render of such a link in Gemini Studio shows the intended circuit. Studio
+silently drops gates outside its gate set, and gates with the wrong number of
+targets, so both are validated here instead of producing a link that draws a
+different circuit.
 
 The app reads its state from the URL fragment in a relaxed, non-JSON,
 JS-object-literal-like grammar: unquoted keys, unquoted bare-word string
@@ -15,25 +26,33 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-_BASE_URL = "https://gemini-logical-circuit-builder.vercel.app/"
+_BASE_URL = "https://bloqade.quera.com/studio/gemini/"
 _MAX_GATES = 200
 _MAX_LIST_LEN = 200  # same cap as _MAX_GATES, applied to the other per-qubit
 # lists (prep/postselect/gadgets/placement) so a huge list can't blow up the
 # generated URL's size the same way an oversized `gates` list already can't.
 
-# Gate/gadget-type names are encoded unquoted, bare-word, into the URL
-# fragment (see module docstring) — anything containing `{`, `}`, `:`, `,`
-# etc. would silently splice extra keys into the fragment instead of failing
-# loudly. Restricting to identifier-like tokens makes that a pydantic
-# validation error instead of a corrupted-but-`ok=True` URL.
-_TOKEN_PATTERN = r"^[A-Za-z0-9_]+$"
+# Gate and gadget names are encoded unquoted, bare-word, into the URL fragment
+# (see module docstring), so they are restricted to the Literal sets below: an
+# arbitrary string could splice extra keys into the fragment.
 
 _NonNegInt = Annotated[int, Field(ge=0)]
+
+# Gemini Studio's gate set and gadget types (its bundle's `dr` set and `De` map).
+# T is not a gate there: it is a magic-state-injection gadget (type "T").
+GlcbGateName = Literal[
+    "h", "s", "s_adj", "sqrt_x", "sqrt_x_adj", "sqrt_y", "sqrt_y_adj",
+    "x", "y", "z", "cx", "cz", "cy",
+]  # fmt: skip
+_TWO_QUBIT_GATES = frozenset({"cx", "cz", "cy"})
+GlcbGadgetType = Literal["T", "Zcheck", "Xcheck", "Star"]
 
 
 class GlcbGate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    gate: str = Field(..., pattern=_TOKEN_PATTERN, description="Gate name, e.g. h, cx, s, t")
+    gate: GlcbGateName = Field(
+        ..., description="Gate name; T is not a gate here, use a gadget of type 'T'"
+    )
     column: int = Field(..., ge=0)
     targets: list[_NonNegInt] = Field(..., min_length=1)
 
@@ -54,9 +73,14 @@ class GlcbPostselect(BaseModel):
 
 class GlcbGadget(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    type: str = Field(..., pattern=_TOKEN_PATTERN, description="e.g. T, Star")
+    type: GlcbGadgetType = Field(
+        ..., description="T (magic-state injection), Star (rotation, see angle), Zcheck, Xcheck"
+    )
     dataQubit: int = Field(..., ge=0)
-    column: int
+    column: int = Field(..., ge=0)
+    angle: float | None = Field(
+        None, allow_inf_nan=False, description="Star gadget rotation angle (radians)"
+    )
 
 
 class GlcbPlacement(BaseModel):
@@ -114,6 +138,12 @@ def _encode(v: Any) -> str:
 
 def glcb_visualize_url(inp: GlcbVisualizeInput) -> GlcbVisualizeOutput:
     for g in inp.gates:
+        want = 2 if g.gate in _TWO_QUBIT_GATES else 1
+        if len(g.targets) != want:
+            return GlcbVisualizeOutput(
+                ok=False,
+                error_message=f"gate {g.gate!r} needs {want} target(s), got {len(g.targets)}",
+            )
         if any(t >= inp.qubits for t in g.targets):
             return GlcbVisualizeOutput(
                 ok=False,

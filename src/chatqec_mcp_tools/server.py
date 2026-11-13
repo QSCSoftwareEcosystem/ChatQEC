@@ -368,10 +368,12 @@ _TOOLS = [
     ToolSpec(
         name="glcb_visualize_url",
         description=(
-            "Build a shareable QuEra GLCB (gemini-logical-circuit-builder.vercel.app) "
-            "visualization link for a small circuit. Returns a clickable URL with "
-            "circuit diagram, expected values, noise sampling, decoding, and Bloqade "
-            "code export; pure string encoding, no network call or external dependency."
+            "Build a shareable QuEra Gemini Studio (bloqade.quera.com/studio/gemini) "
+            "link for a small logical circuit. Returns a clickable URL with the circuit "
+            "diagram, compiled moves on Gemini hardware, noise sampling, decoding, and "
+            "Bloqade code export. Gates: h, s, s_adj, sqrt_x(_adj), sqrt_y(_adj), x, y, z, "
+            "cx, cz, cy; a T gate is a gadget of type 'T' (also Star, Zcheck, Xcheck). "
+            "Pure string encoding, no network call."
         ),
         input_schema=GlcbVisualizeInput.model_json_schema(),
         handler=_glcb_visualize_url_handler,
