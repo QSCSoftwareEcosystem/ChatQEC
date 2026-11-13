@@ -478,7 +478,8 @@ that extends Stim's instruction set with non-Clifford gates (`T`, `T_DAG`,
 `R_X`/`R_Y`/`R_Z`, `U3`, `TPP`/`TPP_DAG`, `R_XX`/`R_YY`/`R_ZZ`/`R_PAULI`,
 `CCZ`, `CCX`) via stabilizer rank decomposition — circuits plain `stim` itself
 rejects outright. `glcb_visualize_url` builds a shareable link into QuEra's
-Gemini Logical Circuit Builder for a small circuit; it is pure string
+Gemini Studio (https://bloqade.quera.com/studio/gemini/, which replaced the
+retired Gemini Logical Circuit Builder) for a small circuit; it is pure string
 encoding with no network call and no dependency on either `stim` or Tsim.
 
 | Registered tool | Purpose | Backend |
@@ -506,7 +507,7 @@ tsim_simulate  H 0/M 0, 200000 shots:
 tsim_simulate  FOO_BAR_NOT_A_GATE 0/M 0, 10 shots:
    ok=False  error_message="tsim error: Gate not found: 'FOO_BAR_NOT_A_GATE'"
 glcb_visualize_url  H@0(col 0), CX 0->1(col 1), 2 qubits:
-   ok=True  url=https://gemini-logical-circuit-builder.vercel.app/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}
+   ok=True  url=https://bloqade.quera.com/studio/gemini/#circuit={version:1.1,qubits:2,gates:[{gate:h,column:0,targets:[0]},{gate:cx,column:1,targets:[0,1]}],sampler:clifft}
 glcb_visualize_url  H targeting qubit 5 on a 2-qubit register:
    ok=False  error_message="gate 'h' targets qubit >= qubits=2"
 ```
