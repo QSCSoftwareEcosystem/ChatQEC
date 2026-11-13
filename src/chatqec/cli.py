@@ -328,6 +328,17 @@ def _wiki_is_available(cfg: Mapping[Any, Any], mcp_client: MCPClient | None) -> 
         return False
 
 
+def _echo_tool_links(tool_calls: Any) -> None:
+    """Print links tools returned (the model only saw placeholders for long ones)."""
+    from chatqec.conversation.tool_links import links_from_tool_calls
+
+    links = links_from_tool_calls(tool_calls)
+    if links:
+        click.echo("\nLinks:")
+        for label, url in links:
+            click.echo(f"  - {label}: {url}")
+
+
 def _build_chatqec(mcp_server: str | None = None) -> ChatQEC:  # pragma: no cover
     """Build a ChatQEC instance from on-disk config. Overridable in tests.
 
@@ -495,6 +506,7 @@ def ask(
     answer = bot.ask(" ".join(question), images=_read_image_files(image_paths))
     disable_trace()
     click.echo(answer.text)
+    _echo_tool_links(answer.tool_calls)
     if answer.tool_calls:
         click.echo("\nTool calls:")
         for t in answer.tool_calls:
@@ -550,6 +562,7 @@ def chat(mcp_server: str | None, verbose: bool, log_file: str | None) -> None:
             continue
         answer = bot.ask(line)
         click.echo(f"chatqec> {answer.text}")
+        _echo_tool_links(answer.tool_calls)
         if answer.citations:
             click.echo("  sources:")
             for c in answer.citations:

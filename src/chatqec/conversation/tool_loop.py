@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from chatqec.conversation.mcp_adapter import MCPAdapter
+from chatqec.conversation.tool_links import slim_long_urls
 from chatqec.trace import trace
 
 
@@ -29,7 +30,9 @@ def _serialize_tool_result(output: dict[str, Any]) -> str:
     Inline SVG fields (``coupling_map_svg``, ``plot_svg``, ...) are replaced by a short
     note: the UI renders them from the full recorded output, and the model cannot use the
     markup. A 20-qubit coupling map is ~23 KB (~8k tokens), so two mapping calls
-    overflowed the local models' 32k context.
+    overflowed the local models' 32k context. Long links (QEC Studio sessions) become a
+    placeholder too; the CLI and the Chat page print them under the answer
+    (tool_links.py).
     """
     slim = {
         k: (
@@ -39,7 +42,7 @@ def _serialize_tool_result(output: dict[str, Any]) -> str:
         )
         for k, v in output.items()
     }
-    return json.dumps(slim)
+    return json.dumps(slim_long_urls(slim))
 
 
 def run_tool_loop(

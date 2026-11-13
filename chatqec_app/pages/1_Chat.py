@@ -7,6 +7,7 @@ from pathlib import Path
 import streamlit as st
 
 from chatqec.conversation.memory import ConversationMemory
+from chatqec.conversation.tool_links import links_from_tool_calls
 from chatqec.trace import enable_trace
 from chatqec_app.components import citation_card, tool_output
 from chatqec_app.utils import (
@@ -82,6 +83,13 @@ if captcha.enabled and not st.session_state.captcha_verified:
 
 
 # --- render history ---
+def _render_tool_links(tool_calls: list) -> None:
+    """Links tools returned; the model only saw placeholders for the long ones."""
+    links = links_from_tool_calls(tool_calls)
+    if links:
+        st.markdown("**Links:**\n" + "\n".join(f"- [{label}]({url})" for label, url in links))
+
+
 def _render_figures(paths: list[str]) -> None:
     """Render retrieved figure images whose files still exist on disk."""
     for path in paths:
@@ -92,6 +100,7 @@ def _render_figures(paths: list[str]) -> None:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["text"])
+        _render_tool_links(msg.get("tool_calls", []))
         citation_card.render_all(msg.get("citations", []))
         for t in msg.get("tool_calls", []):
             tool_output.render(t)
@@ -196,6 +205,7 @@ if (submission or queued_question) and (question or uploaded):
         # (not after it closes) so a blocked-on-bot.ask() rerun never leaves a
         # prior turn's citation/tool widgets as an orphaned, stale-faded
         # leftover sitting below the next turn's spinner.
+        _render_tool_links(answer.tool_calls)
         citation_card.render_all(answer.citations)
         for t in answer.tool_calls:
             tool_output.render(t)
