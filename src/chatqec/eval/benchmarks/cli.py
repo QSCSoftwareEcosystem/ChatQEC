@@ -172,7 +172,7 @@ def bench_run(
     }
     header = provenance.collect(
         chatqec_repo=REPO,
-        tools_repo=Path(os.environ.get("CHATQEC_TOOLS_REPO", Path.home() / "chatqec-mcp-tools")),
+        tools_repo=Path(os.environ.get("CHATQEC_TOOLS_REPO", REPO / "packages" / "chatqec-tools")),
         pins=PINS,
         gold=gold,
         model=model,

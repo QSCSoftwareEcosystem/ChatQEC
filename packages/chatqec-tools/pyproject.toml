@@ -101,6 +101,7 @@ mle = [
 
 [project.scripts]
 chatqec-mcp-tools = "chatqec_mcp_tools.server:main"
+chatqec-tools = "chatqec_mcp_tools.cli:main"
 
 [build-system]
 requires = ["hatchling"]

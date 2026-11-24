@@ -289,6 +289,7 @@ def _start_mcp_clients(commands: Sequence[str], cfg: Mapping[Any, Any]) -> list[
     """
     import os
 
+    from chatqec.conversation.cli_tools import CliToolClient, is_tools_cli
     from chatqec.conversation.mcp_stdio import StdioMCPClient
 
     # Benchmark runs call slow decoders; they raise this without touching the config.
@@ -298,6 +299,11 @@ def _start_mcp_clients(commands: Sequence[str], cfg: Mapping[Any, Any]) -> list[
     clients: list[MCPClient] = []
     for command in commands:
         try:
+            # "chatqec-tools" runs one subprocess per call; anything else is an MCP
+            # server (the wiki, or the tools' own MCP entry "chatqec-mcp-tools").
+            if is_tools_cli(command):
+                clients.append(CliToolClient(command=command, call_timeout=call_timeout))
+                continue
             clients.append(
                 StdioMCPClient(
                     server_command=command,
