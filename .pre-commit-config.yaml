@@ -10,9 +10,10 @@ repos:
       - id: detect-private-key
       - id: check-added-large-files
         args: ["--maxkb=500"]
+        exclude: uv\.lock$  # lock files are large by nature
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    rev: v0.15.16
     hooks:
       - id: ruff
         args: [--fix]

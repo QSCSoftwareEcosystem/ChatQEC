@@ -1,0 +1,27 @@
+stages: [lint, test]
+
+.uv-base:
+  image: python:3.11-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl git build-essential
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+    - uv sync --extra dev
+  cache:
+    key:
+      files: [uv.lock]
+    paths:
+      - .venv/
+
+lint:
+  extends: .uv-base
+  stage: lint
+  script:
+    - uv run ruff check src tests
+    - uv run mypy src
+
+test:
+  extends: .uv-base
+  stage: test
+  script:
+    - uv run pytest -v
