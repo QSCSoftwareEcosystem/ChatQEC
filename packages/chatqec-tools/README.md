@@ -39,19 +39,25 @@ broken against modern Qiskit). Future: `stabilizer_check`, `code_search`,
 
 ## Install
 
-Not published to PyPI — install straight from a clone:
+Not published to PyPI. This package lives in the ChatQEC repository; install it from the
+repository root:
 
 ```bash
-git clone https://github.com/QSCSoftwareThrust/chatqec-mcp-tools
-uv tool install ./chatqec-mcp-tools
+git clone https://github.com/QSCSoftwareEcosystem/ChatQEC
+cd ChatQEC
+uv tool install ./packages/chatqec-tools
 ```
 
-Then point any MCP client (Claude Desktop, Claude Code, ChatQEC) at the `chatqec-mcp-tools` entry point.
+This installs two commands over the same tools:
+
+- `chatqec-tools`: one process per call (`chatqec-tools list`; `chatqec-tools call <name>`
+  with the arguments as a JSON object on stdin, result as JSON on stdout). ChatQEC uses this.
+- `chatqec-mcp-tools`: a stdio MCP server for Claude Desktop, Claude Code, or any MCP client.
 
 `qec_circuit_build` additionally requires the optional `lightstim` extra:
 
 ```bash
-uv tool install "./chatqec-mcp-tools[lightstim]"
+uv tool install "./packages/chatqec-tools[lightstim]"
 # or, working inside the checkout: uv sync --extra lightstim
 ```
 
@@ -61,7 +67,7 @@ Without it installed, `qec_circuit_build` is still registered but always returns
 `tsim_simulate` additionally requires the optional `tsim` extra:
 
 ```bash
-uv tool install "./chatqec-mcp-tools[tsim]"
+uv tool install "./packages/chatqec-tools[tsim]"
 # or, working inside the checkout: uv sync --extra tsim
 ```
 
@@ -74,7 +80,7 @@ encoding, no network call) — no extra required.
 The 5 IBM Quantum hardware-aware tools additionally require the optional `ibm` extra:
 
 ```bash
-uv tool install "./chatqec-mcp-tools[ibm]"
+uv tool install "./packages/chatqec-tools[ibm]"
 # or, working inside the checkout: uv sync --extra ibm
 ```
 

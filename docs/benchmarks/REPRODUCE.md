@@ -14,7 +14,7 @@ Steps marked **TBD** are not final yet; do not quote numbers from them.
 |---|---|
 | Hardware | one NVIDIA RTX 6000 Ada (48 GB) for the model, the reranker, and CUDA-Q; CPU for the other decoders |
 | chatQEC | Python 3.11, `uv sync --extra dev` |
-| Tool server | `~/chatqec-mcp-tools`, Python 3.13, installed as a uv tool (below) |
+| Tool server | `packages/chatqec-tools` in this repository, Python 3.13, installed as a uv tool (below) |
 | vLLM | 0.32.0 in `~/venvs/llmserve` |
 | Models | Muse-Glimmer-30B and gemma-4-31B-it, FP8, 32k context, served one at a time on GPU 0 |
 | Qdrant | 1.12 (`docker compose up -d`) |
@@ -23,7 +23,7 @@ Steps marked **TBD** are not final yet; do not quote numbers from them.
 cd ~/chatQEC && uv sync --extra dev
 docker compose up -d
 uv tool install --force \
-  "$HOME/chatqec-mcp-tools[lightstim,tsim,ibm,decoders,mle,cudaq,paulice,ft,deltakit,guppy,decoderbench,ftprimitive]"
+  "./packages/chatqec-tools[lightstim,tsim,ibm,decoders,mle,cudaq,paulice,ft,deltakit,guppy,decoderbench,ftprimitive]"
 ```
 
 The tool server's dependencies are not locked by `uv tool install`. Check that the installed versions
@@ -61,7 +61,7 @@ cd ../..
 - **FTPrimitiveBench** ships no results; gold is computed with the library itself:
 
 ```bash
-cd ~/chatqec-mcp-tools && uv run --extra ftprimitive python \
+cd packages/chatqec-tools && uv run --extra ftprimitive python \
     ~/chatQEC/scripts/benchmarks/ft_primitive_gold.py ~/chatQEC/eval/benchmarks/ft_primitive_bench/gold.jsonl
 ```
 
@@ -143,7 +143,7 @@ uv run --with playwright python scripts/ui_acceptance.py --port 8501 --label mus
 ```
 
 (with an app started as `CHATQEC_PROVIDER=local CHATQEC_LOCAL_MODEL=muse-glimmer
-CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_app.py`).
+CHATQEC_MCP_SERVER=chatqec-tools uv run streamlit run chatqec_app/streamlit_app.py`).
 `scripts/run_ui_acceptance.sh` runs both models side by side and needs two GPUs.
 
 ## 9. Before tagging the submission (`naacl27-demo-v1`)

@@ -24,7 +24,7 @@ trap cleanup EXIT
 
 start_app() {  # port model gpu
   CUDA_VISIBLE_DEVICES="$3" CHATQEC_PROVIDER=local CHATQEC_LOCAL_MODEL="$2" \
-    CHATQEC_MCP_SERVER=chatqec-mcp-tools \
+    CHATQEC_MCP_SERVER=chatqec-tools \
     uv run streamlit run chatqec_app/streamlit_app.py --server.port "$1" --server.headless true \
     > "$OUT/streamlit_$2.log" 2>&1 &
   pids+=("$!")

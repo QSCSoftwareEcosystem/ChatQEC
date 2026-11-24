@@ -61,7 +61,7 @@ Two ways to run it — pick one, both use the same corpus:
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | Install + run                                              | `uv sync --extra dev` then `uv run chatqec ask "..."`                                                                    | `uv sync --extra dev` then `uv run streamlit run chatqec_app/streamlit_app.py`  |
 | Qdrant (vector store)                                      | start it yourself first (below)                                                                                              | starts it for you automatically if none is running                                  |
-| + QEC simulators (Stim, PyMatching, LightStim, Tsim, GLCB) | add`--mcp-server chatqec-mcp-tools` — see [Enable QEC tool execution](#enable-qec-tool-execution-stim-lightstim-tsim-glcb) | set`CHATQEC_MCP_SERVER=chatqec-mcp-tools` **before** launching — same link |
+| + QEC simulators (Stim, PyMatching, LightStim, Tsim, GLCB) | add`--mcp-server chatqec-tools` — see [Enable QEC tool execution](#enable-qec-tool-execution-stim-lightstim-tsim-glcb) | set`CHATQEC_MCP_SERVER=chatqec-tools` **before** launching — same link |
 | + QAppsWiki search                                         | pass both servers to`--mcp-server` — see [Enable QAppsWiki search](#enable-qappswiki-search)                               | pass both servers via`CHATQEC_MCP_SERVER` — same link                            |
 
 Full setup for each is below; jump to [Example usage](#example-usage) for
@@ -140,30 +140,41 @@ uv run chatqec ask "What is the surface code threshold under depolarizing noise?
 
 ### Enable QEC tool execution (Stim, LightStim, Tsim, GLCB)
 
-Clone and install the sibling MCP server, then point `--mcp-server` at it:
+The tools live in this repository under [`packages/chatqec-tools`](packages/chatqec-tools)
+as their own uv project, so their heavy extras (CUDA-Q, the Qiskit pins) never enter the
+app's environment. Install them as a uv tool from the repository root, then point
+`--mcp-server` at the `chatqec-tools` command:
 
 ```bash
-git clone https://github.com/QSCSoftwareEcosystem/chatqec-mcp-tools ~/chatqec-mcp-tools
-uv tool install --force ~/chatqec-mcp-tools
+uv tool install --force ./packages/chatqec-tools
 
-uv run chatqec ask --mcp-server chatqec-mcp-tools \
+uv run chatqec ask --mcp-server chatqec-tools \
   "Simulate a 3-qubit bit-flip repetition-code syndrome circuit in Stim for 2000 \
    shots and report the syndrome distribution."
 ```
 
-> **The installed command is a snapshot.** `uv tool install` freezes the server at
-> install time, so **after adding or changing tools in the sibling repo you must
-> reinstall** or the new tools won't be exposed:
+The install gives two commands. `chatqec-tools` is what ChatQEC uses: it runs every tool
+call in a fresh process (`chatqec-tools list`, `chatqec-tools call <name>` with JSON
+arguments on stdin), so a timeout kills only that call and a crash in a vendor decoder
+cannot break the session. `chatqec-mcp-tools` is the same tools as a stdio MCP server, for
+Claude Desktop, Claude Code, or any other MCP client; ChatQEC still accepts it in
+`--mcp-server`. `--mcp-server` takes a comma-separated list, so the tools and the
+QAppsWiki server combine as `--mcp-server "chatqec-tools,qappswiki serve --root ~/QAppsWiki"`
+(or `CHATQEC_MCP_SERVER` for the Streamlit app).
+
+> **The installed command is a snapshot.** `uv tool install` freezes the tools at
+> install time, so **after adding or changing a tool under `packages/chatqec-tools` you
+> must reinstall** (with the extras you use) or the change won't be visible:
 >
 > ```bash
-> uv tool install --force ~/chatqec-mcp-tools   # re-expose e.g. pymatching_decode, code_params, qec_circuit_build, tsim_simulate, glcb_visualize_url
+> uv tool install --force "./packages/chatqec-tools[ibm,decoders]"
 > ```
 >
 > Check what tools the model can actually see:
 >
 > ```bash
 > uv run python -c "from chatqec.cli import _build_chatqec; \
->   b=_build_chatqec(mcp_server='chatqec-mcp-tools'); \
+>   b=_build_chatqec(mcp_server='chatqec-tools'); \
 >   print([t.name for t in b.synthesizer.mcp_adapter.client.list_tools()])"
 > # → ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
 > ```
@@ -177,19 +188,19 @@ no external process, no network call, and no dependency, so no sandbox
 applies. Reported numbers come from the tool's actual output, not the model's
 guess.
 
-> **`qec_circuit_build` needs the sibling's optional `lightstim` extra.**
+> **`qec_circuit_build` needs the optional `lightstim` extra.**
 > The tool is always registered, but without `lightstim` installed it returns
 > `ok=False` for every call. Reinstall with the extra to actually use it:
-> `uv tool install --force "~/chatqec-mcp-tools[lightstim]"`. It builds circuits
+> `uv tool install --force "./packages/chatqec-tools[lightstim]"`. It builds circuits
 > for code families Stim doesn't ship built-in (toric code, BB codes, PQRM,
 > plus LightStim's own construction of the 6.6.6 color code) — see
 > [`docs/EXAMPLES.md`](docs/EXAMPLES.md#lightstim-via-qec_circuit_build) and
 > [`docs/lightstim_capability_check.md`](docs/lightstim_capability_check.md).
 
-> **`tsim_simulate` needs the sibling's optional `tsim` extra.** Like
+> **`tsim_simulate` needs the optional `tsim` extra.** Like
 > `qec_circuit_build`, the tool is always registered but returns `ok=False`
 > for every call without it. Reinstall with the extra to actually use it:
-> `uv tool install --force "~/chatqec-mcp-tools[tsim]"`. Unlike `lightstim`,
+> `uv tool install --force "./packages/chatqec-tools[tsim]"`. Unlike `lightstim`,
 > `tsim` is a normal versioned PyPI dependency (`bloqade-tsim>=0.1.5,<0.2`,
 > no commit-pin needed — see
 > [`docs/DESIGN_CHOICES.md`](docs/DESIGN_CHOICES.md#why-tsim-needs-no-commit-pin-for-its-code-dependency-only-for-kb-ingestion)).
@@ -209,12 +220,12 @@ so Stim answers keep working even when the Claude API is unavailable. (The
 
 ### Vendor QEC tools (decoders, Pauli checks, fault-tolerant compilation, Deltakit, Guppy)
 
-The same `chatqec-mcp-tools` server also exposes the vendor tools below. Each one lives
+The same tools package also exposes the vendor tools below. Each one lives
 behind an optional extra and returns `ok=False` with an install hint when its extra is
 missing, so the base install keeps working. Install everything with:
 
 ```bash
-uv tool install --force "~/chatqec-mcp-tools[lightstim,tsim,ibm,decoders,mle,cudaq,paulice,ft,deltakit,guppy]"
+uv tool install --force "./packages/chatqec-tools[lightstim,tsim,ibm,decoders,mle,cudaq,paulice,ft,deltakit,guppy]"
 ```
 
 | Tool | What it does | Extra | Notes |
@@ -237,7 +248,7 @@ uv tool install --force "~/chatqec-mcp-tools[lightstim,tsim,ibm,decoders,mle,cud
 
 > **`guppy_run` executes a program supplied through chat, and there is no OS sandbox.** Unprivileged
 > user namespaces are blocked on many machines, so it is protected in three other ways: it is
-> disabled unless the MCP server is started with `CHATQEC_ALLOW_GUPPY_EXEC=1`; a source gate accepts
+> disabled unless ChatQEC (or the MCP server) is started with `CHATQEC_ALLOW_GUPPY_EXEC=1`; a source gate accepts
 > only `guppylang` imports and `@guppy` functions (no `import os`, top-level calls, `py(...)`, or
 > dunder access); and the program runs in a separate process with a scrubbed environment, a private
 > temporary directory, CPU, file and memory limits, and a hard time limit. It does not stop a bug
@@ -255,7 +266,7 @@ uv tool install --force "~/chatqec-mcp-tools[lightstim,tsim,ibm,decoders,mle,cud
 > `.env`, and `huggingface_hub` then answers 401 even for the public, cached reranker; refresh the
 > token or start the app with `HF_HUB_OFFLINE=1`. (2) The reranker and the CUDA-Q decoders default
 > to GPU 0, which a served model can fill (`CUDA out of memory`, and CUDA-Q prints its error on
-> stdout, which corrupts the MCP stream); pin them to a free GPU with `CUDA_VISIBLE_DEVICES=<n>`.
+> stdout); pin them to a free GPU with `CUDA_VISIBLE_DEVICES=<n>`.
 
 ### Enable QAppsWiki search
 
@@ -263,13 +274,13 @@ ChatQEC can pull prose sections from [QAppsWiki](https://github.com/QSCSoftwareE
 (649 Error Correction Zoo code pages plus 42 other QEC/QEM pages, 691 under
 `concepts/` in total) into the same
 candidate pool as the corpus, by naming a **second** MCP server alongside the
-Stim sibling. `CHATQEC_MCP_SERVER` (and `--mcp-server`) take a comma-separated
+QEC tools. `CHATQEC_MCP_SERVER` (and `--mcp-server`) take a comma-separated
 list, so one variable can name both:
 
 ```bash
 git clone https://github.com/QSCSoftwareEcosystem/QAppsWiki ~/QAppsWiki
 
-CHATQEC_MCP_SERVER="chatqec-mcp-tools,sh -c 'PYTHONPATH=/path/to/QAppsWiki/tools python -m qappswiki serve --root /path/to/QAppsWiki'" \
+CHATQEC_MCP_SERVER="chatqec-tools,sh -c 'PYTHONPATH=/path/to/QAppsWiki/tools python -m qappswiki serve --root /path/to/QAppsWiki'" \
   uv run streamlit run chatqec_app/streamlit_app.py
 ```
 
@@ -319,7 +330,7 @@ writing: `chatqec eval run` has no `--mcp-server` option and does not read
 `CHATQEC_MCP_SERVER`, unlike `ask`/`chat`, so today it always evaluates the
 corpus-only pipeline regardless of environment. Until eval wiring picks up an
 MCP server the same way `ask`/`chat` do, spot-check individual questions
-instead: `chatqec ask --mcp-server "chatqec-mcp-tools,sh -c '...'" "<question>"` against the same question without `--mcp-server`, comparing
+instead: `chatqec ask --mcp-server "chatqec-tools,sh -c '...'" "<question>"` against the same question without `--mcp-server`, comparing
 citations.
 
 ### Run the Streamlit app
@@ -328,7 +339,7 @@ The app **starts a local Qdrant itself** if one isn't already listening, so
 this is usually all you need:
 
 ```bash
-CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_app.py
+CHATQEC_MCP_SERVER=chatqec-tools uv run streamlit run chatqec_app/streamlit_app.py
 ```
 
 Autostart only fires when `store.qdrant_url` is local and a `qdrant` binary is
@@ -353,7 +364,7 @@ Then:
 uv run streamlit run chatqec_app/streamlit_app.py
 
 # …or with QEC tool use enabled (same as `ask --mcp-server`):
-CHATQEC_MCP_SERVER=chatqec-mcp-tools uv run streamlit run chatqec_app/streamlit_app.py
+CHATQEC_MCP_SERVER=chatqec-tools uv run streamlit run chatqec_app/streamlit_app.py
 ```
 
 Four pages: **Chat** (streaming Q&A with citation cards), **Sources**
@@ -363,7 +374,7 @@ Four pages: **Chat** (streaming Q&A with citation cards), **Sources**
 > **`CHATQEC_MCP_SERVER` must be set _before_ you launch Streamlit, and the app
 > restarted** to pick it up — the bot is built once and cached (`@st.cache_resource`).
 > Without it the Chat page has no tools, so the model answers from the corpus and
-> says it *"couldn't invoke the live simulation tools."* Make sure the sibling is
+> says it *"couldn't invoke the live simulation tools."* Make sure the tools are
 > installed/up to date first (see
 > [Enable QEC tool execution](#enable-qec-tool-execution-stim-lightstim-tsim-glcb)
 > above).
@@ -505,7 +516,7 @@ uv run chatqec ask "What is the surface code and how does it detect errors?"
 uv run chatqec ask "How does the threshold theorem relate to the break-even point demonstrated on real hardware?"
 
 # Needs a real simulator, not a guess — requires --mcp-server (see Enable QEC tool execution above)
-uv run chatqec ask --mcp-server chatqec-mcp-tools \
+uv run chatqec ask --mcp-server chatqec-tools \
   "Simulate a distance-3 surface code under depolarizing noise at p=0.001 for 5000 shots and report the logical error rate."
 
 # Interactive REPL
@@ -514,7 +525,7 @@ uv run chatqec chat
 
 The same questions work from the **Streamlit Chat page**
 (`uv run streamlit run chatqec_app/streamlit_app.py`, with
-`CHATQEC_MCP_SERVER=chatqec-mcp-tools` set first for the simulator example) —
+`CHATQEC_MCP_SERVER=chatqec-tools` set first for the simulator example) —
 answers stream in with clickable citation cards.
 
 Every answer is a **cited answer or an honest refusal** — see [What to expect
@@ -600,8 +611,8 @@ the fallback kicks in — eval headline numbers should still be run with
 | Conversation     | [`src/chatqec/conversation/`](src/chatqec/conversation/)                         | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Guards           | [`src/chatqec/guards/`](src/chatqec/guards/)                                     | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Eval             | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)                     | 62-pair Q&A set across 7 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| MCP tools        | [`chatqec-mcp-tools`](https://github.com/QSCSoftwareEcosystem/chatqec-mcp-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) over MCP stdio |
-| QAppsWiki search | [`src/chatqec/retrieval/wiki_search.py`](src/chatqec/retrieval/wiki_search.py)   | Wraps the[QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) MCP `search_pages` tool (self-hosted BM25 over ~3,778 sections from 691 concept pages) into `RetrievedChunk`s that join the same cross-encoder rerank pass as corpus chunks; needs the wiki's MCP server named alongside `chatqec-mcp-tools` (see [Enable QAppsWiki search](#enable-qappswiki-search))                                                                                                                                                             |
+| MCP tools        | [`packages/chatqec-tools`](packages/chatqec-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) (28 tools in all; run per call by `chatqec-tools`, or as an MCP server by `chatqec-mcp-tools`) |
+| QAppsWiki search | [`src/chatqec/retrieval/wiki_search.py`](src/chatqec/retrieval/wiki_search.py)   | Wraps the[QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) MCP `search_pages` tool (self-hosted BM25 over ~3,778 sections from 691 concept pages) into `RetrievedChunk`s that join the same cross-encoder rerank pass as corpus chunks; needs the wiki's MCP server named alongside `chatqec-tools` (see [Enable QAppsWiki search](#enable-qappswiki-search))                                                                                                                                                             |
 
 Full corpus breakdown (chunk counts, per-source stats) lives in
 [`docs/EXAMPLES.md`](docs/EXAMPLES.md); as of 2026-07-28 the store has 2,935
@@ -671,7 +682,7 @@ ChatQEC uses Hydra + OmegaConf. The root config is
 [`conf/config.yaml`](conf/config.yaml); override anything from the command line:
 
 ```bash
-uv run chatqec ask "..." --mcp-server chatqec-mcp-tools
+uv run chatqec ask "..." --mcp-server chatqec-tools
 CHATQEC_DAILY_BUDGET_USD=2.50 uv run streamlit run chatqec_app/streamlit_app.py
 ```
 

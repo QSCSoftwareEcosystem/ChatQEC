@@ -60,7 +60,7 @@ def _build_bot() -> ChatQEC:
     # provider keys (GEMINI_API_KEY, ANTHROPIC_API_KEY, ...).
     load_dotenv()
     # Reuse the CLI builder so the app shares `chatqec ask` wiring. Enable Stim
-    # tools by setting CHATQEC_MCP_SERVER (e.g. "chatqec-mcp-tools"); off by
+    # tools by setting CHATQEC_MCP_SERVER (e.g. "chatqec-tools"); off by
     # default so deployments without the MCP server keep working.
     mcp_server = os.environ.get("CHATQEC_MCP_SERVER") or None
     # The retriever connects to Qdrant during construction, so a missing store
