@@ -765,7 +765,9 @@ If ChatQEC helps your research, please cite it as:
 
 ```bibtex
 @software{chatqec_2026,
-  author  = {Afrose, Sharmin and Leyton-Ortega, Vicente and Humble, Travis and Ghosal, Tirthankar},
+  author  = {Afrose, Sharmin and Leyton-Ortega, Vicente A. and Seefried, Ethan and
+             Stapleton, Nicholas and Deshpande, Sangram and Humble, Travis S. and
+             Ghosal, Tirthankar},
   title   = {ChatQEC: an open-source research assistant for Quantum Error Correction},
   version = {0.1.0},
   year    = {2026},
