@@ -4,16 +4,19 @@
 
 An open-source research assistant for **Quantum Error Correction**.
 
-Ask QEC questions; get cited answers grounded in a curated corpus of papers,
-textbook chapters, QEC vendor/lab pages, and a hand-curated canonical wiki.
-Run small [Stim][Stim] circuits in a sandbox. Use it as a Python library, a CLI, or a
-Streamlit web app. (GitHub-repo and video-transcript fetchers exist but the
-corpus isn't seeded with them yet — see [Roadmap](#roadmap).)
+Ask QEC questions and get answers that are either cited from a curated corpus
+(papers, textbook chapters, vendor and lab pages, and a hand-reviewed canonical
+wiki), computed by a real tool, or an honest refusal. The model can run 28 QEC
+tools: [Stim][Stim] simulation, a dozen decoders, fault-tolerant compilation,
+FTPrimitiveBench and decoder-bench circuits, QuEra's Tsim and QEC Studio, and
+IBM Quantum and IQM hardware tools (calibration, mapping, preview, submit). Use
+it as a Python library, a CLI, or a Streamlit web app.
 
 [Stim]: https://github.com/quantumlib/Stim
-> **Status: v0.1.0 — first public release.** The pipeline is end-to-end and
-> testable; it ships with the full 60-page canonical wiki (chunked and embedded
-> into Qdrant) and grows via the watchlist refresh job. See [Roadmap](#roadmap).
+> **Status: research prototype (v0.1.0).** Installs with one script or opens in
+> GitHub Codespaces (see [Install](#install)). The public release indexes the
+> 60-page canonical wiki; the full corpus is loaded from a snapshot (see
+> [Corpus](#on-your-machine-linux-x86_64)). Apache-2.0.
 
 ---
 
@@ -45,9 +48,9 @@ circuit to check their own claim. ChatQEC is built specifically for QEC, with:
 - **Hybrid retrieval** (dense vectors + BM25 + cross-encoder reranking) over
   a typed source registry, with authority tiers and recency in the scoring.
 - **Inline citations** to source IDs the reader can click and verify.
-- **Sandboxed circuit tools** (Stim, LightStim, Tsim, GLCB) via a separate MCP
-  tool server, so circuit-level questions get a real simulator answer — not a
-  guess.
+- **28 QEC tools** (Stim, LightStim, Tsim, a dozen decoders, fault-tolerant
+  compilation, QuEra Gemini and QEC Studio, IBM Quantum and IQM hardware), so
+  circuit-level questions get a real computed answer, not a guess.
 - **Honest refusals** when the evidence isn't in the corpus, instead of
   inventing a plausible-sounding one.
 
@@ -92,90 +95,28 @@ see [Vendor QEC tools](#vendor-qec-tools-decoders-pauli-checks-fault-tolerant-co
 
 ## Quick start
 
-Two ways to run it — pick one, both use the same corpus:
-
-|                                                            | Command line (`chatqec ask` / `chatqec chat`)                                                                            | Streamlit web app                                                                   |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Install + run                                              | `uv sync --extra dev` then `uv run chatqec ask "..."`                                                                    | `uv sync --extra dev` then `uv run streamlit run chatqec_app/streamlit_app.py`  |
-| Qdrant (vector store)                                      | start it yourself first (below)                                                                                              | starts it for you automatically if none is running                                  |
-| + QEC simulators (Stim, PyMatching, LightStim, Tsim, GLCB) | add`--mcp-server chatqec-tools` — see [Enable QEC tool execution](#enable-qec-tool-execution-stim-lightstim-tsim-glcb) | set`CHATQEC_MCP_SERVER=chatqec-tools` **before** launching — same link |
-| + QAppsWiki search                                         | pass both servers to`--mcp-server` — see [Enable QAppsWiki search](#enable-qappswiki-search)                               | pass both servers via`CHATQEC_MCP_SERVER` — same link                            |
-
-Full setup for each is below; jump to [Example usage](#example-usage) for
-things to try once it's running.
-
-### Try it — CLI (`chatqec ask`)
+[Install](#install) above sets everything up. By hand, the steps are:
 
 ```bash
-git clone https://github.com/QSCSoftwareEcosystem/ChatQEC.git
-cd ChatQEC
-uv sync --extra dev
-
-# bring up Qdrant for the vector store (starts empty)
-docker compose up -d
-
-# confirm it's up (REST API on :6333) — should print a JSON {"result": {...}}
-curl -s http://localhost:6333/collections
-
-# set API keys (or copy to .env)
-export ANTHROPIC_API_KEY=sk-ant-...
-export GEMINI_API_KEY=...
+uv sync                                   # the app (add --extra dev for tests)
+uv tool install ./packages/chatqec-tools  # the QEC tools (add extras, see below)
+uv run chatqec bootstrap                  # starts Qdrant if needed, indexes the canonical wiki
+uv run chatqec ask --mcp-server chatqec-tools "What is the surface code?"
+uv run streamlit run chatqec_app/streamlit_app.py   # web app; set CHATQEC_MCP_SERVER=chatqec-tools first
 ```
 
-> **No Docker?** Run the native binary instead — no daemon, no root/sudo needed:
->
-> ```bash
-> mkdir -p logs
-> QDRANT__STORAGE__STORAGE_PATH="$(pwd)/qdrant_data/storage" \
->   QDRANT__STORAGE__SNAPSHOTS_PATH="$(pwd)/qdrant_data/snapshots" \
->   setsid nohup qdrant > logs/qdrant.log 2>&1 < /dev/null &
-> curl -s http://localhost:6333/collections   # same confirm step
-> ```
->
-> `setsid nohup ... &` keeps it running after you close the shell; logs land in
-> `logs/qdrant.log`. It does *not* survive a reboot, so re-run it after one.
-> `STORAGE_PATH` points at the same `qdrant_data/storage` the Compose file
-> mounts, so both routes share one corpus; `SNAPSHOTS_PATH` keeps snapshot
-> upload/restore (Option A below) inside the repo instead of the CWD.
-> ([Install Qdrant](https://qdrant.tech/documentation/quick-start/) first if you don't have the binary.)
+Qdrant: `bootstrap` and the web app start a local `qdrant` binary if one is on
+`PATH` (`.devcontainer/setup.sh` downloads it), or run `docker compose up -d`.
 
-`docker compose up` gives you an **empty** Qdrant — the ingested chunks
-themselves aren't in this git repo (only source metadata in
-`sources/registry.jsonl` is). Pick one:
+Corpus: `chatqec bootstrap` embeds the 60 canonical pages from this repository.
+To load a full index instead, pass a Qdrant snapshot:
+`uv run chatqec bootstrap --force --snapshot <file-or-url>`. You can also grow the
+corpus source by source (`chatqec ingest --arxiv <id> --full-text`,
+`chatqec ingest --github <org/repo> --commit-sha <sha>`, then
+`chatqec embed --all-pending`); `sources/registry.jsonl` lists every source the
+full corpus contains.
 
-**Option A — I have a corpus snapshot** (fastest: skip ingestion entirely)
-
-```bash
-git clone git@code.ornl.gov:qsc-as/qec_corpus_snapshot.git
-curl -X POST 'http://localhost:6333/collections/chatqec_chunks/snapshots/upload?priority=snapshot' \
-  -H 'Content-Type: multipart/form-data' \
-  -F 'snapshot=@qec_corpus_snapshot/chatqec_chunks.snapshot'
-```
-
-See that repo's README for the checksum and what commit it was built from.
-
-**Option B — I don't have a corpus** (build it yourself; takes longer, needs
-`GITHUB_PERSONAL_ACCESS_TOKEN` for GitHub sources)
-
-```bash
-chatqec canonical embed              # 60-page hand-curated wiki — quick, no network fetch
-# then optionally re-populate the rest of the corpus, source by source:
-chatqec ingest --arxiv <id> --full-text
-chatqec ingest --github <org/repo> --commit-sha <sha> --github-paths docs
-chatqec embed --all-pending --provider gemini
-```
-
-`sources/registry.jsonl` lists every source currently in the corpus if you
-want to reproduce it fully — there's no single bulk "replay the registry"
-command yet, so this is source-by-source.
-
-Either way, once the corpus is in Qdrant:
-
-```bash
-uv run chatqec ask "What is the surface code threshold under depolarizing noise?"
-```
-
-### Enable QEC tool execution (Stim, LightStim, Tsim, GLCB)
+### Enable QEC tool execution
 
 The tools live in this repository under [`packages/chatqec-tools`](packages/chatqec-tools)
 as their own uv project, so their heavy extras (CUDA-Q, the Qiskit pins) never enter the
@@ -213,17 +154,22 @@ QAppsWiki server combine as `--mcp-server "chatqec-tools,qappswiki serve --root 
 > uv run python -c "from chatqec.cli import _build_chatqec; \
 >   b=_build_chatqec(mcp_server='chatqec-tools'); \
 >   print([t.name for t in b.synthesizer.mcp_adapter.client.list_tools()])"
-> # → ['stim_simulate', 'stim_diagram', 'pymatching_decode', 'threshold_sweep', 'code_params', 'qec_circuit_build', 'tsim_simulate', 'glcb_visualize_url']
+> # → 28 names: stim_simulate, stim_diagram, ..., ibm_*, iqm_*, qec_studio_*
 > ```
 
-The model **decides on its own** when a question needs simulation and calls the
-MCP tools — `stim_simulate`, `stim_diagram`, `pymatching_decode`,
-`threshold_sweep`, `code_params`, `qec_circuit_build`, `tsim_simulate` — which
-run in a subprocess sandbox with memory and wall-clock limits.
-`glcb_visualize_url` is the one exception: it's pure string/URL encoding with
-no external process, no network call, and no dependency, so no sandbox
-applies. Reported numbers come from the tool's actual output, not the model's
-guess.
+The model **decides on its own** when a question needs a computation. Each call
+runs in its own process with a timeout, and the circuit tools (`stim_simulate`,
+`stim_diagram`, `pymatching_decode`, `threshold_sweep`, `code_params`,
+`qec_circuit_build`, `tsim_simulate`) also run in a sandbox with memory and
+wall-clock limits. Reported numbers come from the tool's output, not the
+model's guess.
+
+| Group | Tools |
+|---|---|
+| Circuits and decoding (11) | `stim_simulate`, `stim_diagram`, `glcb_visualize_url`, `pymatching_decode`, `threshold_sweep`, `code_params`, `qec_circuit_build`, `tsim_simulate`, `qec_studio_examples`, `qec_studio_compile`, `qec_studio_link` |
+| IBM Quantum (7) | `ibm_list_backends`, `ibm_backend_calibration`, `ibm_map_circuit`, `ibm_preview_execution`, `ibm_submit_execution`, `ibm_add_pauli_checks`, `ibm_ft_compile` |
+| IQM (6) | `iqm_list_backends`, `iqm_backend_calibration`, `iqm_map_circuit`, `iqm_preview_execution`, `iqm_submit_execution`, `iqm_job_result` |
+| External QEC packages (4) | `decoder_compare`, `ft_primitive_simulate`, `deltakit_memory`, `guppy_run` |
 
 > **`qec_circuit_build` needs the optional `lightstim` extra.**
 > The tool is always registered, but without `lightstim` installed it returns
@@ -244,16 +190,16 @@ guess.
 > It runs Stim-superset circuits — including non-Clifford gates (`T`,
 > `T_DAG`, `R_X`/`R_Y`/`R_Z`, ...) plain Stim rejects outright — via
 > [Tsim](https://github.com/QuEraComputing/tsim). `glcb_visualize_url` (no
-> extra needed) builds a shareable QuEra Gemini Logical Circuit Builder link
+> extra needed) builds a shareable QuEra Gemini Studio link
 > for a small circuit. See
 > [`docs/EXAMPLES.md`](docs/EXAMPLES.md#tsim--glcb-via-tsim_simulate--glcb_visualize_url)
 > and [`docs/tsim_glcb_capability_check.md`](docs/tsim_glcb_capability_check.md).
 
-**Provider:** tool use works with the `anthropic`, `gemini`, or `auto` provider
-(set `models.provider` in `conf/config.yaml`). Under `auto`, ChatQEC tries
-Anthropic first and **automatically fails over to Gemini** on credit/auth errors —
-so Stim answers keep working even when the Claude API is unavailable. (The
-`huggingface` provider has no tool-use support.)
+**Provider:** tool use works with the `anthropic`, `gemini`, `auto`, and `local`
+providers (set `models.provider` in `conf/config.yaml`, or `CHATQEC_PROVIDER`).
+Under `auto`, ChatQEC tries Anthropic first and **automatically fails over to
+Gemini** on credit/auth errors. (The `huggingface` provider has no tool-use
+support.)
 
 ### Vendor QEC tools (decoders, Pauli checks, fault-tolerant compilation, Deltakit, Guppy)
 
@@ -305,11 +251,27 @@ uv tool install --force "./packages/chatqec-tools[lightstim,tsim,ibm,decoders,ml
 > to GPU 0, which a served model can fill (`CUDA out of memory`, and CUDA-Q prints its error on
 > stdout); pin them to a free GPU with `CUDA_VISIBLE_DEVICES=<n>`.
 
+### Quantum hardware tools (IBM Quantum, IQM)
+
+The `ibm_*` tools need the `ibm` extra and `QISKIT_IBM_TOKEN` (optionally
+`QISKIT_IBM_INSTANCE`). The `iqm_*` tools run IQM calls in a separate Python
+environment, because `iqm-client` pins versions that conflict with the other
+extras; create it once, then set `IQM_TOKEN` and `IQM_SERVER_URL`:
+
+```bash
+bash packages/chatqec-tools/scripts/setup_iqm_env.sh   # or set CHATQEC_IQM_PYTHON
+```
+
+Listing, calibration, mapping, and preview are free. Submission is a separate
+tool that the model may call only after the user has seen the preview and asked
+to run, and it uses the configured account's allocation (IQM jobs are capped at
+10 qubits and 4,000 shots). [`notebooks/hardware_getting_started.ipynb`](notebooks/hardware_getting_started.ipynb)
+walks through both.
+
 ### Enable QAppsWiki search
 
 ChatQEC can pull prose sections from [QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki)
-(649 Error Correction Zoo code pages plus 42 other QEC/QEM pages, 691 under
-`concepts/` in total) into the same
+(780 concept pages, about 700 of them linked to the Error Correction Zoo) into the same
 candidate pool as the corpus, by naming a **second** MCP server alongside the
 QEC tools. `CHATQEC_MCP_SERVER` (and `--mcp-server`) take a comma-separated
 list, so one variable can name both:
@@ -413,7 +375,7 @@ Four pages: **Chat** (streaming Q&A with citation cards), **Sources**
 > Without it the Chat page has no tools, so the model answers from the corpus and
 > says it *"couldn't invoke the live simulation tools."* Make sure the tools are
 > installed/up to date first (see
-> [Enable QEC tool execution](#enable-qec-tool-execution-stim-lightstim-tsim-glcb)
+> [Enable QEC tool execution](#enable-qec-tool-execution)
 > above).
 
 ### CLI commands at a glance
@@ -435,7 +397,7 @@ chatqec watch refresh --apply                         # pull new arXiv/GitHub ca
 chatqec eval run --output eval/results.json           # run the 62-pair eval set
 ```
 
-> **Tip — verify retrieval without Anthropic credit.** `chatqec retrieve --query "..."` exercises only Gemini embeddings + Qdrant + the BGE reranker, **no
+> **Tip — verify retrieval without Anthropic credit.** `chatqec retrieve --query "..."` exercises only Gemini embeddings + Qdrant + the cross-encoder reranker, **no
 > Claude calls**. Use it to confirm the corpus is queryable before spending on
 > the LLM synthesis step.
 
@@ -576,20 +538,13 @@ construction, PDF figure citations, corpus statistics, ...), see
 
 ## What to expect on your first run
 
-**The corpus is intentionally small at v0.1.0.** Beyond a small seed corpus, the
-60-page canonical wiki is pre-loaded and embedded into Qdrant; the registry grows
-from there via the watchlist. Definitional questions on these topics return cited
-answers immediately:
-
-- Surface code
-- Stabilizer formalism
-- CSS codes
-- Threshold theorem
-- Magic state distillation
-
-Anything outside that scope will return an honest refusal — not a
-hallucinated answer. To get broader coverage, ingest sources via
-`chatqec ingest` (or wait for the watchlist refresh) before asking.
+**The corpus is intentionally small.** A fresh install indexes the 60 canonical
+pages (surface code, stabilizer formalism, CSS codes, threshold theorem, magic
+state distillation, and more; see [`knowledge/canonical/`](knowledge/canonical/)),
+so definitional questions get cited answers and every tool works. The full
+corpus (135 sources) adds arXiv papers, vendor pages, and textbook chapters;
+load it from a snapshot or ingest sources yourself. Questions outside the
+indexed corpus get an honest refusal, not a hallucinated answer.
 
 **Costs.** A typical single-turn query costs roughly $0.01–$0.03 (one Haiku
 classification + one Haiku rewrite + one Sonnet synthesis, all uncached).
@@ -613,7 +568,7 @@ $ chatqec ask "..."
 The surface code threshold under depolarizing noise is...
 ```
 
-Four explicit values are available for `models.provider`:
+Five values are available for `models.provider`:
 
 | Value                  | Behaviour                                                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -621,16 +576,16 @@ Four explicit values are available for `models.provider`:
 | `anthropic`          | Anthropic only. Fails hard if no credit / no key.                                                                                    |
 | `gemini`             | Gemini only. Fails hard if no credit / no key.                                                                                       |
 | `huggingface`        | HuggingFace only. Useful for fully open-stack deploys.                                                                               |
+| `local`              | Self-hosted OpenAI-compatible servers (`models.local` in `conf/config.yaml`, e.g. vLLM); no API cost.                                |
 
 Provide whichever keys you have: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and/or
 `HF_TOKEN` (the
 fine-grained token needs the **"Make calls to Inference Providers"** scope).
 `auto` skips any backend whose key is missing — set just one and it works.
 
-The `--mcp-server` tool-use loop still requires Anthropic; HuggingFace covers
-the four text-only roles. Expect a measurable quality drop on synthesis when
-the fallback kicks in — eval headline numbers should still be run with
-`provider: anthropic` explicitly to avoid mixed-backend results.
+Tool use works with every provider except `huggingface`. Expect a quality
+drop on synthesis when the fallback kicks in; pin one provider for evaluation
+runs so results are not mixed across backends.
 
 ---
 
@@ -642,20 +597,18 @@ the fallback kicks in — eval headline numbers should still be run with
 | Source registry  | [`sources/registry.jsonl`](sources/registry.jsonl)                               | Typed JSONL; lifecycle states (`active`/`superseded`/`retracted`/`stale`/`pending_review`)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Watchlist        | [`sources/watchlist.yaml`](sources/watchlist.yaml)                               | arXiv categories, GitHub repos, YouTube channels                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Ingestion        | [`src/chatqec/ingestion/`](src/chatqec/ingestion/)                               | Fetchers (arXiv abstract / arXiv full-text LaTeX source / Marker PDF / GitHub, pinned to an exact commit via`--commit-sha` / YouTube / URL), math-aware chunker, title-and-author resolver, local Llama-3.2-Vision figure describer (`--extra vision`)                                                                                                                                                                                                                                                                                     |
-| Embedding        | [`src/chatqec/embedding/`](src/chatqec/embedding/)                               | Gemini (default) or local BGE/Nomic; BM25 via fastembed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Embedding        | [`src/chatqec/embedding/`](src/chatqec/embedding/)                               | Gemini `gemini-embedding-001` (default) or local Nomic; BM25 via fastembed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Store            | [`src/chatqec/store/qdrant.py`](src/chatqec/store/qdrant.py)                     | Hybrid dense + sparse search                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Retrieval        | [`src/chatqec/retrieval/`](src/chatqec/retrieval/)                               | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), BGE cross-encoder reranker, canonical force-injection                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Retrieval        | [`src/chatqec/retrieval/`](src/chatqec/retrieval/)                               | Spec §8.5 weighted scoring (`0.5·dense + 0.3·bm25 + 0.15·tier + 0.05·recency`), `mxbai-rerank-base-v1` cross-encoder reranker, canonical force-injection                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Conversation     | [`src/chatqec/conversation/`](src/chatqec/conversation/)                         | Haiku off-topic classifier + query rewriter; Sonnet synthesizer with native tool-use loop                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Guards           | [`src/chatqec/guards/`](src/chatqec/guards/)                                     | Per-IP rate limit, daily USD budget, hCaptcha verifier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Eval             | [`src/chatqec/eval/`](src/chatqec/eval/) + [`eval/`](eval/)                     | 62-pair Q&A set across 7 subtypes; recall@K + citation accuracy + LLM-judge faithfulness                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| MCP tools        | [`packages/chatqec-tools`](packages/chatqec-tools) | `stim_simulate` (run circuit → samples), `stim_diagram` (circuit → SVG), `pymatching_decode` (MWPM decode → logical error rate), `threshold_sweep` (p × distance → table + log-log SVG), `code_params` ([[n,k]] + stabilizer count + Stim-computed distance), `qec_circuit_build` (toric/BB/PQRM code circuits via LightStim, optional `lightstim` extra), `tsim_simulate` (Stim-superset + non-Clifford gates via Tsim, optional `tsim` extra), `glcb_visualize_url` (shareable GLCB circuit link, no extra) (28 tools in all; run per call by `chatqec-tools`, or as an MCP server by `chatqec-mcp-tools`) |
-| QAppsWiki search | [`src/chatqec/retrieval/wiki_search.py`](src/chatqec/retrieval/wiki_search.py)   | Wraps the[QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) MCP `search_pages` tool (self-hosted BM25 over ~3,778 sections from 691 concept pages) into `RetrievedChunk`s that join the same cross-encoder rerank pass as corpus chunks; needs the wiki's MCP server named alongside `chatqec-tools` (see [Enable QAppsWiki search](#enable-qappswiki-search))                                                                                                                                                             |
+| QEC tools        | [`packages/chatqec-tools`](packages/chatqec-tools) | 28 tools in four groups (see [Enable QEC tool execution](#enable-qec-tool-execution)); `chatqec-tools` runs one process per call, `chatqec-mcp-tools` serves the same tools over stdio MCP |
+| QAppsWiki search | [`src/chatqec/retrieval/wiki_search.py`](src/chatqec/retrieval/wiki_search.py)   | Wraps the[QAppsWiki](https://github.com/QSCSoftwareEcosystem/QAppsWiki) MCP `search_pages` tool (self-hosted BM25 over the sections of 780 concept pages) into `RetrievedChunk`s that join the same cross-encoder rerank pass as corpus chunks; needs the wiki's MCP server named alongside `chatqec-tools` (see [Enable QAppsWiki search](#enable-qappswiki-search))                                                                                                                                                             |
 
-Full corpus breakdown (chunk counts, per-source stats) lives in
-[`docs/EXAMPLES.md`](docs/EXAMPLES.md); as of 2026-07-28 the store has 2,935
-embedded chunks across 123 sources (60 canonical, 30 arXiv, 6 book chapters,
-25 blog/vendor, 2 pinned GitHub-doc sources) — computed live from
-`sources/registry.jsonl`, not estimated.
+The full corpus has 3,266 chunks across 135 sources (60 canonical, 41 arXiv,
+26 blog/vendor, 6 book chapters, 2 pinned GitHub-doc sources), as recorded in
+`sources/registry.jsonl`; `chatqec corpus-stats` recomputes the breakdown.
 
 ---
 
@@ -664,9 +617,9 @@ embedded chunks across 123 sources (60 canonical, 30 arXiv, 6 book chapters,
 ![ChatQEC architecture: ingestion lane, shared corpus & tools, query lane, and a planned hardware-aware placement lane](docs/images/chatqec_architecture.png)
 
 *Ingestion (offline), the shared corpus/tools layer, and the query pipeline are
-implemented today. The bottom **Hardware-aware placement** lane (live IBM
-Quantum/IQM calibration → layout advisor) is **future work** — see
-[Roadmap](#roadmap).*
+implemented. The bottom **hardware** lane, drawn as future work, now exists as
+the IBM Quantum and IQM tools (live calibration, circuit mapping, preview,
+submission); the diagram predates them.*
 
 The query lane in detail:
 
@@ -682,22 +635,18 @@ question  ──▶ Haiku ──▶│  off-topic?  │── no ──▶ refus
                               │
         ┌─────────────────────▼──────────────────────┐
         │      Hybrid retriever (Qdrant + BM25)      │
-        │ → spec §8.5 scoring → BGE reranker → top-K │
+        │ → spec §8.5 scoring → mxbai reranker → top-K│
         │     ▲                                       │
         │     │  canonical wiki force-inject          │
         └─────┼───────────────────────────────────────┘
               │
-       ┌──────▼─────────┐         ┌───────────────────────┐
-       │ Sonnet         │  tools  │  MCP adapter          │
-       │ synthesizer    │ ◀────▶ │  → stim_simulate      │
-       │ (cited answer) │         │  → stim_diagram       │
-       └────────────────┘         │  → pymatching_decode  │
-                                   │  → threshold_sweep    │
-                                   │  → code_params        │
-                                   │  → qec_circuit_build  │
-                                   │  → tsim_simulate      │
-                                   │  → glcb_visualize_url │
-                                   └───────────────────────┘
+       ┌──────▼─────────┐         ┌──────────────────────────┐
+       │ Sonnet         │  tools  │  chatqec-tools (28)      │
+       │ synthesizer    │ ◀────▶ │  one process per call:   │
+       │ (cited answer) │         │  Stim, decoders, FT      │
+       └────────────────┘         │  compile, QEC Studio,    │
+                                   │  IBM Quantum, IQM        │
+                                   └──────────────────────────┘
 ```
 
 > When retrieval is weak (best rerank score < 0.4) and the web fallback is
@@ -706,7 +655,7 @@ question  ──▶ Haiku ──▶│  off-topic?  │── no ──▶ refus
 
 **Why each piece?** See [`docs/DESIGN_CHOICES.md`](docs/DESIGN_CHOICES.md) for a
 focused walkthrough of model selection (why Haiku for the classifier, Sonnet
-for the synthesizer, BGE for the reranker, etc.) and architectural picks (why
+for the synthesizer, the cross-encoder reranker, etc.) and architectural picks (why
 hybrid retrieval, why Qdrant, why MCP for tool use, why a canonical wiki
 layer, why auto-fallback). Full design spec:
 [`docs/planning/specs/2026-05-29-chatqec-design.md`](docs/planning/specs/2026-05-29-chatqec-design.md).
@@ -727,116 +676,61 @@ Required environment:
 
 | Variable                                    | Purpose                                                                                                            |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `ANTHROPIC_API_KEY`                       | Haiku (classifier/rewriter) + Sonnet (synthesizer + judge) — required when`models.provider=anthropic` (default) |
+| `GEMINI_API_KEY`                          | Required for retrieval: `gemini-embedding-001` embeds every question (or set `embedding.provider=local` and rebuild the index); also answers when no Anthropic key is set |
+| `ANTHROPIC_API_KEY`                       | Optional. Haiku (classifier/rewriter) + Sonnet (synthesizer + judge); used first under `models.provider=auto` (default) |
 | `HF_TOKEN` *or* `HUGGINGFACE_API_KEY` | Llama-3.1/3.3 via HuggingFace Inference API — required when`models.provider=huggingface`                        |
-| `GEMINI_API_KEY`                          | `gemini-embedding-001` for dense vectors (or set `embedding.provider=local`)                                   |
 | `HCAPTCHA_SECRET`                         | Optional. Public Streamlit deploys; empty = captcha disabled                                                       |
 | `CHATQEC_DAILY_BUDGET_USD`                | Optional. Daily USD cap for the budget guard                                                                       |
+| `CHATQEC_MCP_SERVER`                      | Optional. Tool commands for the web app, e.g. `chatqec-tools` (comma-separate to add the QAppsWiki server)        |
+| `CHATQEC_PROVIDER`                        | Optional. Overrides `models.provider` (e.g. `local`)                                                               |
+| `QISKIT_IBM_TOKEN`, `QISKIT_IBM_INSTANCE` | Optional. IBM Quantum tools                                                                                        |
+| `IQM_TOKEN`, `IQM_SERVER_URL`             | Optional. IQM tools                                                                                                |
+| `TAVILY_API_KEY`                          | Optional. Web-search fallback (with `CHATQEC_WEB_FALLBACK=1`)                                                      |
 | `WATCHLIST_PUSH_TOKEN`                    | CI-only. GitLab token for the scheduled watchlist refresh MR                                                       |
 
 ---
 
 ## Eval
 
-```bash
-uv run chatqec eval run \
-  --cases eval/qa_set.jsonl \
-  --output eval/results.json
-```
+Three evaluations ship with the repository; [`docs/benchmarks/REPRODUCE.md`](docs/benchmarks/REPRODUCE.md)
+gives the exact commands, pins, and environment.
 
-The seed set has 50 Q&A pairs across six subtypes:
+- **Tool use on external benchmarks** (`chatqec eval bench`): 40 decoder
+  comparisons from [decoder-bench](https://github.com/satvikmaurya/decoder-bench)
+  and 17 items from [FTPrimitiveBench](https://github.com/ShuwenKan/FTPrimitiveBench),
+  scored for tool routing, exact arguments, numeric agreement with the
+  benchmark's ground truth, and decoder ranking. Includes an audit that re-runs
+  decoder-bench's own pipeline where its published values disagree.
+- **ChatQEC versus the bare model** (`eval/compare/`): 27 items (literature,
+  computation, definitions, false premises) answered with and without
+  retrieval and tools.
+- **Retrieval** (`chatqec eval run --cases eval/qa_set.jsonl`): recall@K,
+  citation accuracy, and LLM-judged faithfulness over a 62-question set.
 
-| Subtype        | Cases |
-| -------------- | ----- |
-| definition     | 8     |
-| paper_lookup   | 8     |
-| comparison     | 9     |
-| math_detail    | 9     |
-| recent_niche   | 8     |
-| code_execution | 8     |
-
-Metrics: **recall@K** (did the retriever surface a relevant source?),
-**citation accuracy** (did the answer's citations point to the right sources?),
-and **faithfulness** (LLM-judged: do the answer's claims follow from the
-retrieved evidence?). Run output is JSON with per-subtype + overall scores.
-
-> Headline numbers will land once the corpus is seeded. The pipeline is
-> end-to-end testable now; meaningful eval scores need real content.
+Result files in [`eval/results/`](eval/results/) record the commits,
+benchmark pins, model, and tool versions they were produced with.
 
 ---
 
 ## Roadmap
 
-**v0.1.0 (this release):**
+**Done:**
 
-- ✅ End-to-end pipeline: classifier → rewriter → hybrid retrieval → synthesizer
-- ✅ Canonical wiki layer — chunked + embedded into Qdrant (`chatqec canonical embed`)
-- ✅ Multimodal image input (`chatqec ask --image` + Streamlit attach) with Gemini-Flash captioning for retrieval
-- ✅ PDF book-chapter ingestion (`chatqec ingest --pdf`) + `chatqec corpus-stats`
-- ✅ Figure ingestion: persisted images, local Llama-3.2-Vision descriptions, searchable + shown at answer time
-- ✅ Sandboxed Stim execution via MCP sibling repo
-- ✅ Streamlit app with per-IP rate limit, daily budget, hCaptcha
-- ✅ 62-pair eval set + `chatqec eval run`
-- ✅ Watchlist refresh (arXiv + GitHub) with scheduled CI MR
+- End-to-end pipeline: classifier → rewriter → hybrid retrieval → synthesizer, with canonical-page injection
+- 60-page canonical wiki; PDF, arXiv full-text, GitHub, and figure ingestion; watchlist refresh
+- 28 QEC tools in [`packages/chatqec-tools`](packages/chatqec-tools), run one process per call (also an MCP server)
+- Decoder comparison across twelve decoders, FTPrimitiveBench and decoder-bench circuits, QuEra QEC Studio
+- IBM Quantum and IQM hardware tools: calibration, mapping, preview, submission
+- Benchmark evaluation with provenance-stamped results; Streamlit app with rate limit, budget, hCaptcha
+- One-script install, `chatqec bootstrap`, and GitHub Codespaces
 
-**v0.2 — content & quality:**
+**Open:**
 
-- Populate the source registry to ~500 documents (seed via watchlist + bulk arXiv)
-- ✅ Build out the canonical wiki to the full v1 roster (60 pages, per v0.4 below)
-- Publish baseline eval numbers and the methodology behind them
-- Hosted Streamlit demo
-- ✅ Distribute the prebuilt corpus as a Qdrant snapshot — currently as an
-  internal GitLab repo (see Quick Start Option A above); still open: a public
-  Hugging Face dataset repo with a dataset card pinning the embedding model
-  (`gemini-embedding-001`, 768-d), the Qdrant version, and source licenses
-  (provenance from `sources/registry.jsonl`).
-
-**v0.3 — tooling:**
-
-- ✅ PyMatching decoder tool
-- qiskit-qec tool (in the MCP sibling) — **superseded** by the Stim-backed
-  `code_params` tool; qiskit-qec is unshippable (not on PyPI, abandoned,
-  broken against modern Qiskit)
-- ✅ Threshold-sweep helper
-- ✅ Real stdio MCP client (Stim tool-use now works) + Claude→Gemini tool failover
-
-**v0.4 — corpus & fallback:**
-
-- ✅ Expanded corpus: +11 foundational/FT + hardware-demo papers with full
-  text and vision-described figures; +5 QEC vendor/lab pages (Google, IBM,
-  Quantinuum); +4 canonical pages (erasure-conversion, real-time-decoding,
-  below-threshold-scaling, mid-circuit-measurement) → 60 canonical pages
-- ✅ Stim-backed `code_params` tool
-- ✅ Optional Tavily web-search fallback (rerank-gated, calibrated threshold 0.4)
-
-**v0.5 — more source types:**
-
-- ✅ `chatqec ingest --github <org>/<repo> --commit-sha <sha>` wired to the CLI
-  (pinned to an exact commit, never a branch — reuses the existing
-  `GitHubMetadata`/`files_to_chunks` fetcher); `QuTone/LightStim` added to
-  `sources/watchlist.yaml` so `chatqec watch refresh` surfaces upstream moves.
-  First live run seeded `github:QuTone/LightStim@47dd7497` (79 chunks) +
-  the full LightStim paper (`arxiv:2604.21472`, 39 chunks).
-- Populate the corpus with **code repos** and **video/lecture transcripts** —
-  the GitHub fetcher is now wired to `chatqec ingest` and seeded with one repo
-  (LightStim); the YouTube fetcher already exists
-  (`src/chatqec/ingestion/fetchers/`) and the watchlist tracks it, but the
-  registry isn't seeded with any YouTube sources yet.
-
-**v1.0 — production:**
-
-- Real `from_config()` deploy flow with secret management
-- Docker-isolated sandbox (current uses subprocess + rlimits)
-- Per-source retraction propagation
-
-**Later — exploratory:**
-
-- **Hardware-aware placement.** Pull live calibration data (T1/T2, gate &
-  readout error, coupling map) from real backends (IBM Quantum, IQM) and add a
-  layout advisor that recommends the best qubit subset + links for a given
-  code/circuit, feeding that advice into the synthesizer's answer. Shown as
-  the "(future work)" lane in the [architecture diagram](#how-it-works) above;
-  no implementation exists yet.
+- A public corpus snapshot with per-source licences (third-party full text is not redistributed today)
+- Retrieval evaluation numbers on the 62-question set
+- A hosted demo with bring-your-own-key
+- Video and lecture transcripts in the corpus (the fetcher exists)
+- OS-level isolation for `guppy_run`
 
 ---
 
@@ -851,7 +745,8 @@ refresh keeps it current.
 
 ```bash
 uv sync --extra dev
-uv run pytest                          # 416 tests, 90% line coverage
+uv run pytest                          # app tests
+(cd packages/chatqec-tools && uv run --all-extras python -m pytest)   # tool tests
 uv run ruff check src tests chatqec_app
 uv run mypy src
 uv run chatqec canonical validate
@@ -870,12 +765,11 @@ If ChatQEC helps your research, please cite it as:
 
 ```bibtex
 @software{chatqec_2026,
-  author  = {Sharmin Afrose, Vicente Leyton-Ortega, Travis Humble, Tirthankar Ghosal
-},
+  author  = {Afrose, Sharmin and Leyton-Ortega, Vicente and Humble, Travis and Ghosal, Tirthankar},
   title   = {ChatQEC: an open-source research assistant for Quantum Error Correction},
   version = {0.1.0},
   year    = {2026},
-  url     = {https://github.com/QSCSoftwareEcosystem/ChatQEC.git}
+  url     = {https://github.com/QSCSoftwareEcosystem/ChatQEC}
 }
 ```
 

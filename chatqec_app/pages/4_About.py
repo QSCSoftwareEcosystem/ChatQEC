@@ -15,16 +15,16 @@ st.markdown(
     """
 ChatQEC is an open-source research assistant for **Quantum Error Correction**.
 
-It retrieves from a curated corpus of papers, textbooks, GitHub repos, blog posts,
-and video transcripts, then answers your question via Claude Sonnet with inline
-citations. It can also run small Stim circuits in a sandbox.
+It retrieves from a curated corpus of papers, textbook chapters, vendor and lab
+pages, GitHub documentation, and a hand-reviewed canonical wiki, then answers
+with inline citations. It can also run QEC tools: Stim, decoders, fault-tolerant compilation, and IBM Quantum and IQM hardware.
 
-**Stack:** Python, Hydra, Qdrant, Anthropic Claude, Google Gemini, Stim, MCP.
+**Stack:** Python, Hydra, Qdrant, Anthropic Claude, Google Gemini, Stim, Qiskit, MCP.
 
 **License:** Apache 2.0.
 
-**Source:** [`gitlab.com/<USERNAME>/chatqec`](https://gitlab.com/<USERNAME>/chatqec)
-and the companion [`chatqec-mcp-tools`](https://gitlab.com/<USERNAME>/chatqec-mcp-tools).
+**Source:** [`github.com/QSCSoftwareEcosystem/ChatQEC`](https://github.com/QSCSoftwareEcosystem/ChatQEC),
+with the QEC tools in [`packages/chatqec-tools`](https://github.com/QSCSoftwareEcosystem/ChatQEC/tree/main/packages/chatqec-tools).
     """
 )
 
