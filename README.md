@@ -53,6 +53,43 @@ circuit to check their own claim. ChatQEC is built specifically for QEC, with:
 
 ---
 
+## Install
+
+### In the browser: GitHub Codespaces
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/QSCSoftwareEcosystem/ChatQEC?quickstart=1)
+
+Add a `GEMINI_API_KEY` [Codespaces secret](https://github.com/settings/codespaces)
+first (an `ANTHROPIC_API_KEY` is optional). The Codespace installs everything,
+indexes the canonical wiki, and opens the app on port 8501. Setup takes a few
+minutes the first time. Without a key it still installs; add the key and run
+`uv run chatqec bootstrap`, then `bash .devcontainer/start.sh`.
+
+### On your machine (Linux x86_64)
+
+```bash
+git clone https://github.com/QSCSoftwareEcosystem/ChatQEC && cd ChatQEC
+export GEMINI_API_KEY=...          # or put it in .env; ANTHROPIC_API_KEY is optional
+bash .devcontainer/setup.sh        # uv, Qdrant, the app, the CPU QEC tools, the index
+bash .devcontainer/start.sh        # web app on http://localhost:8501
+uv run chatqec ask --mcp-server chatqec-tools "What is the surface code?"
+```
+
+**Keys.** A Gemini key is the one requirement: retrieval embeds every question
+with `gemini-embedding-001`, and Gemini also answers when no Anthropic key is set.
+With `ANTHROPIC_API_KEY`, Claude answers instead. To run on your own models, set
+`models.provider: local` in `conf/config.yaml` (any OpenAI-compatible server).
+
+**Corpus.** `chatqec bootstrap` indexes the 60 canonical wiki pages shipped in
+this repository. The full corpus used in the paper (arXiv papers, vendor pages,
+and textbook chapters) is not redistributed here; if you have a Qdrant snapshot
+of it, load it with `uv run chatqec bootstrap --force --snapshot <file-or-url>`
+(or set `CHATQEC_INDEX_SNAPSHOT` before the Codespace is created).
+
+**Tools.** `setup.sh` installs the tools with their CPU extras. CUDA-Q decoders
+need a GPU (`[cudaq]`), and maximum-likelihood decoding needs Gurobi (`[mle]`);
+see [Vendor QEC tools](#vendor-qec-tools-decoders-pauli-checks-fault-tolerant-compilation-deltakit-guppy).
+
 ## Quick start
 
 Two ways to run it — pick one, both use the same corpus:

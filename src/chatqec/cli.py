@@ -1943,7 +1943,14 @@ def _register_bench_commands() -> None:
     eval_group.add_command(bench_group)
 
 
+def _register_bootstrap_command() -> None:
+    from chatqec.bootstrap import bootstrap
+
+    main.add_command(bootstrap)
+
+
 _register_bench_commands()
+_register_bootstrap_command()
 
 
 if __name__ == "__main__":

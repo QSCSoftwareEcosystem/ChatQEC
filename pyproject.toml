@@ -42,6 +42,7 @@ dependencies = [
   "tenacity",
   "arxiv",
   "rich",
+  "einops>=0.8",  # the local embedder (nomic-embed-text-v1.5) imports it in its remote code
 ]
 
 [project.optional-dependencies]

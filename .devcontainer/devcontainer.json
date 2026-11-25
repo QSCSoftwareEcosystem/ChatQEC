@@ -1,0 +1,30 @@
+{
+  "name": "ChatQEC",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "hostRequirements": { "memory": "8gb" },
+  "secrets": {
+    "GEMINI_API_KEY": {
+      "description": "Required. Embeds questions for retrieval (gemini-embedding-001), and answers them if no Anthropic key is set."
+    },
+    "ANTHROPIC_API_KEY": {
+      "description": "Optional. With it, Claude answers (Haiku rewrites, Sonnet synthesizes); without it, Gemini does."
+    },
+    "CHATQEC_INDEX_SNAPSHOT": {
+      "description": "Optional. URL of a full corpus snapshot. Without it, the Codespace indexes the canonical wiki only."
+    }
+  },
+  "containerEnv": {
+    "CHATQEC_MCP_SERVER": "chatqec-tools",
+    "UV_LINK_MODE": "copy"
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postAttachCommand": "bash .devcontainer/start.sh",
+  "forwardPorts": [8501],
+  "portsAttributes": {
+    "8501": { "label": "ChatQEC", "onAutoForward": "openPreview" }
+  },
+  "customizations": {
+    "codespaces": { "openFiles": ["README.md"] },
+    "vscode": { "extensions": ["ms-python.python"] }
+  }
+}
